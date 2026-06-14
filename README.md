@@ -80,6 +80,30 @@ To restore the R environment:
 install.packages("renv")
 renv::restore()
 ```
+### Windows toolchain requirement
+
+This pipeline uses `brms`/Stan models. On Windows, Stan models require a working C++ toolchain through Rtools.
+
+For the current lockfile, the recorded R version is 4.6.0. Windows users should install Rtools 4.5, not Rtools 4.4.
+
+After installing Rtools, open a new PowerShell session and check:
+
+```powershell
+where make
+where g++
+Rscript -e "Sys.which('make'); Sys.which('g++')"
+Rscript -e "pkgbuild::check_build_tools(debug = TRUE)"
+```
+
+If `make` is not found, Stan/brms model compilation will fail at the prior predictive or model-fitting stages.
+
+The heavy Bayesian stages are enabled only when:
+
+```powershell
+$env:ACCRUAL_DRY_RUN = "FALSE"
+$env:ACCRUAL_RUN_HEAVY = "TRUE"
+Rscript run.R full
+```
 
 ## Computational requirements
 
