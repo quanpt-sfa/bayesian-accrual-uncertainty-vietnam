@@ -76,7 +76,8 @@ To restore the R environment:
 
 ```r
 install.packages("renv")
-renv::restore()```
+renv::restore()
+```
 
 ## Computational requirements
 
