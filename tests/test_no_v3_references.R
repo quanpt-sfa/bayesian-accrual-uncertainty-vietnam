@@ -8,10 +8,18 @@ targets <- c(
   file.path("data", "raw", "README.md")
 )
 
-patterns <- c("scripts/v3", "v3_", "_v3", "V3_", "v3 pipeline")
+legacy_tag <- paste0("v", "3")
+
+patterns <- c(
+  paste0("scripts/", legacy_tag),
+  paste0(legacy_tag, "_"),
+  paste0("_", legacy_tag),
+  paste0(toupper(substr(legacy_tag, 1, 1)), substr(legacy_tag, 2, nchar(legacy_tag)), "_"),
+  paste(legacy_tag, "pipeline")
+)
 
 exceptions <- data.frame(
-  File = file.path("tests", paste0("test_no", "_", "v3", "_references.R")),
+  File = file.path("tests", paste(c("test", "no", legacy_tag, "references.R"), collapse = "_")),
   Reason = "The test contains the forbidden patterns as scan fixtures.",
   stringsAsFactors = FALSE
 )
