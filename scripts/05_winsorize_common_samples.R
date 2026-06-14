@@ -252,7 +252,7 @@ registry_df <- read.csv(registry_path, stringsAsFactors = FALSE)
 for (col in colnames(registry_df)) {
   if (is.character(registry_df[[col]])) {
     registry_df[[col]] <- gsub("Ball & Shivakumar \\(2005\\)", "Ball & Shivakumar (2006)", registry_df[[col]])
-    registry_df[[col]] <- gsub("Breuer-Schutt \\(2023\\)", "Breuer & SchÃƒÂ¼tt (2021/2022)", registry_df[[col]])
+    registry_df[[col]] <- gsub("Breuer-Schutt \\(2023\\)", "Breuer & Schuett (2021/2022)", registry_df[[col]])
     registry_df[[col]] <- gsub("Real-time No-lead", "No-look-ahead feature set", registry_df[[col]])
   }
 }

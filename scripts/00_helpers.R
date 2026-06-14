@@ -139,6 +139,79 @@ baseline_log_path <- function(file_name) {
   file.path(baseline_root, "logs", file_name)
 }
 
+normalize_column_names_safely <- function(column_names) {
+  text <- as.character(column_names)
+  text <- enc2utf8(text)
+  text[is.na(text)] <- ""
+  transliterated <- suppressWarnings(iconv(text, from = "", to = "ASCII//TRANSLIT"))
+  transliterated[is.na(transliterated)] <- text[is.na(transliterated)]
+  normalized <- tolower(trimws(transliterated))
+  normalized <- gsub("[^a-z0-9]+", "_", normalized)
+  normalized <- gsub("_+", "_", normalized)
+  normalized <- gsub("^_+|_+$", "", normalized)
+  normalized
+}
+
+format_available_columns <- function(column_names) {
+  paste(as.character(column_names), collapse = ", ")
+}
+
+normalize_join_key_values <- function(values) {
+  normalized <- trimws(as.character(values))
+  normalized[normalized == ""] <- NA_character_
+  normalized
+}
+
+detect_column_from_candidates <- function(column_names, candidates, context_label = "required column") {
+  available_columns <- as.character(column_names)
+  available_normalized <- normalize_column_names_safely(available_columns)
+  candidate_normalized <- normalize_column_names_safely(candidates)
+
+  for (candidate in candidates) {
+    exact_hits <- which(trimws(available_columns) == trimws(candidate))
+    if (length(exact_hits) == 1) {
+      return(available_columns[[exact_hits]])
+    }
+    if (length(exact_hits) > 1) {
+      stop(
+        "[BLOCKER] Ambiguous ", context_label, ": multiple exact matches for '", candidate,
+        "'. Available columns: ", format_available_columns(available_columns)
+      )
+    }
+  }
+
+  for (i in seq_along(candidates)) {
+    hits <- which(available_normalized == candidate_normalized[[i]])
+    if (length(hits) == 1) {
+      return(available_columns[[hits]])
+    }
+    if (length(hits) > 1) {
+      stop(
+        "[BLOCKER] Ambiguous ", context_label, ": candidate '", candidates[[i]],
+        "' matched multiple columns after normalization. Available columns: ",
+        format_available_columns(available_columns)
+      )
+    }
+  }
+
+  stop(
+    "[BLOCKER] Could not identify ", context_label, ". Available columns: ",
+    format_available_columns(available_columns)
+  )
+}
+
+detect_metadata_company_column <- function(column_names) {
+  candidates <- c(
+    "company", "Company", "ticker", "Ticker", "symbol", "Symbol", "code", "Code",
+    "Ma", "Mã", "Mã CK", "Ma CK", "StockCode", "Stock_Code"
+  )
+  detect_column_from_candidates(
+    column_names = column_names,
+    candidates = candidates,
+    context_label = "metadata company-code column"
+  )
+}
+
 reports_path <- function(...) {
   file.path(reports_root, ...)
 }
@@ -264,32 +337,32 @@ write_prior_registry <- function(root = output_root) {
   out
 }
 
-prior_set_rows <- function(prior_set_id = prior_set_id) {
+prior_set_rows <- function(selected_prior_set_id = prior_set_id) {
   rows <- prior_registry()
-  rows <- rows[rows$Prior_Set_ID == prior_set_id, , drop = FALSE]
-  if (nrow(rows) == 0) stop("[BLOCKER] Unknown ACCRUAL_PRIOR_SET_ID: ", prior_set_id)
+  rows <- rows[rows$Prior_Set_ID == selected_prior_set_id, , drop = FALSE]
+  if (nrow(rows) == 0) stop("[BLOCKER] Unknown ACCRUAL_PRIOR_SET_ID: ", selected_prior_set_id)
   rows
 }
 
-default_prior_list <- function(heterogeneity_variant = "", model_structure = model_structure,
-                                  prior_set_id = prior_set_id, family = likelihood_family) {
-  rows <- prior_set_rows(prior_set_id)
+default_prior_list <- function(heterogeneity_variant = "", selected_model_structure = model_structure,
+                                  selected_prior_set_id = prior_set_id, family = likelihood_family) {
+  rows <- prior_set_rows(selected_prior_set_id)
   prior_for <- function(cls) rows$Prior_Distribution[rows$Parameter_Class == cls][1]
   prior_list <- c(
-    brms::prior(prior_for("b"), class = "b"),
-    brms::prior(prior_for("Intercept"), class = "Intercept"),
-    brms::prior(prior_for("sigma"), class = "sigma")
+    brms::prior_string(prior_for("b"), class = "b"),
+    brms::prior_string(prior_for("Intercept"), class = "Intercept"),
+    brms::prior_string(prior_for("sigma"), class = "sigma")
   )
   has_group_effect <- grepl("Firm RE", heterogeneity_variant, fixed = TRUE) ||
-    identical(model_structure, "breuer_varying_slopes")
+    identical(selected_model_structure, "breuer_varying_slopes")
   if (has_group_effect && any(rows$Parameter_Class == "sd")) {
-    prior_list <- c(prior_list, brms::prior(prior_for("sd"), class = "sd"))
+    prior_list <- c(prior_list, brms::prior_string(prior_for("sd"), class = "sd"))
   }
   if (identical(tolower(family), "student") && any(rows$Parameter_Class == "nu")) {
-    prior_list <- c(prior_list, brms::prior(prior_for("nu"), class = "nu"))
+    prior_list <- c(prior_list, brms::prior_string(prior_for("nu"), class = "nu"))
   }
-  if (identical(model_structure, "breuer_varying_slopes") && any(rows$Parameter_Class == "cor")) {
-    prior_list <- c(prior_list, brms::prior(prior_for("cor"), class = "cor"))
+  if (identical(selected_model_structure, "breuer_varying_slopes") && any(rows$Parameter_Class == "cor")) {
+    prior_list <- c(prior_list, brms::prior_string(prior_for("cor"), class = "cor"))
   }
   prior_list
 }
@@ -499,8 +572,8 @@ model_key_sampled <- function(model_id, target_space, sample_group, heterogeneit
   key
 }
 
-standardize_predictors <- function(df, pred_vars = pred_vars) {
-  for (v in pred_vars) {
+standardize_predictors <- function(df, predictor_vars = pred_vars) {
+  for (v in predictor_vars) {
     if (v %in% colnames(df)) {
       m <- mean(df[[v]], na.rm = TRUE)
       s <- sd(df[[v]], na.rm = TRUE)
@@ -510,12 +583,12 @@ standardize_predictors <- function(df, pred_vars = pred_vars) {
   df
 }
 
-fix_formula <- function(formula_str, pred_vars = pred_vars, prefactor = FALSE) {
+fix_formula <- function(formula_str, predictor_vars = pred_vars, prefactor = FALSE) {
   if (prefactor) {
     formula_str <- gsub("factor\\(industry\\)", "industry_f", formula_str)
     formula_str <- gsub("factor\\(year\\)", "year_f", formula_str)
   }
-  for (v in pred_vars) {
+  for (v in predictor_vars) {
     formula_str <- gsub(paste0("\\b", v, "\\b"), paste0(v, "_std"), formula_str)
   }
   formula_str

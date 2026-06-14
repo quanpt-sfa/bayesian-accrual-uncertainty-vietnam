@@ -19,6 +19,8 @@ This repository organizes the accrual uncertainty pipeline into a reproducible r
 
 The default data path is `data/raw/data.xlsx`. The file is copied locally and ignored by Git by default. To run against a workbook stored elsewhere, set `ACCRUAL_DATA_PATH`.
 
+The pipeline reads `Sheet1` for firm-year observations and `Sheet2` for metadata. The metadata loader auto-detects a company-code column from common variants such as `company`, `ticker`, `code`, `Ma`, `Mã`, `Mã CK`, and `StockCode`.
+
 ## Quick start
 
 1. Install required R packages used by the pipeline scripts, including at least `readxl`, `dplyr`, `brms`, `loo`, `sandwich`, and `lmtest`.

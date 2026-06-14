@@ -30,6 +30,42 @@ feasible_models <- registry %>% filter(Feasible_With_This_Data == "TRUE")
 df_raw <- read_excel(data_path, sheet = "Sheet1")
 df_metadata <- read_excel(data_path, sheet = "Sheet2")
 
+if (!"company" %in% colnames(df_raw)) {
+  stop(
+    "[BLOCKER] Raw data is missing required 'company' column in Sheet1. Available columns: ",
+    format_available_columns(colnames(df_raw))
+  )
+}
+
+metadata_company_key <- detect_metadata_company_column(colnames(df_metadata))
+metadata_columns_available <- colnames(df_metadata)
+metadata_log_lines <- c(
+  "Metadata key detection",
+  paste("Detected metadata key:", metadata_company_key),
+  paste("Metadata columns:", format_available_columns(metadata_columns_available))
+)
+
+df_metadata <- df_metadata %>%
+  rename(metadata_company = all_of(metadata_company_key)) %>%
+  mutate(metadata_company = normalize_join_key_values(metadata_company)) %>%
+  filter(!is.na(metadata_company))
+
+duplicate_metadata_keys <- unique(df_metadata$metadata_company[duplicated(df_metadata$metadata_company)])
+if (length(duplicate_metadata_keys) > 0) {
+  stop(
+    "[BLOCKER] Metadata company-code column '", metadata_company_key,
+    "' contains duplicate keys after normalization. Example duplicates: ",
+    paste(head(duplicate_metadata_keys, 10), collapse = ", "),
+    ". Available metadata columns: ", format_available_columns(metadata_columns_available)
+  )
+}
+
+metadata_log_lines <- c(
+  metadata_log_lines,
+  paste("Metadata rows retained after key cleanup:", nrow(df_metadata)),
+  paste("Duplicate metadata keys detected:", length(duplicate_metadata_keys))
+)
+
 # Count initial rows
 n_raw_initial <- nrow(df_raw)
 message("Initial raw rows: ", n_raw_initial)
@@ -52,6 +88,9 @@ df_step2 <- df_step1 %>%
 df_clean <- df_step2 %>% filter(year > 2015)
 n_drop_2015 <- nrow(df_step2) - nrow(df_clean)
 message("Rows dropped because year is 2015: ", n_drop_2015)
+
+df_clean <- df_clean %>%
+  mutate(company = normalize_join_key_values(company))
 
 # 2. CONSTRUCT DERIVED VARIABLES
 # Arrange by company and year to ensure lags/leads are correct
@@ -163,8 +202,26 @@ df_vars <- df_vars %>%
   )
 
 # Add metadata (industry classification)
+n_before_metadata_join <- nrow(df_vars)
 df_vars <- df_vars %>%
-  left_join(df_metadata, by = c("company" = "MÃƒÂ£"))
+  left_join(df_metadata, by = c("company" = "metadata_company"))
+
+if (nrow(df_vars) != n_before_metadata_join) {
+  stop(
+    "[BLOCKER] Metadata join duplicated rows: before=", n_before_metadata_join,
+    ", after=", nrow(df_vars),
+    ". Detected metadata key: ", metadata_company_key,
+    ". Available metadata columns: ", format_available_columns(metadata_columns_available)
+  )
+}
+
+metadata_log_lines <- c(
+  metadata_log_lines,
+  paste("Rows before metadata join:", n_before_metadata_join),
+  paste("Rows after metadata join:", nrow(df_vars))
+)
+writeLines(metadata_log_lines, con = baseline_log_path("phase1_metadata_key_detection.txt"))
+message("Detected metadata key: ", metadata_company_key)
 
 # 3. CATEGORIZE ROW DROPS (WITH RESPECT TO CORE COMMON SAMPLES)
 # Define core variable lists (excluding sd_REV and sd_CFO)
