@@ -1,0 +1,28 @@
+# Local raw workbook
+/data/raw/data.xlsx
+
+# Generated outputs under out/
+out/
+!out/
+out/**
+!out/**/
+!out/**/.gitkeep
+
+# Legacy generated outputs
+/outputs/
+
+# Generated R artifacts
+*.rds
+*.RData
+*.RDataTmp
+*.rda
+*.stan.csv
+*.csv.tmp
+*.log
+*.html
+
+# OS and editor noise
+.DS_Store
+.Rhistory
+.Rproj.user/
+__pycache__/

@@ -1,0 +1,458 @@
+You are working on a new local Git repository for the project:
+
+bayesian-accrual-uncertainty-vietnam
+
+This is a new standalone repository. Do not preserve backward compatibility with old unused scripts. Do not create deprecated wrappers. Do not keep obsolete script references.
+
+User-provided local paths:
+
+Source v3 scripts folder:
+D:\Works\Data analysis\bayesian averaging models\new model v2\scripts\v3
+Source data file:
+D:\Works\Data analysis\bayesian averaging models\new model v2
+
+Target new repository:
+D:\Works\bayesian-accrual-uncertainty-vietnam
+
+Url repository:
+https://github.com/quanpt-sfa/bayesian-accrual-uncertainty-vietnam
+
+Goal:
+Create a clean, reproducible academic repository structure for the Bayesian accrual uncertainty pipeline. The current active v3 scripts should be copied from the source folder into the new repository under `scripts/v3/`. The raw data file should be placed under `data/raw/data.xlsx`, but it should not be committed to GitHub unless explicitly confirmed.
+
+Important path rule:
+Do not create or keep a root-level `v3/` folder in the new repository. The active scripts must live at:
+
+```text
+D:\Works\bayesian-accrual-uncertainty-vietnam/scripts/
+```
+
+This matters because the scripts use source calls like:
+
+```r
+source("scripts/v3/00_v3_winsor_helpers.R")
+```
+So you should search in scripts and change the source 
+
+Target repository structure:
+
+```text
+bayesian-accrual-uncertainty-vietnam/
+├── README.md
+├── LICENSE
+├── .gitignore
+├── renv.lock                    # if available; otherwise document setup
+├── run.R
+├── data/
+│   └── raw/
+│       ├── README.md
+│       ├── .gitkeep
+│       └── data.xlsx            # local only unless explicitly confirmed
+├── R/
+│   ├── functions_data.R
+│   ├── functions_models.R
+│   ├── functions_priors.R
+│   ├── functions_diagnostics.R
+│   ├── functions_stacking.R
+│   ├── functions_da.R
+│   ├── functions_sensitivity.R
+│   └── functions_report.R
+├── scripts/
+│   └── v3/
+│       ├── 00_v3_winsor_helpers.R
+│       ├── 01_v3_setup_and_registry.R
+│       ├── 02_v3_build_common_sample.R
+│       ├── 03_v3_audit_cogs_inv_operating_cycle_after_fix.R
+│       ├── 04_v3_define_named_models.R
+│       ├── 05_v3_winsorize_common_samples.R
+│       ├── 06_v3_prior_predictive_checks_winsor.R
+│       ├── 07_v3_fit_brms_named_models_winsor.R
+│       ├── 08_v3_mcmc_diagnostics_winsor.R
+│       ├── 09_v3_loo_stacking_winsor.R
+│       ├── 10_v3_construct_uncertainty_adjusted_DA_winsor.R
+│       ├── 11_v3_posterior_predictive_checks_winsor.R
+│       ├── 12_v3_lofo_stacking_winsor.R
+│       ├── 13_v3_grouped_kfold_firm_winsor.R
+│       ├── 14_v3_sensitivity_prior_predictive_winsor.R
+│       ├── 15_v3_sensitivity_refit_prior_scenarios_winsor.R
+│       ├── 16_v3_sensitivity_mcmc_diagnostics_winsor.R
+│       ├── 17_v3_sensitivity_stacking_winsor.R
+│       ├── 18_v3_sensitivity_construct_DA_winsor.R
+│       ├── 19_v3_sensitivity_validation_winsor.R
+│       ├── 20_v3_sensitivity_report_winsor.R
+│       ├── 21_v3_validation_on_scaleaware_student_DA.R
+│       └── 22_reset_and_rerun_after_cogs_inv_fix.R
+├── out/
+│   ├── interim/
+│   ├── fits/
+│   ├── diagnostics/
+│   ├── loo/
+│   ├── lofo/
+│   ├── kfold/
+│   ├── sensitivity/
+│   ├── logs/
+│   └── manifests/
+├── accruals/
+│   ├── baseline/
+│   └── sensitivity/
+│       ├── baseline/
+│       ├── tight/
+│       └── wide/
+├── reports/
+├── doc/
+│   ├── data_dictionary.md
+│   ├── model_registry.md
+│   ├── prior_scenarios.md
+│   ├── pipeline_index.md
+│   ├── computational_notes.md
+│   └── replication_instructions.md
+└── tests/
+    ├── test_paths.R
+    ├── test_data_schema.R
+    ├── test_model_registry.R
+    ├── test_prior_gate.R
+    └── test_stacking_inputs.R
+```
+
+Tasks:
+
+1. Inspect the source v3 scripts folder.
+
+Copy all active v3 scripts from:
+
+```text
+[PASTE_SOURCE_V3_PATH_HERE]
+```
+
+to:
+
+```text
+[PASTE_NEW_REPO_PATH_HERE]/scripts/v3/
+```
+
+Do not keep duplicate script copies elsewhere. Do not create:
+
+```text
+[PASTE_NEW_REPO_PATH_HERE]/v3/
+```
+
+The only active script location should be:
+
+```text
+scripts/v3/
+```
+
+2. Move or copy the raw data file.
+
+Copy:
+
+```text
+[PASTE_SOURCE_DATA_XLSX_PATH_HERE]
+```
+
+to:
+
+```text
+[PASTE_NEW_REPO_PATH_HERE]/data/raw/data.xlsx
+```
+
+However, do not commit `data/raw/data.xlsx` unless I explicitly confirm that the data can be public.
+
+If the data should remain private:
+
+* add `data/raw/data.xlsx` to `.gitignore`;
+* create `data/raw/README.md`;
+* create `data/raw/.gitkeep`.
+
+3. Update data path handling.
+
+In `scripts/v3/00_v3_winsor_helpers.R`, update the canonical input path so the default is:
+
+```r
+Sys.getenv("V3_DATA_PATH", "data/raw/data.xlsx")
+```
+
+Do not keep scattered hard-coded references to root-level `data.xlsx`.
+
+If any script directly reads `"data.xlsx"`, update it to use the helper/config path.
+
+The user should be able to override the data path using:
+
+```bash
+V3_DATA_PATH=/some/path/data.xlsx
+```
+
+4. Update output path handling.
+
+Use the following convention:
+
+```text
+out/          # intermediate files, fits, diagnostics, logs, manifests
+accruals/     # final DA/NDA output tables
+reports/      # final reports
+```
+
+Heavy outputs should not be committed.
+
+5. Create `.gitignore`.
+
+It must ignore at least:
+
+```text
+out/
+outputs/
+*.rds
+*.RData
+*.RDataTmp
+*.rda
+*.stan.csv
+*.csv.tmp
+*.log
+*.html
+.DS_Store
+.Rhistory
+.Rproj.user/
+__pycache__/
+data/raw/data.xlsx
+```
+
+Do not ignore source code, documentation, tests, README, or `.gitkeep` files.
+
+6. Create `run.R`.
+
+Create a clear entrypoint for the repository.
+
+Requirements:
+
+* define the baseline pipeline scripts;
+* define the sensitivity pipeline scripts;
+* default to not running very heavy MCMC steps;
+* support `V3_RUN_HEAVY=FALSE` by default;
+* if `V3_RUN_HEAVY=FALSE`, skip or warn before heavy scripts such as:
+
+  * `07_v3_fit_brms_named_models_winsor.R`
+  * `13_v3_grouped_kfold_firm_winsor.R`
+  * `15_v3_sensitivity_refit_prior_scenarios_winsor.R`
+* print exact commands for running heavy steps manually.
+
+7. Create lightweight `R/` function modules.
+
+Create these files:
+
+```text
+R/functions_data.R
+R/functions_models.R
+R/functions_priors.R
+R/functions_diagnostics.R
+R/functions_stacking.R
+R/functions_da.R
+R/functions_sensitivity.R
+R/functions_report.R
+```
+
+They may initially contain comments and lightweight wrappers. Do not duplicate large script logic unnecessarily.
+
+8. Create documentation under `doc/`.
+
+Create `doc/pipeline_index.md` with:
+
+* repository structure;
+* baseline pipeline order;
+* sensitivity pipeline order;
+* dry-run commands;
+* full-run commands;
+* heavy-step warning;
+* important environment variables:
+
+  * `V3_DATA_PATH`
+  * `V3_DRY_RUN`
+  * `V3_RUN_HEAVY`
+  * `V3_SENS_SCENARIO`
+  * `V3_VALIDATION_ENGINE`
+  * `V3_FORCE_REFIT`
+  * `V3_ALLOW_PRIOR_PREDICTIVE_FAIL`
+  * `V3_ALLOW_DIAGNOSTIC_CONFIG`
+  * `V3_ALLOW_PARTIAL_REPORT`
+
+Create `doc/data_dictionary.md` documenting:
+
+* `data/raw/data.xlsx`;
+* Sheet1 as firm-year financial data;
+* Sheet2 as metadata;
+* required columns such as:
+
+  * company
+  * year
+  * A
+  * NI
+  * REV
+  * CFO
+  * REC
+  * PPE
+  * ROA
+  * COGS
+  * INV
+  * industry metadata.
+
+Create `doc/prior_scenarios.md` describing:
+
+* baseline prior;
+* tight prior;
+* wide prior;
+* prior predictive gate logic.
+
+Create `doc/model_registry.md` describing:
+
+* M01 Jones;
+* M02 Modified Jones;
+* M03 performance-adjusted / Kothari-style;
+* M04–M09 extended models;
+* M08/M10 robustness status if relevant.
+
+Create `doc/computational_notes.md` warning:
+
+* full Bayesian refit can be expensive;
+* grouped K-fold is computationally expensive;
+* outputs may be large;
+* heavy outputs should not be committed.
+
+Create `doc/replication_instructions.md` explaining how to reproduce:
+
+* baseline DA;
+* sensitivity analysis;
+* validation reports.
+
+9. Create or update `README.md`.
+
+README must include:
+
+* project title: Bayesian Accrual Uncertainty Vietnam;
+* short description:
+  “Bayesian pipeline for uncertainty-adjusted discretionary accruals using Vietnamese firm-year data.”
+* repository structure;
+* data location;
+* quick start;
+* baseline pipeline;
+* sensitivity pipeline;
+* outputs;
+* reproducibility;
+* computational requirements;
+* note that the structure is inspired by reproducible Bayesian accruals research workflows, without overclaiming exact equivalence to any external repository.
+
+10. Create minimal tests under `tests/`.
+
+Create:
+
+`tests/test_paths.R`
+
+* check required folders exist.
+
+`tests/test_data_schema.R`
+
+* if `data/raw/data.xlsx` exists, check required sheets/columns;
+* if missing, print a clear message.
+
+`tests/test_model_registry.R`
+
+* check model registry scripts exist;
+* check M02 appears in grouped K-fold model lists.
+
+`tests/test_prior_gate.R`
+
+* check scripts 06 and 07 contain prior predictive gate logic.
+
+`tests/test_stacking_inputs.R`
+
+* check script 17 contains row_loo, firm_lofo, and grouped_kfold branches;
+* check it does not contain “only row_loo supported”.
+
+11. Fix grouped K-fold manifest audit issue.
+
+In `scripts/v3/13_v3_grouped_kfold_firm_winsor.R`, ensure the manifest model list matches the actual model list.
+
+The manifest must include M02 in:
+
+```text
+ExPost_Model_IDs
+NoLookahead_Model_IDs
+```
+
+12. Check script source paths.
+
+Since scripts are now located in `scripts/v3/`, all internal source calls should work from the repository root.
+
+Use:
+
+```r
+source("scripts/v3/00_v3_winsor_helpers.R")
+```
+
+or a robust equivalent based on repository root.
+
+Do not leave paths that assume scripts are in a root-level `v3/` folder.
+
+13. Run static checks.
+
+If R is available:
+
+* parse all scripts under `scripts/v3/`;
+* specifically parse:
+  `scripts/v3/17_v3_sensitivity_stacking_winsor.R`;
+* run lightweight tests under `tests/`;
+* do not run full MCMC.
+
+Suggested commands:
+
+```bash
+Rscript -e "files <- list.files('scripts/v3', pattern='[.]R$', full.names=TRUE); invisible(lapply(files, parse))"
+Rscript tests/test_paths.R
+Rscript tests/test_model_registry.R
+Rscript tests/test_prior_gate.R
+Rscript tests/test_stacking_inputs.R
+```
+
+Run `tests/test_data_schema.R` only if `data/raw/data.xlsx` is present locally.
+
+If R is not available:
+
+* perform static text checks;
+* report clearly that R parse/tests were not executed.
+
+14. Git operations.
+
+Before committing:
+
+* run `git status`;
+* ensure no heavy outputs are staged;
+* ensure `data/raw/data.xlsx` is not staged unless I explicitly confirm;
+* stage only source code, docs, tests, `.gitignore`, `run.R`, and lightweight placeholder files.
+
+Suggested commands:
+
+```bash
+git add README.md LICENSE .gitignore run.R R/ scripts/ doc/ reports/ accruals/ tests/ data/raw/README.md data/raw/.gitkeep
+git status
+git commit -m "Initialize reproducible Bayesian accrual uncertainty repository"
+git branch -M main
+git push -u origin main
+```
+
+If `LICENSE` does not exist, create a standard MIT License unless I specify otherwise.
+
+15. Final response.
+
+After completing the work, report:
+
+* source v3 path used;
+* target repository path;
+* files copied;
+* files created;
+* files modified;
+* whether `data.xlsx` was copied locally;
+* whether `data.xlsx` was committed or ignored;
+* static checks performed;
+* whether R parse checks passed;
+* whether tests passed;
+* git commit hash;
+* whether push to `main` succeeded;
+* any remaining manual steps.
