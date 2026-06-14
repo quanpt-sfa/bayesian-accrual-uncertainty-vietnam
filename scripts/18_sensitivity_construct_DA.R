@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 18_v3_sensitivity_construct_DA_winsor.R
+# Script: 18_sensitivity_construct_DA.R
 # Purpose: Recompute uncertainty-adjusted DA separately for each sensitivity scenario.
 # -----------------------------------------------------------------------------
 
@@ -7,20 +7,20 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-ensure_v3_sensitivity_dirs()
-validate_v3_final_analysis_config("sensitivity DA construction", final_mode = TRUE)
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+ensure_sensitivity_dirs()
+validate_final_analysis_config("sensitivity DA construction", final_mode = TRUE)
 
-dry_run <- env_flag_v3("V3_DRY_RUN", "TRUE")
-S <- as.integer(env_value_v3("V3_STACKING_MIXTURE_DRAWS", as.character(v3_stacking_mixture_draws)))
-if (is.na(S) || S <= 0) S <- v3_stacking_mixture_draws
-set.seed(as.integer(env_value_v3("V3_SENS_SEED", "20260614")))
+dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
+S <- as.integer(env_value("ACCRUAL_STACKING_MIXTURE_DRAWS", as.character(stacking_mixture_draws)))
+if (is.na(S) || S <= 0) S <- stacking_mixture_draws
+set.seed(as.integer(env_value("ACCRUAL_SENS_SEED", "20260614")))
 
-scenarios <- selected_sensitivity_scenarios_v3()
-weights_path <- file.path(v3_sensitivity_root(), "tables", "sensitivity_stacking_weights_by_scenario.csv")
-ep_sample_path <- file.path(v3_input_winsor_root, "tables", "final_v3_common_ex_post_sample_winsor.csv")
-rt_sample_path <- file.path(v3_input_winsor_root, "tables", "final_v3_common_realtime_sample_winsor.csv")
+scenarios <- selected_sensitivity_scenarios()
+weights_path <- file.path(sensitivity_root(), "tables", "sensitivity_stacking_weights_by_scenario.csv")
+ep_sample_path <- file.path(input_winsor_root, "tables", "final_common_ex_post_sample_winsor.csv")
+rt_sample_path <- file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv")
 if (!file.exists(weights_path)) stop("[BLOCKER] Missing sensitivity stacking weights. Run script 17 first.")
 if (!file.exists(ep_sample_path) || !file.exists(rt_sample_path)) stop("[BLOCKER] Missing winsor samples.")
 
@@ -38,14 +38,14 @@ compute_stacked_da <- function(df_sample, weights_space, scenario, space_name) {
   sampled_model_indices <- sample(seq_len(nrow(active)), size = S, replace = TRUE, prob = active$stacking_weight)
   stacked_epred <- matrix(NA_real_, nrow = S, ncol = N)
   stacked_predict <- matrix(NA_real_, nrow = S, ncol = N)
-  scenario_root <- v3_sensitivity_root(scenario)
+  scenario_root <- sensitivity_root(scenario)
 
   for (m in seq_len(nrow(active))) {
     row <- active[m, ]
     mix_rows <- which(sampled_model_indices == m)
     if (length(mix_rows) == 0) next
     sample_group <- if ("sample_group" %in% names(row) && nzchar(row$sample_group)) row$sample_group else "main_common"
-    key <- model_key_v3_sampled(row$model_id, row$target_space, sample_group, row$heterogeneity_variant, paste0("_", scenario, "_winsor"))
+    key <- model_key_sampled(row$model_id, row$target_space, sample_group, row$heterogeneity_variant, paste0("_", scenario, "_winsor"))
     draws_path <- file.path(scenario_root, "draws", paste0("draws_", key, ".rds"))
     if (!file.exists(draws_path)) stop("[BLOCKER] Missing scenario posterior draws: ", draws_path)
     draws <- readRDS(draws_path)
@@ -148,26 +148,26 @@ da_rows <- list()
 plan_rows <- list()
 
 for (scenario in scenarios$Scenario) {
-  scenario_root <- v3_sensitivity_root(scenario)
-  ensure_v3_sensitivity_dirs(scenario)
+  scenario_root <- sensitivity_root(scenario)
+  ensure_sensitivity_dirs(scenario)
   sc_weights <- weights_df %>% filter(scenario == !!scenario)
   plan_rows[[length(plan_rows) + 1]] <- data.frame(
     scenario = scenario,
     dry_run = dry_run,
     n_weight_rows = nrow(sc_weights),
     n_finite_weight_rows = sum(is.finite(sc_weights$stacking_weight)),
-    output_path = v3_sensitivity_accruals_path(scenario),
+    output_path = sensitivity_accruals_path(scenario),
     stringsAsFactors = FALSE
   )
 
-  write_v3_run_manifest(
+  write_run_manifest(
     file.path(scenario_root, "manifests", "DA_manifest.csv"),
     scenario = scenario,
     prior_set_id = scenarios$Prior_Set_ID[scenarios$Scenario == scenario][1],
     family = "student",
     model_structure = "pooled_random_intercept",
     model_list = unique(sc_weights$model_id),
-    seed = as.integer(env_value_v3("V3_SENS_SEED", "20260614")),
+    seed = as.integer(env_value("ACCRUAL_SENS_SEED", "20260614")),
     sampling_config = sprintf("stacking_mixture_draws=%d; dry_run=%s", S, dry_run),
     status = if (dry_run) "DRY_RUN_PLANNED" else "STARTED",
     notes = "DA is recomputed from scenario stacking weights and posterior predictive draws.",
@@ -178,17 +178,17 @@ for (scenario in scenarios$Scenario) {
   ep <- compute_stacked_da(df_ep, sc_weights %>% filter(target_space == "ex_post"), scenario, "ex_post")
   rt <- compute_stacked_da(df_rt, sc_weights %>% filter(target_space == "real_time"), scenario, "real_time")
   scenario_da <- bind_rows(ep, rt)
-  write.csv(scenario_da, file.path(scenario_root, "DA", paste0("final_v3_sensitivity_uncertainty_adjusted_accruals_", scenario, ".csv")), row.names = FALSE)
-  write.csv(scenario_da, v3_sensitivity_accruals_path(scenario), row.names = FALSE)
+  write.csv(scenario_da, file.path(scenario_root, "DA", paste0("final_sensitivity_uncertainty_adjusted_accruals_", scenario, ".csv")), row.names = FALSE)
+  write.csv(scenario_da, sensitivity_accruals_path(scenario), row.names = FALSE)
   da_rows[[length(da_rows) + 1]] <- scenario_da
 }
 
 plan_df <- bind_rows(plan_rows)
-write.csv(plan_df, file.path(v3_sensitivity_root(), "tables", "sensitivity_DA_plan.csv"), row.names = FALSE)
+write.csv(plan_df, file.path(sensitivity_root(), "tables", "sensitivity_DA_plan.csv"), row.names = FALSE)
 
 all_da <- bind_rows(da_rows)
 if (nrow(all_da) > 0) {
-  write.csv(all_da, file.path(v3_sensitivity_root(), "tables", "sensitivity_DA_by_scenario_long.csv"), row.names = FALSE)
+  write.csv(all_da, file.path(sensitivity_root(), "tables", "sensitivity_DA_by_scenario_long.csv"), row.names = FALSE)
 
   stability_rows <- list()
   baseline <- all_da %>% filter(scenario == "baseline")
@@ -223,10 +223,10 @@ if (nrow(all_da) > 0) {
       )
     }
   }
-  write.csv(bind_rows(stability_rows), file.path(v3_sensitivity_root(), "tables", "sensitivity_DA_stability_summary.csv"), row.names = FALSE)
+  write.csv(bind_rows(stability_rows), file.path(sensitivity_root(), "tables", "sensitivity_DA_stability_summary.csv"), row.names = FALSE)
 } else {
-  write.csv(data.frame(), file.path(v3_sensitivity_root(), "tables", "sensitivity_DA_by_scenario_long.csv"), row.names = FALSE)
-  write.csv(data.frame(), file.path(v3_sensitivity_root(), "tables", "sensitivity_DA_stability_summary.csv"), row.names = FALSE)
+  write.csv(data.frame(), file.path(sensitivity_root(), "tables", "sensitivity_DA_by_scenario_long.csv"), row.names = FALSE)
+  write.csv(data.frame(), file.path(sensitivity_root(), "tables", "sensitivity_DA_stability_summary.csv"), row.names = FALSE)
 }
 
 writeLines(c(
@@ -237,6 +237,6 @@ writeLines(c(
   "DA_ppd_log_score is computed via KDE from posterior predictive draws.",
   "DA_ppd_log_score_method and DA_ppd_log_score_status document the KDE method and any fallback-to-floor cases.",
   "Gaussian approximation is retained only as DA_surprise_score_gaussian_approx."
-), file.path(v3_sensitivity_root(), "logs", "v3_sensitivity_DA_notes.txt"))
+), file.path(sensitivity_root(), "logs", "sensitivity_DA_notes.txt"))
 
 cat("\n[SUCCESS] Sensitivity DA construction completed.\n")

@@ -1,19 +1,19 @@
 # -----------------------------------------------------------------------------
-# Script: 11_v3_posterior_predictive_checks_winsor.R
+# Script: 11_posterior_predictive_checks.R
 # Purpose: Evaluate whether the stacked winsorized posterior predictive
 #          distribution reproduces the observed TA_scaled distribution.
 # -----------------------------------------------------------------------------
 
 library(dplyr)
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
 
 set.seed(42)
 
-final_path <- file.path(v3_output_root, "tables", "final_v3_uncertainty_adjusted_accruals_winsor.csv")
-ep_weights_path <- file.path(v3_output_root, "tables", "table_v3_stacking_weights_ex_post_winsor_corrected.csv")
-rt_weights_path <- file.path(v3_output_root, "tables", "table_v3_stacking_weights_no_lookahead_winsor_corrected.csv")
+final_path <- file.path(output_root, "tables", "final_uncertainty_adjusted_accruals_winsor.csv")
+ep_weights_path <- file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv")
+rt_weights_path <- file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv")
 
 if (!file.exists(final_path)) stop("[BLOCKER] Missing final winsor uncertainty-adjusted accruals file.")
 if (!file.exists(ep_weights_path)) stop("[BLOCKER] Missing ex-post winsor stacking weights.")
@@ -23,10 +23,10 @@ final_df <- read.csv(final_path, stringsAsFactors = FALSE)
 w_ep_df <- read.csv(ep_weights_path, stringsAsFactors = FALSE)
 w_rt_df <- read.csv(rt_weights_path, stringsAsFactors = FALSE)
 
-summary_path <- file.path(v3_output_root, "tables", "table_v3_posterior_predictive_check_summary.csv")
-moments_path <- file.path(v3_output_root, "tables", "table_v3_posterior_predictive_moments.csv")
-tail_path <- file.path(v3_output_root, "tables", "table_v3_posterior_predictive_tail_coverage.csv")
-notes_path <- file.path(v3_output_root, "logs", "v3_phase5c_posterior_predictive_check_notes.txt")
+summary_path <- file.path(output_root, "tables", "table_posterior_predictive_check_summary.csv")
+moments_path <- file.path(output_root, "tables", "table_posterior_predictive_moments.csv")
+tail_path <- file.path(output_root, "tables", "table_posterior_predictive_tail_coverage.csv")
+notes_path <- file.path(output_root, "logs", "phase5c_posterior_predictive_check_notes.txt")
 
 get_space_df <- function(space) {
   mean_col <- if (space == "ex_post") "NDA_mean_stacked_ep_winsor" else "NDA_mean_stacked_rt_winsor"
@@ -35,9 +35,9 @@ get_space_df <- function(space) {
 
 draws_path_for <- function(row, space_name) {
   file.path(
-    v3_output_root,
+    output_root,
     "draws",
-    paste0("draws_", model_key_v3_sampled(row$Model_ID, space_name, row$Sample_Group, row$Heterogeneity_Variant, "_winsor"), ".rds")
+    paste0("draws_", model_key_sampled(row$Model_ID, space_name, row$Sample_Group, row$Heterogeneity_Variant, "_winsor"), ".rds")
   )
 }
 
@@ -85,10 +85,10 @@ draw_level_moments <- function(sim_matrix) {
     Median = apply(sim_matrix, 1, quantile, probs = 0.50),
     P95 = apply(sim_matrix, 1, quantile, probs = 0.95),
     P99 = apply(sim_matrix, 1, quantile, probs = 0.99),
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 }
@@ -188,10 +188,10 @@ evaluate_space <- function(space_name, weights_df, suffix) {
     Tail_Difference_P99 = abs(obs_stats["P99"] - pred_mean_of_p99),
     KS_Statistic = ks_value,
     PPC_Flag = flag,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 
@@ -217,16 +217,16 @@ evaluate_space <- function(space_name, weights_df, suffix) {
     Outside_95PPI_Share = outside_95,
     Outside_98PPI_Count = sum(observed < pred_q98_lo | observed > pred_q98_hi),
     Outside_98PPI_Share = outside_98,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 
-  write_density_plot(observed, sim_matrix, file.path(v3_output_root, "figures", paste0("fig_v3_ppc_density_", suffix, ".png")),
+  write_density_plot(observed, sim_matrix, file.path(output_root, "figures", paste0("fig_ppc_density_", suffix, ".png")),
                      sprintf("Posterior Predictive Density: %s", space_name))
-  write_ecdf_plot(observed, sim_matrix, file.path(v3_output_root, "figures", paste0("fig_v3_ppc_ecdf_", suffix, ".png")),
+  write_ecdf_plot(observed, sim_matrix, file.path(output_root, "figures", paste0("fig_ppc_ecdf_", suffix, ".png")),
                   sprintf("Posterior Predictive ECDF: %s", space_name))
 
   list(summary = summary_row, moments = moments_rows, tail = tail_row)
@@ -240,9 +240,9 @@ moments_df <- bind_rows(ep_eval$moments, rt_eval$moments)
 tail_df <- bind_rows(ep_eval$tail, rt_eval$tail)
 
 default_winsor_root <- file.path("out", "interim", "winsor")
-old_wide_summary_path <- file.path(default_winsor_root, "tables", "table_v3_posterior_predictive_check_summary.csv")
+old_wide_summary_path <- file.path(default_winsor_root, "tables", "table_posterior_predictive_check_summary.csv")
 old_tail_note <- "Default winsor PPC summary not found or current output root is already the default diagnostic root."
-if (normalizePath(v3_output_root, winslash = "/", mustWork = FALSE) != normalizePath(default_winsor_root, winslash = "/", mustWork = FALSE) &&
+if (normalizePath(output_root, winslash = "/", mustWork = FALSE) != normalizePath(default_winsor_root, winslash = "/", mustWork = FALSE) &&
     file.exists(old_wide_summary_path)) {
   old_ppc <- read.csv(old_wide_summary_path, stringsAsFactors = FALSE)
   compare_cols <- intersect(c("Target_Space", "Observed_Outside_95PPI", "Observed_Outside_98PPI", "Tail_Difference_P01", "Tail_Difference_P99"), names(old_ppc))
@@ -266,8 +266,8 @@ write.csv(tail_df, tail_path, row.names = FALSE)
 
 notes <- c(
   "Phase 5c posterior predictive notes",
-  sprintf("Output root: %s", v3_output_root),
-  sprintf("Prior set: %s; likelihood family: %s; model structure: %s", v3_prior_set_id, v3_likelihood_family, v3_model_structure),
+  sprintf("Output root: %s", output_root),
+  sprintf("Prior set: %s; likelihood family: %s; model structure: %s", prior_set_id, likelihood_family, model_structure),
   "Posterior predictive checks evaluate whether the stacked Bayesian accrual model can reproduce the observed TA_scaled distribution.",
   "PASS means center and tails are broadly matched; REVIEW means center is matched but tails differ; FAIL means center and tails are both poor.",
   old_tail_note,

@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 20_v3_sensitivity_report_winsor.R
+# Script: 20_sensitivity_report.R
 # Purpose: Build sensitivity-analysis report and reproducibility bundle.
 # -----------------------------------------------------------------------------
 
@@ -7,18 +7,18 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-ensure_v3_sensitivity_dirs()
-write_method_design_files_v3()
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+ensure_sensitivity_dirs()
+write_method_design_files()
 
-sens_root <- v3_sensitivity_root()
+sens_root <- sensitivity_root()
 tables_root <- file.path(sens_root, "tables")
-reports_root <- v3_reports_path("sensitivity")
+reports_root <- reports_path("sensitivity")
 dir.create(reports_root, recursive = TRUE, showWarnings = FALSE)
 
 # Read parameter for partial report from environment
-allow_partial_report <- as.logical(env_value_v3("V3_ALLOW_PARTIAL_REPORT", "FALSE"))
+allow_partial_report <- as.logical(env_value("ACCRUAL_ALLOW_PARTIAL_REPORT", "FALSE"))
 
 missing_inputs_log <- data.frame(
   Path = character(),
@@ -61,12 +61,12 @@ if (nrow(missing_inputs_log) > 0) {
   
   if (!allow_partial_report) {
     stop("[BLOCKER] Sensitivity report was stopped due to missing input files. Details written to '", 
-         file.path(logs_root, "sensitivity_missing_inputs_log.csv"), "'. Set 'V3_ALLOW_PARTIAL_REPORT=TRUE' if you want a partial report.")
+         file.path(logs_root, "sensitivity_missing_inputs_log.csv"), "'. Set 'ACCRUAL_ALLOW_PARTIAL_REPORT=TRUE' if you want a partial report.")
   }
 }
 
-prior_registry <- prior_registry_v3() %>%
-  filter(Prior_Set_ID %in% v3_sensitivity_scenarios()$Prior_Set_ID) %>%
+prior_registry <- prior_registry() %>%
+  filter(Prior_Set_ID %in% sensitivity_scenarios()$Prior_Set_ID) %>%
   select(Prior_Set_ID, Parameter_Class, Prior_Distribution, Likelihood_Family, Notes)
 write.csv(prior_registry, file.path(tables_root, "sensitivity_prior_scenario_registry.csv"), row.names = FALSE)
 
@@ -87,22 +87,22 @@ repro <- data.frame(
   ),
   Value = c(
     paste(R.version$major, R.version$minor, sep = "."),
-    v3_package_versions(),
+    package_versions(),
     file.path(reports_root, "sensitivity_sessionInfo.txt"),
-    env_value_v3("V3_SENS_SEED", "20260614"),
-    env_value_v3("V3_SENS_CHAINS", "4"),
-    env_value_v3("V3_SENS_ITER", "4000"),
-    env_value_v3("V3_SENS_WARMUP", "1000"),
-    env_value_v3("V3_SENS_ADAPT_DELTA", "0.95"),
-    env_value_v3("V3_SENS_MAX_TREEDEPTH", "12"),
-    env_value_v3("V3_BACKEND", "brms default backend"),
-    v3_file_fingerprint(v3_data_path),
-    v3_file_fingerprint(file.path(v3_input_winsor_root, "tables", "table_v3_named_model_formulas_winsor.csv"))
+    env_value("ACCRUAL_SENS_SEED", "20260614"),
+    env_value("ACCRUAL_SENS_CHAINS", "4"),
+    env_value("ACCRUAL_SENS_ITER", "4000"),
+    env_value("ACCRUAL_SENS_WARMUP", "1000"),
+    env_value("ACCRUAL_SENS_ADAPT_DELTA", "0.95"),
+    env_value("ACCRUAL_SENS_MAX_TREEDEPTH", "12"),
+    env_value("ACCRUAL_BACKEND", "brms default backend"),
+    file_fingerprint(data_path),
+    file_fingerprint(file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv"))
   ),
   stringsAsFactors = FALSE
 )
 write.csv(repro, file.path(tables_root, "sensitivity_reproducibility_info.csv"), row.names = FALSE)
-writeLines(v3_session_info_string(), file.path(reports_root, "sensitivity_sessionInfo.txt"))
+writeLines(session_info_string(), file.path(reports_root, "sensitivity_sessionInfo.txt"))
 
 robustness_interpretation <- "Sensitivity results are prepared but not yet fully evaluated because at least one full-refit phase has not produced non-dry-run outputs."
 if ("stability_flag" %in% names(da_stability) && nrow(da_stability) > 0) {
@@ -129,7 +129,7 @@ available_n <- function(df) {
 }
 
 report_lines <- c(
-  "# v3 sensitivity analysis report",
+  "# sensitivity analysis report",
   "",
   "## 1. Purpose and design",
   "This sensitivity workflow evaluates whether Bayesian accrual conclusions are materially driven by reasonable changes in prior scale. The design uses separate prior predictive checks, full scenario-specific MCMC refits, diagnostics gating, scenario-specific stacking, DA reconstruction, and validation.",
@@ -141,7 +141,7 @@ report_lines <- c(
   "",
   "## 3. Prior predictive checks",
   sprintf("Prior predictive status counts: %s", count_status(prior_pp, "status")),
-  "Scenarios with FAIL status are blocked from full refit unless `V3_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE` is set intentionally.",
+  "Scenarios with FAIL status are blocked from full refit unless `ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE` is set intentionally.",
   "",
   "## 4. MCMC diagnostics",
   sprintf("MCMC diagnostic status counts: %s", count_status(mcmc, "diagnostics_status")),
@@ -169,16 +169,16 @@ report_lines <- c(
   sprintf("- R version: %s", repro$Value[repro$Item == "R version"]),
   sprintf("- Package versions: %s", repro$Value[repro$Item == "Package versions"]),
   sprintf("- Session info: `%s`", repro$Value[repro$Item == "Session info path"]),
-  sprintf("- Seed: %s", env_value_v3("V3_SENS_SEED", "20260614")),
-  sprintf("- Chains/iter/warmup: %s/%s/%s", env_value_v3("V3_SENS_CHAINS", "4"), env_value_v3("V3_SENS_ITER", "4000"), env_value_v3("V3_SENS_WARMUP", "1000")),
-  sprintf("- adapt_delta/max_treedepth: %s/%s", env_value_v3("V3_SENS_ADAPT_DELTA", "0.95"), env_value_v3("V3_SENS_MAX_TREEDEPTH", "12")),
+  sprintf("- Seed: %s", env_value("ACCRUAL_SENS_SEED", "20260614")),
+  sprintf("- Chains/iter/warmup: %s/%s/%s", env_value("ACCRUAL_SENS_CHAINS", "4"), env_value("ACCRUAL_SENS_ITER", "4000"), env_value("ACCRUAL_SENS_WARMUP", "1000")),
+  sprintf("- adapt_delta/max_treedepth: %s/%s", env_value("ACCRUAL_SENS_ADAPT_DELTA", "0.95"), env_value("ACCRUAL_SENS_MAX_TREEDEPTH", "12")),
   "",
   "Optional renv snapshot guidance: if this project uses renv, run `renv::snapshot()` manually after confirming package state. This workflow does not force renv initialization."
 )
 
-writeLines(report_lines, file.path(reports_root, "sensitivity_report_v3.md"))
-file.copy(file.path(reports_root, "sensitivity_report_v3.md"),
-          file.path(tables_root, "sensitivity_report_v3.md"),
+writeLines(report_lines, file.path(reports_root, "sensitivity_report.md"))
+file.copy(file.path(reports_root, "sensitivity_report.md"),
+          file.path(tables_root, "sensitivity_report.md"),
           overwrite = TRUE)
 
 cat("\n[SUCCESS] Sensitivity report completed.\n")

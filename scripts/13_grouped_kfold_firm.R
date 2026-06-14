@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
-# Script: 13_v3_grouped_kfold_firm_winsor.R
+# Script: 13_grouped_kfold_firm.R
 # Purpose: Reviewer Priority 2b - exact grouped K-fold cross-validation by firm
-#          on the winsorized v3 pipeline, with cache-safe run roots.
+#          on the winsorized accrual uncertainty pipeline, with cache-safe run roots.
 # -----------------------------------------------------------------------------
 
 suppressPackageStartupMessages({
@@ -9,11 +9,11 @@ suppressPackageStartupMessages({
   library(brms)
 })
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
 
 script_start_time <- Sys.time()
-script_name <- "scripts/v3/13_v3_grouped_kfold_firm_winsor.R"
+script_name <- "scripts/13_grouped_kfold_firm.R"
 script_version <- "2026-06-13-cache-safe-v1"
 
 set.seed(20260613)
@@ -29,36 +29,36 @@ split_env <- function(name) {
   trimws(strsplit(x, ",", fixed = TRUE)[[1]])
 }
 
-K <- as.integer(Sys.getenv("V3_KFOLD_FIRM_K", "5"))
-if (is.na(K) || K < 2) stop("[BLOCKER] V3_KFOLD_FIRM_K must be an integer >= 2.")
+K <- as.integer(Sys.getenv("ACCRUAL_KFOLD_FIRM_K", "5"))
+if (is.na(K) || K < 2) stop("[BLOCKER] ACCRUAL_KFOLD_FIRM_K must be an integer >= 2.")
 
-run_mode <- toupper(Sys.getenv("V3_KFOLD_FIRM_MODE", "FULL_MODE"))
+run_mode <- toupper(Sys.getenv("ACCRUAL_KFOLD_FIRM_MODE", "FULL_MODE"))
 if (!run_mode %in% c("FULL_MODE", "FAST_MODE")) {
-  stop("[BLOCKER] V3_KFOLD_FIRM_MODE must be FULL_MODE or FAST_MODE.")
+  stop("[BLOCKER] ACCRUAL_KFOLD_FIRM_MODE must be FULL_MODE or FAST_MODE.")
 }
 
-run_id <- trimws(Sys.getenv("V3_KFOLD_FIRM_RUN_ID", "default"))
+run_id <- trimws(Sys.getenv("ACCRUAL_KFOLD_FIRM_RUN_ID", "default"))
 if (!nzchar(run_id)) run_id <- "default"
 run_id <- gsub("[^A-Za-z0-9_.-]", "_", run_id)
 
-preflight_only <- env_flag("V3_KFOLD_FIRM_PREFLIGHT_ONLY")
-overwrite_run <- env_flag("V3_KFOLD_FIRM_OVERWRITE")
-force_resume <- env_flag("V3_KFOLD_FIRM_FORCE_RESUME")
-kfold_stratified_groups <- env_flag("V3_KFOLD_STRATIFIED_GROUPS")
-kfold_repeats <- as.integer(Sys.getenv("V3_KFOLD_REPEATS", "1"))
-if (is.na(kfold_repeats) || kfold_repeats < 1) stop("[BLOCKER] V3_KFOLD_REPEATS must be an integer >= 1.")
+preflight_only <- env_flag("ACCRUAL_KFOLD_FIRM_PREFLIGHT_ONLY")
+overwrite_run <- env_flag("ACCRUAL_KFOLD_FIRM_OVERWRITE")
+force_resume <- env_flag("ACCRUAL_KFOLD_FIRM_FORCE_RESUME")
+kfold_stratified_groups <- env_flag("ACCRUAL_KFOLD_STRATIFIED_GROUPS")
+kfold_repeats <- as.integer(Sys.getenv("ACCRUAL_KFOLD_REPEATS", "1"))
+if (is.na(kfold_repeats) || kfold_repeats < 1) stop("[BLOCKER] ACCRUAL_KFOLD_REPEATS must be an integer >= 1.")
 if (kfold_repeats > 1) {
-  warning("[WARNING] V3_KFOLD_REPEATS is recognized for future repeated grouped K-fold runs; this script currently executes one repeat per run_id. Use separate V3_KFOLD_FIRM_RUN_ID values for repeated runs.")
+  warning("[WARNING] ACCRUAL_KFOLD_REPEATS is recognized for future repeated grouped K-fold runs; this script currently executes one repeat per run_id. Use separate ACCRUAL_KFOLD_FIRM_RUN_ID values for repeated runs.")
 }
 
-target_space_filter <- split_env("V3_KFOLD_TARGET_SPACE")
-model_id_filter <- split_env("V3_KFOLD_MODEL_IDS")
-fold_filter_raw <- split_env("V3_KFOLD_FOLDS")
+target_space_filter <- split_env("ACCRUAL_KFOLD_TARGET_SPACE")
+model_id_filter <- split_env("ACCRUAL_KFOLD_MODEL_IDS")
+fold_filter_raw <- split_env("ACCRUAL_KFOLD_FOLDS")
 fold_filter <- if (length(fold_filter_raw) > 0) as.integer(fold_filter_raw) else integer()
-if (any(is.na(fold_filter))) stop("[BLOCKER] V3_KFOLD_FOLDS must be comma-separated integers.")
-kfold_target_mode <- toupper(Sys.getenv("V3_KFOLD_TARGET_MODE", "PARETO_PROBLEM_ONLY"))
+if (any(is.na(fold_filter))) stop("[BLOCKER] ACCRUAL_KFOLD_FOLDS must be comma-separated integers.")
+kfold_target_mode <- toupper(Sys.getenv("ACCRUAL_KFOLD_TARGET_MODE", "PARETO_PROBLEM_ONLY"))
 if (!kfold_target_mode %in% c("PARETO_PROBLEM_ONLY", "MAIN_STACK_FULL")) {
-  stop("[BLOCKER] V3_KFOLD_TARGET_MODE must be PARETO_PROBLEM_ONLY or MAIN_STACK_FULL.")
+  stop("[BLOCKER] ACCRUAL_KFOLD_TARGET_MODE must be PARETO_PROBLEM_ONLY or MAIN_STACK_FULL.")
 }
 
 partial_run <- length(target_space_filter) > 0 || length(model_id_filter) > 0 || length(fold_filter) > 0
@@ -79,7 +79,7 @@ seed <- 42
 config_tag <- paste0("K", K, "_", run_mode, "_modelset_primary_v", script_version)
 config_tag <- paste0(config_tag, "_", run_id)
 
-kfold_base_root <- file.path(v3_winsor_root, "kfold_firm")
+kfold_base_root <- file.path(winsor_root, "kfold_firm")
 kfold_run_root <- file.path(kfold_base_root, config_tag)
 tables_dir <- file.path(kfold_run_root, "tables")
 logs_dir <- file.path(kfold_run_root, "logs")
@@ -155,10 +155,10 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Target_Space_Filter = paste(target_space_filter, collapse = ","),
     Model_ID_Filter = paste(model_id_filter, collapse = ","),
     KFold_Target_Mode = kfold_target_mode,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     Fold_Filter = paste(fold_filter, collapse = ","),
     Preflight_Only = preflight_only,
     Partial_Run = partial_run,
@@ -179,7 +179,7 @@ completed_manifest_exists <- function() {
 
 if (dir.exists(kfold_run_root) && completed_manifest_exists() && !overwrite_run) {
   stop("[BLOCKER] Completed run folder already exists: ", kfold_run_root,
-       ". Set V3_KFOLD_FIRM_OVERWRITE='TRUE' to overwrite, or choose a new V3_KFOLD_FIRM_RUN_ID.")
+       ". Set ACCRUAL_KFOLD_FIRM_OVERWRITE='TRUE' to overwrite, or choose a new ACCRUAL_KFOLD_FIRM_RUN_ID.")
 }
 
 for (d in c(kfold_run_root, tables_dir, logs_dir, figures_dir, models_dir, cache_dir, checkpoints_dir)) {
@@ -188,7 +188,7 @@ for (d in c(kfold_run_root, tables_dir, logs_dir, figures_dir, models_dir, cache
 writeLines(kfold_run_root, latest_run_path)
 
 if (file.exists(lock_path) && !force_resume && !overwrite_run) {
-  stop("[BLOCKER] RUNNING.lock exists for this run. If the previous run crashed, set V3_KFOLD_FIRM_FORCE_RESUME='TRUE'. Path: ", lock_path)
+  stop("[BLOCKER] RUNNING.lock exists for this run. If the previous run crashed, set ACCRUAL_KFOLD_FIRM_FORCE_RESUME='TRUE'. Path: ", lock_path)
 }
 writeLines(c(
   paste("Started:", format_time(script_start_time)),
@@ -208,26 +208,26 @@ heartbeat <- function(target_space, model_id, variant, fold_id, status, extra = 
   cat(line, "\n", file = heartbeat_path, append = TRUE)
 }
 
-table_path_v3 <- function(file_name, prefer_input = FALSE) {
+table_path <- function(file_name, prefer_input = FALSE) {
   candidates <- if (prefer_input) {
-    c(file.path(v3_input_winsor_root, "tables", file_name), file.path(v3_output_root, "tables", file_name))
+    c(file.path(input_winsor_root, "tables", file_name), file.path(output_root, "tables", file_name))
   } else {
-    c(file.path(v3_output_root, "tables", file_name), file.path(v3_input_winsor_root, "tables", file_name))
+    c(file.path(output_root, "tables", file_name), file.path(input_winsor_root, "tables", file_name))
   }
   hit <- candidates[file.exists(candidates)][1]
   if (is.na(hit)) candidates[1] else hit
 }
 
 input_paths <- c(
-  ex_post_sample = table_path_v3("final_v3_common_ex_post_sample_winsor.csv", prefer_input = TRUE),
-  no_lookahead_sample = table_path_v3("final_v3_common_realtime_sample_winsor.csv", prefer_input = TRUE),
-  formulas = table_path_v3("table_v3_named_model_formulas_winsor.csv"),
-  rowloo_ex_post = file.path(v3_output_root, "tables", "table_v3_stacking_weights_ex_post_winsor_corrected.csv"),
-  rowloo_no_lookahead = file.path(v3_output_root, "tables", "table_v3_stacking_weights_no_lookahead_winsor_corrected.csv"),
-  lofo_ex_post = file.path(v3_output_root, "lofo", "tables", "table_v3_winsor_lofo_weights_ex_post.csv"),
-  lofo_no_lookahead = file.path(v3_output_root, "lofo", "tables", "table_v3_winsor_lofo_weights_no_lookahead.csv"),
-  diagnostics = file.path(v3_output_root, "tables", "table_v3_brms_diagnostics_winsor.csv"),
-  lofo_diagnostics = file.path(v3_output_root, "lofo", "tables", "table_v3_winsor_lofo_model_diagnostics.csv")
+  ex_post_sample = table_path("final_common_ex_post_sample_winsor.csv", prefer_input = TRUE),
+  no_lookahead_sample = table_path("final_common_realtime_sample_winsor.csv", prefer_input = TRUE),
+  formulas = table_path("table_named_model_formulas_winsor.csv"),
+  rowloo_ex_post = file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv"),
+  rowloo_no_lookahead = file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv"),
+  lofo_ex_post = file.path(output_root, "lofo", "tables", "table_winsor_lofo_weights_ex_post.csv"),
+  lofo_no_lookahead = file.path(output_root, "lofo", "tables", "table_winsor_lofo_weights_no_lookahead.csv"),
+  diagnostics = file.path(output_root, "tables", "table_brms_diagnostics_winsor.csv"),
+  lofo_diagnostics = file.path(output_root, "lofo", "tables", "table_winsor_lofo_model_diagnostics.csv")
 )
 optional_inputs <- c(diagnostics = TRUE, lofo_diagnostics = TRUE)
 
@@ -247,21 +247,21 @@ write_input_manifest <- function() {
 
 write_output_manifest <- function(final_decision = NA_character_) {
   outputs <- c(
-    fold_assignment = file.path(tables_dir, "table_v3_winsor_firm_fold_assignment.csv"),
-    fold_balance = file.path(tables_dir, "table_v3_winsor_kfold_balance.csv"),
-    model_fold_manifest = file.path(tables_dir, "table_v3_winsor_kfold_model_fold_manifest.csv"),
-    refit_diagnostics = file.path(tables_dir, "table_v3_winsor_kfold_refit_diagnostics.csv"),
-    standardization_audit = file.path(tables_dir, "table_v3_winsor_kfold_train_standardization_audit.csv"),
-    observation_scores = file.path(tables_dir, "table_v3_winsor_kfold_observation_scores.csv"),
-    fold_scores = file.path(tables_dir, "table_v3_winsor_kfold_fold_scores.csv"),
-    model_scores = file.path(tables_dir, "table_v3_winsor_kfold_model_scores.csv"),
-    weights_ex_post = file.path(tables_dir, "table_v3_winsor_kfold_weights_ex_post.csv"),
-    weights_no_lookahead = file.path(tables_dir, "table_v3_winsor_kfold_weights_no_lookahead.csv"),
-    model_weight_comparison = file.path(tables_dir, "table_v3_winsor_weight_stability_loo_lofo_kfold.csv"),
-    family_weight_comparison = file.path(tables_dir, "table_v3_winsor_family_weight_stability_loo_lofo_kfold.csv"),
+    fold_assignment = file.path(tables_dir, "table_winsor_firm_fold_assignment.csv"),
+    fold_balance = file.path(tables_dir, "table_winsor_kfold_balance.csv"),
+    model_fold_manifest = file.path(tables_dir, "table_winsor_kfold_model_fold_manifest.csv"),
+    refit_diagnostics = file.path(tables_dir, "table_winsor_kfold_refit_diagnostics.csv"),
+    standardization_audit = file.path(tables_dir, "table_winsor_kfold_train_standardization_audit.csv"),
+    observation_scores = file.path(tables_dir, "table_winsor_kfold_observation_scores.csv"),
+    fold_scores = file.path(tables_dir, "table_winsor_kfold_fold_scores.csv"),
+    model_scores = file.path(tables_dir, "table_winsor_kfold_model_scores.csv"),
+    weights_ex_post = file.path(tables_dir, "table_winsor_kfold_weights_ex_post.csv"),
+    weights_no_lookahead = file.path(tables_dir, "table_winsor_kfold_weights_no_lookahead.csv"),
+    model_weight_comparison = file.path(tables_dir, "table_winsor_weight_stability_loo_lofo_kfold.csv"),
+    family_weight_comparison = file.path(tables_dir, "table_winsor_family_weight_stability_loo_lofo_kfold.csv"),
     decision = file.path(tables_dir, "table_reviewer_priority2b_exact_kfold_decision.csv"),
     reviewer_notes = file.path(logs_dir, "reviewer_priority2b_exact_kfold_response_notes.txt"),
-    technical_log = file.path(logs_dir, "v3_phase4e_exact_grouped_kfold_winsor_notes.txt"),
+    technical_log = file.path(logs_dir, "phase4e_exact_grouped_kfold_winsor_notes.txt"),
     run_config_manifest = file.path(logs_dir, "run_config_manifest.csv"),
     input_file_manifest = file.path(logs_dir, "input_file_manifest.csv"),
     output_file_manifest = file.path(logs_dir, "output_file_manifest.csv"),
@@ -292,9 +292,9 @@ safe_shutdown <- function(status, exp_n = NA_integer_, exp_firms = NA_integer_,
 
 main <- function() {
   assert_safe_path(kfold_run_root, config_tag, "kfold_run_root")
-  assert_safe_path(input_paths[["ex_post_sample"]], "v3_winsor", "ex_post_sample")
+  assert_safe_path(input_paths[["ex_post_sample"]], "winsor", "ex_post_sample")
   assert_safe_path(input_paths[["ex_post_sample"]], "_winsor", "ex_post_sample")
-  assert_safe_path(input_paths[["no_lookahead_sample"]], "v3_winsor", "no_lookahead_sample")
+  assert_safe_path(input_paths[["no_lookahead_sample"]], "winsor", "no_lookahead_sample")
   assert_safe_path(input_paths[["no_lookahead_sample"]], "_winsor", "no_lookahead_sample")
 
   required_input_names <- setdiff(names(input_paths), names(optional_inputs))
@@ -351,7 +351,7 @@ main <- function() {
     pareto_targets <- if (length(pareto_sources) > 0) bind_rows(pareto_sources) %>% distinct() else data.frame()
     pareto_targets <- pareto_targets %>% filter(Model_ID %in% c(ex_post_ids, no_lookahead_ids))
     if (nrow(pareto_targets) == 0) {
-      stop("[BLOCKER] V3_KFOLD_TARGET_MODE='PARETO_PROBLEM_ONLY' found no main-stack models with Pareto-k > 0.7. Set V3_KFOLD_TARGET_MODE='MAIN_STACK_FULL' or explicit V3_KFOLD_MODEL_IDS to run anyway.")
+      stop("[BLOCKER] ACCRUAL_KFOLD_TARGET_MODE='PARETO_PROBLEM_ONLY' found no main-stack models with Pareto-k > 0.7. Set ACCRUAL_KFOLD_TARGET_MODE='MAIN_STACK_FULL' or explicit ACCRUAL_KFOLD_MODEL_IDS to run anyway.")
     }
     ex_post_ids <- intersect(ex_post_ids, pareto_targets$Model_ID[pareto_targets$Target_Space == "ex_post"])
     no_lookahead_ids <- intersect(no_lookahead_ids, pareto_targets$Model_ID[pareto_targets$Target_Space == "real_time"])
@@ -435,7 +435,7 @@ main <- function() {
 
   fold_assignment <- make_fold_assignment(df_ep, df_rt)
   if (anyDuplicated(fold_assignment$company) > 0) stop("[BLOCKER] Duplicate firm fold assignment.")
-  write.csv(fold_assignment, file.path(tables_dir, "table_v3_winsor_firm_fold_assignment.csv"), row.names = FALSE)
+  write.csv(fold_assignment, file.path(tables_dir, "table_winsor_firm_fold_assignment.csv"), row.names = FALSE)
 
   attach_folds <- function(df, target_space) {
     out <- df %>% left_join(fold_assignment %>% select(company, Fold_ID), by = "company")
@@ -479,7 +479,7 @@ main <- function() {
              Year_Distribution, Industry_Distribution, Stratified_Grouped_KFold, Repeated_Grouped_KFold_Repeats)
   }
   fold_balance <- bind_rows(fold_balance_one(df_ep, "ex_post"), fold_balance_one(df_rt, "real_time"))
-  write.csv(fold_balance, file.path(tables_dir, "table_v3_winsor_kfold_balance.csv"), row.names = FALSE)
+  write.csv(fold_balance, file.path(tables_dir, "table_winsor_kfold_balance.csv"), row.names = FALSE)
 
   get_model_rows <- function(target_space, model_ids) {
     formulas_df %>%
@@ -507,7 +507,7 @@ main <- function() {
   if (nrow(planned_tasks) == 0) stop("[BLOCKER] Task filters leave zero model-fold tasks.")
 
   model_key_for_task <- function(model_id, target_space, sample_group, heterogeneity_variant, fold_id) {
-    paste0(model_key_v3_sampled(model_id, target_space, sample_group, heterogeneity_variant, "_winsor"), "_fold", fold_id)
+    paste0(model_key_sampled(model_id, target_space, sample_group, heterogeneity_variant, "_winsor"), "_fold", fold_id)
   }
 
   build_task_manifest <- function(tasks) {
@@ -523,9 +523,9 @@ main <- function() {
         M02_Included_In_Main_KFold = "M02" %in% unique(Model_ID),
         Stratified_Grouped_KFold = kfold_stratified_groups,
         Repeated_Grouped_KFold_Repeats = kfold_repeats,
-        Prior_Set_ID = v3_prior_set_id,
-        Likelihood_Family = v3_likelihood_family,
-        Model_Structure = v3_model_structure,
+        Prior_Set_ID = prior_set_id,
+        Likelihood_Family = likelihood_family,
+        Model_Structure = model_structure,
         Seed = seed,
         Status = "PENDING",
         Started_At = NA_character_,
@@ -549,7 +549,7 @@ main <- function() {
     out
   }
 
-  manifest_path <- file.path(tables_dir, "table_v3_winsor_kfold_model_fold_manifest.csv")
+  manifest_path <- file.path(tables_dir, "table_winsor_kfold_model_fold_manifest.csv")
   task_manifest <- build_task_manifest(planned_tasks)
   if (file.exists(manifest_path) && force_resume) {
     old <- read.csv(manifest_path, stringsAsFactors = FALSE)
@@ -596,7 +596,7 @@ main <- function() {
 
   standardize_fold_data <- function(train_df, test_df) {
     audit <- data.frame(Variable = character(), Train_Mean = double(), Train_SD = double(), Used_Fallback_Zero = logical())
-    for (v in pred_vars_v3) {
+    for (v in pred_vars) {
       if (v %in% names(train_df)) {
         m <- mean(train_df[[v]], na.rm = TRUE)
         s <- sd(train_df[[v]], na.rm = TRUE)
@@ -625,7 +625,7 @@ main <- function() {
   }
 
   fit_prior_list <- function(heterogeneity_variant) {
-    default_prior_list_v3(heterogeneity_variant, model_structure = v3_model_structure)
+    default_prior_list(heterogeneity_variant, model_structure = model_structure)
   }
 
   extract_fit_diagnostics <- function(fit) {
@@ -655,14 +655,14 @@ main <- function() {
     assert_safe_path(kfold_run_root, config_tag, "kfold_run_root")
     if (!path_starts_with(fit_path, models_dir)) stop("[BLOCKER] Fit path is outside models_dir: ", fit_path)
     if (!path_starts_with(score_cache_path, cache_dir)) stop("[BLOCKER] Cache path is outside cache_dir: ", score_cache_path)
-    baseline_models_root <- normalizePath(file.path(v3_original_root, "models"), winslash = "/", mustWork = FALSE)
-    baseline_draws_root <- normalizePath(file.path(v3_original_root, "draws"), winslash = "/", mustWork = FALSE)
+    baseline_models_root <- normalizePath(file.path(baseline_root, "models"), winslash = "/", mustWork = FALSE)
+    baseline_draws_root <- normalizePath(file.path(baseline_root, "draws"), winslash = "/", mustWork = FALSE)
     fit_path_norm <- normalizePath(fit_path, winslash = "/", mustWork = FALSE)
     if (startsWith(fit_path_norm, baseline_models_root) || startsWith(fit_path_norm, baseline_draws_root)) {
       stop("[BLOCKER] Non-winsorized model/draw path detected.")
     }
 
-    formula_str <- fix_formula_v3(task$brms_Formula, prefactor = TRUE)
+    formula_str <- fix_formula(task$brms_Formula, prefactor = TRUE)
     train_firm_hash <- stable_hash(train_df$company)
     test_firm_hash <- stable_hash(test_df$company)
     expected_meta <- list(
@@ -749,10 +749,10 @@ main <- function() {
       Max_Rhat = NA_real_,
       Divergences = NA_integer_,
       Treedepth_Warnings = NA_integer_,
-      Prior_Set_ID = v3_prior_set_id,
-      Likelihood_Family = v3_likelihood_family,
-      Model_Structure = v3_model_structure,
-      Output_Root = v3_output_root,
+      Prior_Set_ID = prior_set_id,
+      Likelihood_Family = likelihood_family,
+      Model_Structure = model_structure,
+      Output_Root = output_root,
       stringsAsFactors = FALSE
     )
 
@@ -807,7 +807,7 @@ main <- function() {
         brm(
           formula = bf(as.formula(formula_str)),
           data = train_df,
-          family = brms_family_v3(),
+          family = brms_family(),
           prior = fit_prior_list(task$Heterogeneity_Variant),
           chains = chains,
           iter = iter,
@@ -863,10 +863,10 @@ main <- function() {
       pred_sd = pred_sd,
       abs_error = abs(test_df$TA_scaled - pred_mean),
       squared_error = (test_df$TA_scaled - pred_mean)^2,
-      Prior_Set_ID = v3_prior_set_id,
-      Likelihood_Family = v3_likelihood_family,
-      Model_Structure = v3_model_structure,
-      Output_Root = v3_output_root,
+      Prior_Set_ID = prior_set_id,
+      Likelihood_Family = likelihood_family,
+      Model_Structure = model_structure,
+      Output_Root = output_root,
       stringsAsFactors = FALSE
     )
 
@@ -940,7 +940,7 @@ main <- function() {
       paste("Expected refits:", expected_refits),
       paste("Ex-post tasks:", ex_tasks),
       paste("No-look-ahead tasks:", rt_tasks)
-    ), file.path(logs_dir, "v3_phase4e_exact_grouped_kfold_winsor_notes.txt"))
+    ), file.path(logs_dir, "phase4e_exact_grouped_kfold_winsor_notes.txt"))
     safe_shutdown("PREFLIGHT_ONLY_COMPLETED", nrow(df_ep), length(unique(df_ep$company)), nrow(df_rt), length(unique(df_rt$company)), remove_lock = TRUE)
     cat("\n===== PREFLIGHT ONLY COMPLETE =====\n")
     cat("Expected output root: ", kfold_run_root, "\n", sep = "")
@@ -949,11 +949,11 @@ main <- function() {
     cat("No-look-ahead tasks: ", rt_tasks, "\n", sep = "")
     cat("No brms models were fit.\n\n")
     cat("Smoke test command:\n")
-    cat("$env:V3_KFOLD_FIRM_MODE='FAST_MODE'\n$env:V3_KFOLD_FIRM_K='2'\n$env:V3_KFOLD_FIRM_RUN_ID='smoke_k2_fast'\n$env:V3_KFOLD_TARGET_SPACE='ex_post'\n$env:V3_KFOLD_MODEL_IDS='M01,M07'\n$env:V3_KFOLD_FOLDS='1'\n$env:V3_KFOLD_FIRM_PREFLIGHT_ONLY='FALSE'\n& 'C:\\Program Files\\R\\R-4.4.3\\bin\\Rscript.exe' scripts\\v3\\13_v3_grouped_kfold_firm_winsor.R\n\n")
+    cat("$env:ACCRUAL_KFOLD_FIRM_MODE='FAST_MODE'\n$env:ACCRUAL_KFOLD_FIRM_K='2'\n$env:ACCRUAL_KFOLD_FIRM_RUN_ID='smoke_k2_fast'\n$env:ACCRUAL_KFOLD_TARGET_SPACE='ex_post'\n$env:ACCRUAL_KFOLD_MODEL_IDS='M01,M07'\n$env:ACCRUAL_KFOLD_FOLDS='1'\n$env:ACCRUAL_KFOLD_FIRM_PREFLIGHT_ONLY='FALSE'\n& 'C:\\Program Files\\R\\R-4.4.3\\bin\\Rscript.exe' scripts\\13_grouped_kfold_firm.R\n\n")
     cat("Main run command:\n")
-    cat("Remove-Item Env:\\V3_KFOLD_TARGET_SPACE -ErrorAction SilentlyContinue\nRemove-Item Env:\\V3_KFOLD_MODEL_IDS -ErrorAction SilentlyContinue\nRemove-Item Env:\\V3_KFOLD_FOLDS -ErrorAction SilentlyContinue\n$env:V3_KFOLD_FIRM_MODE='FULL_MODE'\n$env:V3_KFOLD_FIRM_K='5'\n$env:V3_KFOLD_FIRM_RUN_ID='main_k5_full'\n$env:V3_KFOLD_FIRM_PREFLIGHT_ONLY='FALSE'\n& 'C:\\Program Files\\R\\R-4.4.3\\bin\\Rscript.exe' scripts\\v3\\13_v3_grouped_kfold_firm_winsor.R\n\n")
+    cat("Remove-Item Env:\\ACCRUAL_KFOLD_TARGET_SPACE -ErrorAction SilentlyContinue\nRemove-Item Env:\\ACCRUAL_KFOLD_MODEL_IDS -ErrorAction SilentlyContinue\nRemove-Item Env:\\ACCRUAL_KFOLD_FOLDS -ErrorAction SilentlyContinue\n$env:ACCRUAL_KFOLD_FIRM_MODE='FULL_MODE'\n$env:ACCRUAL_KFOLD_FIRM_K='5'\n$env:ACCRUAL_KFOLD_FIRM_RUN_ID='main_k5_full'\n$env:ACCRUAL_KFOLD_FIRM_PREFLIGHT_ONLY='FALSE'\n& 'C:\\Program Files\\R\\R-4.4.3\\bin\\Rscript.exe' scripts\\13_grouped_kfold_firm.R\n\n")
     cat("Resume command:\n")
-    cat("$env:V3_KFOLD_FIRM_FORCE_RESUME='TRUE'\n$env:V3_KFOLD_FIRM_MODE='FULL_MODE'\n$env:V3_KFOLD_FIRM_K='5'\n$env:V3_KFOLD_FIRM_RUN_ID='main_k5_full'\n& 'C:\\Program Files\\R\\R-4.4.3\\bin\\Rscript.exe' scripts\\v3\\13_v3_grouped_kfold_firm_winsor.R\n")
+    cat("$env:ACCRUAL_KFOLD_FIRM_FORCE_RESUME='TRUE'\n$env:ACCRUAL_KFOLD_FIRM_MODE='FULL_MODE'\n$env:ACCRUAL_KFOLD_FIRM_K='5'\n$env:ACCRUAL_KFOLD_FIRM_RUN_ID='main_k5_full'\n& 'C:\\Program Files\\R\\R-4.4.3\\bin\\Rscript.exe' scripts\\13_grouped_kfold_firm.R\n")
     return(invisible(final_decision))
   }
 
@@ -966,9 +966,9 @@ main <- function() {
   obs_scores <- bind_rows(lapply(results, `[[`, "obs_scores"))
   standardization_audit <- bind_rows(lapply(results, `[[`, "standardization_audit"))
 
-  write.csv(fold_diagnostics, file.path(tables_dir, "table_v3_winsor_kfold_refit_diagnostics.csv"), row.names = FALSE)
-  write.csv(standardization_audit, file.path(tables_dir, "table_v3_winsor_kfold_train_standardization_audit.csv"), row.names = FALSE)
-  write.csv(obs_scores, file.path(tables_dir, "table_v3_winsor_kfold_observation_scores.csv"), row.names = FALSE)
+  write.csv(fold_diagnostics, file.path(tables_dir, "table_winsor_kfold_refit_diagnostics.csv"), row.names = FALSE)
+  write.csv(standardization_audit, file.path(tables_dir, "table_winsor_kfold_train_standardization_audit.csv"), row.names = FALSE)
+  write.csv(obs_scores, file.path(tables_dir, "table_winsor_kfold_observation_scores.csv"), row.names = FALSE)
 
   fold_scores <- if (nrow(obs_scores) > 0) {
     obs_scores %>%
@@ -985,7 +985,7 @@ main <- function() {
   } else {
     data.frame()
   }
-  write.csv(fold_scores, file.path(tables_dir, "table_v3_winsor_kfold_fold_scores.csv"), row.names = FALSE)
+  write.csv(fold_scores, file.path(tables_dir, "table_winsor_kfold_fold_scores.csv"), row.names = FALSE)
 
   model_scores <- fold_diagnostics %>%
     group_by(Target_Space, Sample_Group, Model_ID, Model_Name, Heterogeneity_Variant) %>%
@@ -1027,7 +1027,7 @@ main <- function() {
         ifelse(partial_run, N_Folds_Completed > 0, N_Folds_Completed == K),
       exclusion_reason = ifelse(included_in_stack, NA_character_, exclusion_reason)
     )
-  write.csv(model_scores, file.path(tables_dir, "table_v3_winsor_kfold_model_scores.csv"), row.names = FALSE)
+  write.csv(model_scores, file.path(tables_dir, "table_winsor_kfold_model_scores.csv"), row.names = FALSE)
 
   build_kfold_weights <- function(target_space) {
     included <- model_scores %>% filter(Target_Space == target_space, Sample_Group == "main_common", included_in_stack == TRUE) %>% arrange(Model_ID, Heterogeneity_Variant)
@@ -1041,7 +1041,7 @@ main <- function() {
     }
     for (i in seq_len(nrow(included))) {
       row <- included[i, ]
-      key <- model_key_v3_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_kfold")
+      key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_kfold")
       one <- obs_scores %>%
         filter(Target_Space == target_space, Sample_Group == row$Sample_Group, Model_ID == row$Model_ID, Heterogeneity_Variant == row$Heterogeneity_Variant) %>%
         arrange(Obs_ID)
@@ -1053,7 +1053,7 @@ main <- function() {
     lpd_matrix <- do.call(cbind, score_list)
     weights <- optimize_stacking_from_lpd(lpd_matrix)
     if (abs(sum(weights) - 1) > 1e-5) stop("[BLOCKER] Exact K-fold stacking weights do not sum to 1 for ", target_space)
-    meta <- included[match(sub("_kfold$", "", model_keys), model_key_v3_sampled(included$Model_ID, included$Target_Space, included$Sample_Group, included$Heterogeneity_Variant)), ]
+    meta <- included[match(sub("_kfold$", "", model_keys), model_key_sampled(included$Model_ID, included$Target_Space, included$Sample_Group, included$Heterogeneity_Variant)), ]
     meta %>%
       mutate(Weight_KFold = weights) %>%
       arrange(desc(Weight_KFold)) %>%
@@ -1065,8 +1065,8 @@ main <- function() {
 
   kfold_weights_ep <- build_kfold_weights("ex_post")
   kfold_weights_rt <- build_kfold_weights("real_time")
-  write.csv(kfold_weights_ep, file.path(tables_dir, "table_v3_winsor_kfold_weights_ex_post.csv"), row.names = FALSE)
-  write.csv(kfold_weights_rt, file.path(tables_dir, "table_v3_winsor_kfold_weights_no_lookahead.csv"), row.names = FALSE)
+  write.csv(kfold_weights_ep, file.path(tables_dir, "table_winsor_kfold_weights_ex_post.csv"), row.names = FALSE)
+  write.csv(kfold_weights_rt, file.path(tables_dir, "table_winsor_kfold_weights_no_lookahead.csv"), row.names = FALSE)
 
   prepare_rowloo <- function(df) {
     df %>%
@@ -1115,7 +1115,7 @@ main <- function() {
       )
     ) %>%
     arrange(Target_Space, Rank_ExactKFold)
-  write.csv(weight_comparison, file.path(tables_dir, "table_v3_winsor_weight_stability_loo_lofo_kfold.csv"), row.names = FALSE)
+  write.csv(weight_comparison, file.path(tables_dir, "table_winsor_weight_stability_loo_lofo_kfold.csv"), row.names = FALSE)
 
   family_comparison <- weight_comparison %>%
     group_by(Target_Space, Family) %>%
@@ -1139,7 +1139,7 @@ main <- function() {
     ) %>%
     ungroup() %>%
     arrange(Target_Space, Family_Rank_ExactKFold)
-  write.csv(family_comparison, file.path(tables_dir, "table_v3_winsor_family_weight_stability_loo_lofo_kfold.csv"), row.names = FALSE)
+  write.csv(family_comparison, file.path(tables_dir, "table_winsor_family_weight_stability_loo_lofo_kfold.csv"), row.names = FALSE)
 
   safe_family_weight <- function(space, family) {
     x <- family_comparison %>% filter(Target_Space == space, Family == family)
@@ -1285,19 +1285,19 @@ main <- function() {
     "M10_Included: FALSE",
     sprintf("Model-fold refits attempted=%d completed=%d failed=%d.", attempted, completed, failed),
     paste("Final decision:", final_decision)
-  ), file.path(logs_dir, "v3_phase4e_exact_grouped_kfold_winsor_notes.txt"))
+  ), file.path(logs_dir, "phase4e_exact_grouped_kfold_winsor_notes.txt"))
 
   if (!partial_run && !preflight_only && final_decision != "INCONCLUSIVE_DUE_TO_KFOLD_FAILURES") {
     latest_complete_dir <- file.path(kfold_base_root, "latest_complete")
     dir.create(latest_complete_dir, recursive = TRUE, showWarnings = FALSE)
     files_to_copy <- c(
-      file.path(tables_dir, "table_v3_winsor_kfold_weights_ex_post.csv"),
-      file.path(tables_dir, "table_v3_winsor_kfold_weights_no_lookahead.csv"),
-      file.path(tables_dir, "table_v3_winsor_weight_stability_loo_lofo_kfold.csv"),
-      file.path(tables_dir, "table_v3_winsor_family_weight_stability_loo_lofo_kfold.csv"),
+      file.path(tables_dir, "table_winsor_kfold_weights_ex_post.csv"),
+      file.path(tables_dir, "table_winsor_kfold_weights_no_lookahead.csv"),
+      file.path(tables_dir, "table_winsor_weight_stability_loo_lofo_kfold.csv"),
+      file.path(tables_dir, "table_winsor_family_weight_stability_loo_lofo_kfold.csv"),
       file.path(tables_dir, "table_reviewer_priority2b_exact_kfold_decision.csv"),
       file.path(logs_dir, "reviewer_priority2b_exact_kfold_response_notes.txt"),
-      file.path(logs_dir, "v3_phase4e_exact_grouped_kfold_winsor_notes.txt"),
+      file.path(logs_dir, "phase4e_exact_grouped_kfold_winsor_notes.txt"),
       file.path(logs_dir, "run_config_manifest.csv")
     )
     file.copy(files_to_copy[file.exists(files_to_copy)], latest_complete_dir, overwrite = TRUE)

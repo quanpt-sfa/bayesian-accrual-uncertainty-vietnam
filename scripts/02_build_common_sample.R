@@ -1,25 +1,25 @@
 # -----------------------------------------------------------------------------
-# Script: 02_v3_build_common_sample.R
+# Script: 02_build_common_sample.R
 # Purpose: Clean raw data, construct variables, and build core common samples.
 # Author: Antigravity
 # Date: 2026-06-04
 # -----------------------------------------------------------------------------
 
-source("scripts/v3/00_v3_winsor_helpers.R")
+source("scripts/00_helpers.R")
 
 library(readxl)
 library(dplyr)
 
 # Paths
-ensure_v3_baseline_dirs()
-data_path <- v3_data_path
-registry_path <- v3_baseline_table_path("table_v3_model_registry.csv")
+ensure_baseline_dirs()
+data_path <- data_path
+registry_path <- baseline_table_path("table_model_registry.csv")
 
 if (!file.exists(data_path)) {
   stop("[BLOCKER] Data workbook not found at: ", data_path)
 }
 if (!file.exists(registry_path)) {
-  stop("[BLOCKER] Model registry CSV not found. Please run scripts/v3/01_v3_setup_and_registry.R first.")
+  stop("[BLOCKER] Model registry CSV not found. Please run scripts/01_setup_and_registry.R first.")
 }
 
 # Load Registry
@@ -164,7 +164,7 @@ df_vars <- df_vars %>%
 
 # Add metadata (industry classification)
 df_vars <- df_vars %>%
-  left_join(df_metadata, by = c("company" = "Mã"))
+  left_join(df_metadata, by = c("company" = "MÃƒÂ£"))
 
 # 3. CATEGORIZE ROW DROPS (WITH RESPECT TO CORE COMMON SAMPLES)
 # Define core variable lists (excluding sd_REV and sd_CFO)
@@ -261,14 +261,14 @@ if (any(final_ex_post$year == 2015) || any(final_realtime$year == 2015)) {
 }
 
 # Export core samples
-write.csv(final_ex_post, v3_baseline_table_path("final_v3_common_ex_post_sample.csv"), row.names = FALSE)
-write.csv(final_realtime, v3_baseline_table_path("final_v3_common_realtime_sample.csv"), row.names = FALSE)
-write.csv(final_operating_cycle_ex_post, v3_baseline_table_path("final_v3_secondary_operating_cycle_ex_post_sample.csv"), row.names = FALSE)
-write.csv(final_operating_cycle_realtime, v3_baseline_table_path("final_v3_secondary_operating_cycle_realtime_sample.csv"), row.names = FALSE)
+write.csv(final_ex_post, baseline_table_path("final_common_ex_post_sample.csv"), row.names = FALSE)
+write.csv(final_realtime, baseline_table_path("final_common_realtime_sample.csv"), row.names = FALSE)
+write.csv(final_operating_cycle_ex_post, baseline_table_path("final_secondary_operating_cycle_ex_post_sample.csv"), row.names = FALSE)
+write.csv(final_operating_cycle_realtime, baseline_table_path("final_secondary_operating_cycle_realtime_sample.csv"), row.names = FALSE)
 # Export secondary samples for M08 robustness
-write.csv(final_ex_post_m08, v3_baseline_table_path("final_v3_M08_ex_post_subsample.csv"), row.names = FALSE)
-write.csv(final_realtime_m08, v3_baseline_table_path("final_v3_M08_realtime_subsample.csv"), row.names = FALSE)
-message("Saved core and secondary samples to: ", file.path(v3_original_root, "tables"))
+write.csv(final_ex_post_m08, baseline_table_path("final_M08_ex_post_subsample.csv"), row.names = FALSE)
+write.csv(final_realtime_m08, baseline_table_path("final_M08_realtime_subsample.csv"), row.names = FALSE)
+message("Saved core and secondary samples to: ", file.path(baseline_root, "tables"))
 
 # 5. DIAGNOSTIC: Model Specific Availability
 model_availability <- data.frame(
@@ -296,7 +296,7 @@ for (i in 1:nrow(feasible_models)) {
   ))
 }
 
-write.csv(model_availability, v3_baseline_table_path("table_v3_missingness_by_model.csv"), row.names = FALSE)
+write.csv(model_availability, baseline_table_path("table_missingness_by_model.csv"), row.names = FALSE)
 message("Saved model specific availability.")
 
 # Create sample construction table
@@ -305,7 +305,7 @@ sample_construction <- data.frame(
   N_Rows = c(n_raw_initial, n_raw_initial - n_drop_A_zero, n_raw_initial - n_drop_A_zero - n_drop_2015, nrow(final_ex_post), nrow(final_realtime), nrow(final_operating_cycle_ex_post), nrow(final_operating_cycle_realtime), nrow(final_ex_post_m08), nrow(final_realtime_m08)),
   stringsAsFactors = FALSE
 )
-write.csv(sample_construction, v3_baseline_table_path("table_v3_sample_construction.csv"), row.names = FALSE)
+write.csv(sample_construction, baseline_table_path("table_sample_construction.csv"), row.names = FALSE)
 
 # Variable coverage summary (for ex-post core and optional variables)
 all_tracked_vars <- unique(c(core_ex_post_vars, "sd_REV", "sd_CFO"))
@@ -315,7 +315,7 @@ variable_coverage <- data.frame(
   pct_NonMissing = sapply(all_tracked_vars, function(v) round(sum(!is.na(df_vars[[v]])) / nrow(df_vars) * 100, 2)),
   stringsAsFactors = FALSE
 )
-write.csv(variable_coverage, v3_baseline_table_path("table_v3_variable_coverage.csv"), row.names = FALSE)
+write.csv(variable_coverage, baseline_table_path("table_variable_coverage.csv"), row.names = FALSE)
 
 # Common sample summary statistics
 sample_summary_row <- function(df, sample_name, requires_oc, intended_use, notes) {
@@ -340,7 +340,7 @@ common_summary <- bind_rows(
   sample_summary_row(final_ex_post_m08, "M08 Ex-Post Subsample", FALSE, "M08 rolling-volatility robustness only", "Requires sd_REV and sd_CFO rolling variables."),
   sample_summary_row(final_realtime_m08, "M08 No-Lookahead Subsample", FALSE, "M08 rolling-volatility robustness only", "Requires sd_REV and sd_CFO rolling variables.")
 )
-write.csv(common_summary, v3_baseline_table_path("table_v3_common_sample_summary.csv"), row.names = FALSE)
+write.csv(common_summary, baseline_table_path("table_common_sample_summary.csv"), row.names = FALSE)
 
 # 6. WRITE PHASE 1 LOG NOTES
 phase1_notes <- sprintf("=============================================================================
@@ -389,7 +389,7 @@ Reason for Dropping rows (from Core Ex-Post):
    nrow(final_ex_post_m08), min(final_ex_post_m08$year), max(final_ex_post_m08$year),
    nrow(final_realtime_m08), min(final_realtime_m08$year), max(final_realtime_m08$year))
 
-writeLines(phase1_notes, con = v3_baseline_log_path("v3_phase1_sample_notes.txt"))
+writeLines(phase1_notes, con = baseline_log_path("phase1_sample_notes.txt"))
 writeLines(c(
   "Phase 1 sample design after operating-cycle separation",
   "",
@@ -401,7 +401,7 @@ writeLines(c(
   sprintf("Main No-Lookahead Common N: %d", nrow(final_realtime)),
   sprintf("Secondary OperatingCycle Ex-Post N: %d", nrow(final_operating_cycle_ex_post)),
   sprintf("Secondary OperatingCycle No-Lookahead N: %d", nrow(final_operating_cycle_realtime))
-), con = v3_baseline_log_path("v3_phase1_sample_design_after_operating_cycle_separation.txt"))
+), con = baseline_log_path("phase1_sample_design_after_operating_cycle_separation.txt"))
 message("Saved Phase 1 sample notes.")
 
 cat("\n[SUCCESS] Phase 1 Build Common Sample (Two-Tier) completed successfully.\n")

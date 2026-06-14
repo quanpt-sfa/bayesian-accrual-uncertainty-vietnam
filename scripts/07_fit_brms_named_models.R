@@ -1,82 +1,82 @@
 # -----------------------------------------------------------------------------
-# Script: 07_v3_fit_brms_named_models_winsor.R
-# Purpose: Fit v3 named brms models on winsorized samples.
+# Script: 07_fit_brms_named_models.R
+# Purpose: Fit named brms models on winsorized samples.
 # -----------------------------------------------------------------------------
 
 library(dplyr)
 library(brms)
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-write_method_design_files_v3()
-write_prior_registry_v3()
-validate_v3_final_analysis_config("Phase 3b baseline brms fit", final_mode = TRUE)
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+write_method_design_files()
+write_prior_registry()
+validate_final_analysis_config("Phase 3b baseline brms fit", final_mode = TRUE)
 
 # Check prior predictive check gatekeeper status
-gate_csv_path <- file.path(v3_output_root, "prior_predictive_gate_status.csv")
+gate_csv_path <- file.path(output_root, "prior_predictive_gate_status.csv")
 if (!file.exists(gate_csv_path)) {
-  stop("[BLOCKER] Prior predictive gate status file does not exist. Please run '06_v3_prior_predictive_checks_winsor.R' first.")
+  stop("[BLOCKER] Prior predictive gate status file does not exist. Please run '06_prior_predictive_checks.R' first.")
 }
 gate_df <- read.csv(gate_csv_path, stringsAsFactors = FALSE)
 has_prior_pred_fail <- any(gate_df$status == "FAIL")
 prior_pred_override_used <- FALSE
 
 if (has_prior_pred_fail) {
-  allow_fail <- env_flag_v3("V3_ALLOW_PRIOR_PREDICTIVE_FAIL", "FALSE")
+  allow_fail <- env_flag("ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL", "FALSE")
   if (!allow_fail) {
-    stop("[BLOCKER] Prior predictive check gate contains FAIL. Fitting blocked. Run 06_v3_prior_predictive_checks_winsor.R or set V3_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE.")
+    stop("[BLOCKER] Prior predictive check gate contains FAIL. Fitting blocked. Run 06_prior_predictive_checks.R or set ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE.")
   } else {
     prior_pred_override_used <- TRUE
-    message("[OVERRIDE] Prior predictive check FAIL bypassed via V3_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE.")
+    message("[OVERRIDE] Prior predictive check FAIL bypassed via ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE.")
   }
 }
 
 options(mc.cores = parallel::detectCores())
 set.seed(42)
 
-run_varying_slope_models <- identical(v3_model_structure, "breuer_varying_slopes")
-if (run_varying_slope_models && !v3_run_varying_slopes) {
-  stop("[BLOCKER] V3_MODEL_STRUCTURE='breuer_varying_slopes' requires V3_RUN_VARYING_SLOPES='TRUE'.")
+run_varying_slope_models <- identical(model_structure, "breuer_varying_slopes")
+if (run_varying_slope_models && !run_varying_slopes) {
+  stop("[BLOCKER] ACCRUAL_MODEL_STRUCTURE='breuer_varying_slopes' requires ACCRUAL_RUN_VARYING_SLOPES='TRUE'.")
 }
 
-phase_root <- if (run_varying_slope_models) v3_varyslopes_root else v3_output_root
+phase_root <- if (run_varying_slope_models) varyslopes_root else output_root
 for (d in file.path(phase_root, c("", "tables", "models", "draws", "logs", "figures"))) {
   dir.create(d, recursive = TRUE, showWarnings = FALSE)
 }
 
-formulas_path <- file.path(v3_input_winsor_root, "tables", "table_v3_named_model_formulas_winsor.csv")
+formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
 if (!file.exists(formulas_path)) {
-  stop("[BLOCKER] Winsorized formula table not found. Run 05_v3_winsorize_common_samples.R first.")
+  stop("[BLOCKER] Winsorized formula table not found. Run 05_winsorize_common_samples.R first.")
 }
 
 formulas_df <- read.csv(formulas_path, stringsAsFactors = FALSE)
 if (run_varying_slope_models) {
   formulas_df <- formulas_df %>%
     filter(Main_Stack_Inclusion == TRUE) %>%
-    filter(mapply(varying_slope_candidate_v3, Model_ID, Target_Space)) %>%
+    filter(mapply(varying_slope_candidate, Model_ID, Target_Space)) %>%
     group_by(Model_ID, Target_Space, Sample_Group) %>%
     slice(1) %>%
     ungroup() %>%
     mutate(
-      Heterogeneity_Variant = paste0("Breuer-like varying slopes (", v3_varyslope_group, ")"),
-      brms_Formula = vapply(Base_Formula, varying_slope_formula_v3, character(1), group = v3_varyslope_group),
-      Model_Structure = v3_model_structure,
-      VarySlope_Group = v3_varyslope_group,
-      VarySlope_Scope = v3_varyslope_scope
+      Heterogeneity_Variant = paste0("Breuer-like varying slopes (", varyslope_group, ")"),
+      brms_Formula = vapply(Base_Formula, varying_slope_formula, character(1), group = varyslope_group),
+      Model_Structure = model_structure,
+      VarySlope_Group = varyslope_group,
+      VarySlope_Scope = varyslope_scope
     )
-  write.csv(formulas_df, file.path(phase_root, "tables", "table_v3_varyslopes_model_registry.csv"), row.names = FALSE)
+  write.csv(formulas_df, file.path(phase_root, "tables", "table_varyslopes_model_registry.csv"), row.names = FALSE)
 }
-write.csv(formulas_df, file.path(phase_root, "tables", "table_v3_named_model_formulas_winsor.csv"), row.names = FALSE)
+write.csv(formulas_df, file.path(phase_root, "tables", "table_named_model_formulas_winsor.csv"), row.names = FALSE)
 
 diag_path <- if (run_varying_slope_models) {
-  file.path(phase_root, "tables", "table_v3_varyslopes_diagnostics.csv")
+  file.path(phase_root, "tables", "table_varyslopes_diagnostics.csv")
 } else {
-  file.path(phase_root, "tables", "table_v3_brms_diagnostics_winsor.csv")
+  file.path(phase_root, "tables", "table_brms_diagnostics_winsor.csv")
 }
 coeff_path <- if (run_varying_slope_models) {
-  file.path(phase_root, "tables", "table_v3_varyslopes_coefficient_summary.csv")
+  file.path(phase_root, "tables", "table_varyslopes_coefficient_summary.csv")
 } else {
-  file.path(phase_root, "tables", "table_v3_coefficient_summary_winsor.csv")
+  file.path(phase_root, "tables", "table_coefficient_summary_winsor.csv")
 }
 
 if (file.exists(diag_path)) {
@@ -115,8 +115,8 @@ if (file.exists(diag_path)) {
   )
 }
 
-for (nm in names(metadata_columns_v3())) {
-  if (!nm %in% names(diagnostics_df)) diagnostics_df[[nm]] <- metadata_columns_v3()[[nm]]
+for (nm in names(metadata_columns())) {
+  if (!nm %in% names(diagnostics_df)) diagnostics_df[[nm]] <- metadata_columns()[[nm]]
 }
 if (!"save_pars_all" %in% names(diagnostics_df)) {
   diagnostics_df$save_pars_all <- FALSE
@@ -168,9 +168,9 @@ write_failure_diag <- function(row, err) {
     elpd_loo = NA_real_,
     error_message = err,
     Notes = row$Reason,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
     Output_Root = phase_root,
     save_pars_all = FALSE,
     stringsAsFactors = FALSE
@@ -189,14 +189,14 @@ message("Total winsorized configurations to fit/evaluate: ", total_runs)
 
 for (i in seq_len(total_runs)) {
   row <- formulas_df[i, ]
-  model_key <- model_key_v3_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
+  model_key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
   model_filename <- file.path(phase_root, "models", paste0("fit_", model_key, ".rds"))
   draws_filename <- file.path(phase_root, "draws", paste0("draws_", model_key, ".rds"))
 
   message(sprintf("\n=== [%d/%d] Winsor model %s (%s) - %s ===",
                   i, total_runs, row$Model_Name, row$Target_Space, row$Heterogeneity_Variant))
 
-  already_done <- !v3_force_refit && nrow(diagnostics_df) > 0 && any(
+  already_done <- !force_refit && nrow(diagnostics_df) > 0 && any(
       diagnostics_df$Model_ID == row$Model_ID &
       diagnostics_df$Target_Space == row$Target_Space &
       diagnostics_df$Sample_Group == row$Sample_Group &
@@ -205,14 +205,14 @@ for (i in seq_len(total_runs)) {
   )
 
   fit <- NULL
-  if (file.exists(model_filename) && !v3_force_refit) {
+  if (file.exists(model_filename) && !force_refit) {
     message("Loading pre-existing winsor model fit from: ", model_filename)
     fit <- tryCatch(readRDS(model_filename), error = function(e) {
       message("[ERROR] Could not read existing fit: ", e$message)
       NULL
     })
     if (file.exists(draws_filename)) {
-      message("Draw file already exists; Phase 3b will not regenerate it unless V3_FORCE_REFIT='TRUE': ", draws_filename)
+      message("Draw file already exists; Phase 3b will not regenerate it unless ACCRUAL_FORCE_REFIT='TRUE': ", draws_filename)
     }
   }
 
@@ -222,19 +222,19 @@ for (i in seq_len(total_runs)) {
       stop(e)
     })
     if (run_varying_slope_models) {
-      df_scaled <- prepare_varying_slope_data_v3(df_scaled)
+      df_scaled <- prepare_varying_slope_data(df_scaled)
     }
 
-    formula_str <- fix_formula_v3(row$brms_Formula)
+    formula_str <- fix_formula(row$brms_Formula)
     brms_form <- bf(as.formula(formula_str))
 
-    prior_list <- default_prior_list_v3(row$Heterogeneity_Variant, model_structure = v3_model_structure)
+    prior_list <- default_prior_list(row$Heterogeneity_Variant, model_structure = model_structure)
 
     fit <- tryCatch({
       brm(
         formula = brms_form,
         data = df_scaled,
-        family = brms_family_v3(),
+        family = brms_family(),
         prior = prior_list,
         chains = chains,
         iter = iter,
@@ -326,9 +326,9 @@ for (i in seq_len(total_runs)) {
     elpd_loo = elpd_loo,
     error_message = NA_character_,
     Notes = row$Reason,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
     Output_Root = phase_root,
     save_pars_all = isTRUE(fit$save_pars$all) || (is.list(fit$save_pars) && "all" %in% names(fit$save_pars) && isTRUE(fit$save_pars$all)),
     stringsAsFactors = FALSE
@@ -342,7 +342,7 @@ for (i in seq_len(total_runs)) {
     bind_rows(diag_row)
   write.csv(diagnostics_df, diag_path, row.names = FALSE)
 
-  if ((!file.exists(draws_filename) || v3_force_refit) && stacking_eligible) {
+  if ((!file.exists(draws_filename) || force_refit) && stacking_eligible) {
     message("Generating winsor posterior_epred and posterior_predict draws...")
     ep_draws <- posterior_epred(fit)
     pp_draws <- posterior_predict(fit)
@@ -367,7 +367,7 @@ coeff_df <- data.frame(
 
 for (i in seq_len(nrow(formulas_df))) {
   row <- formulas_df[i, ]
-  model_key <- model_key_v3_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
+  model_key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
   model_filename <- file.path(phase_root, "models", paste0("fit_", model_key, ".rds"))
   if (!file.exists(model_filename)) next
   fit <- readRDS(model_filename)
@@ -386,9 +386,9 @@ for (i in seq_len(nrow(formulas_df))) {
       Est_Error = fix_effects[pname, "Est.Error"],
       CI_Lower = fix_effects[pname, "Q2.5"],
       CI_Upper = fix_effects[pname, "Q97.5"],
-      Prior_Set_ID = v3_prior_set_id,
-      Likelihood_Family = v3_likelihood_family,
-      Model_Structure = v3_model_structure,
+      Prior_Set_ID = prior_set_id,
+      Likelihood_Family = likelihood_family,
+      Model_Structure = model_structure,
       Output_Root = phase_root,
       stringsAsFactors = FALSE
     ))
@@ -406,16 +406,16 @@ phase3_notes <- sprintf(
     "Prior_Set_ID: %s.\n",
     "Likelihood_Family: %s.\n",
     "Model_Structure: %s.\n",
-    "Varying slopes are written separately under V3_OUTPUT_ROOT/varyslopes and are not mixed into baseline stacking weights.\n",
+    "Varying slopes are written separately under ACCRUAL_OUTPUT_ROOT/varyslopes and are not mixed into baseline stacking weights.\n",
     "Stacking eligibility requires max Rhat <= 1.01 and divergences == 0.\n"
   ),
-  v3_input_winsor_root, phase_root, chains, iter, warmup, adapt_delta, max_treedepth, seed,
-  v3_prior_set_id, v3_likelihood_family, v3_model_structure
+  input_winsor_root, phase_root, chains, iter, warmup, adapt_delta, max_treedepth, seed,
+  prior_set_id, likelihood_family, model_structure
 )
 notes_file <- if (run_varying_slope_models) {
-  file.path(phase_root, "logs", "v3_varyslopes_notes.txt")
+  file.path(phase_root, "logs", "varyslopes_notes.txt")
 } else {
-  file.path(phase_root, "logs", "v3_phase3b_fit_notes_winsor.txt")
+  file.path(phase_root, "logs", "phase3b_fit_notes_winsor.txt")
 }
 writeLines(phase3_notes, con = notes_file)
 
@@ -423,13 +423,13 @@ if (run_varying_slope_models) {
   empty_weights <- data.frame(
     Status = "NOT_COMPUTED_BY_PHASE_3B",
     Notes = "Varying-slope fits are a Breuer-structure robustness check. Run a separate varying-slope stacking analysis before using weights.",
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
     Output_Root = phase_root,
     stringsAsFactors = FALSE
   )
-  write.csv(empty_weights, file.path(phase_root, "tables", "table_v3_varyslopes_loo_weights.csv"), row.names = FALSE)
+  write.csv(empty_weights, file.path(phase_root, "tables", "table_varyslopes_loo_weights.csv"), row.names = FALSE)
 }
 
 # Write baseline run manifest
@@ -437,21 +437,21 @@ manifest_notes <- character()
 if (prior_pred_override_used) {
   manifest_notes <- c(manifest_notes, "prior predictive check FAIL bypassed")
 }
-is_deviant_config <- !identical(v3_prior_set_id, "scale_aware_student_baseline_v1") || 
-                     !identical(v3_likelihood_family, "student") || 
-                     !identical(v3_model_structure, "pooled_random_intercept")
-if (is_deviant_config && env_flag_v3("V3_ALLOW_DIAGNOSTIC_CONFIG", "FALSE")) {
-  manifest_notes <- c(manifest_notes, sprintf("diagnostic config override used: actual prior_set_id=%s, actual family=%s, actual model_structure=%s", v3_prior_set_id, v3_likelihood_family, v3_model_structure))
+is_deviant_config <- !identical(prior_set_id, "scale_aware_student_baseline_v1") || 
+                     !identical(likelihood_family, "student") || 
+                     !identical(model_structure, "pooled_random_intercept")
+if (is_deviant_config && env_flag("ACCRUAL_ALLOW_DIAGNOSTIC_CONFIG", "FALSE")) {
+  manifest_notes <- c(manifest_notes, sprintf("diagnostic config override used: actual prior_set_id=%s, actual family=%s, actual model_structure=%s", prior_set_id, likelihood_family, model_structure))
 }
 notes_str <- if (length(manifest_notes) > 0) paste(manifest_notes, collapse = "; ") else "normal baseline run"
 
 manifest_path <- file.path(phase_root, "manifests", "baseline_manifest.csv")
-write_v3_run_manifest(
+write_run_manifest(
   path = manifest_path,
   scenario = "baseline",
-  prior_set_id = v3_prior_set_id,
-  family = v3_likelihood_family,
-  model_structure = v3_model_structure,
+  prior_set_id = prior_set_id,
+  family = likelihood_family,
+  model_structure = model_structure,
   model_list = unique(formulas_df$Model_ID),
   seed = seed,
   sampling_config = sprintf("chains=%d;iter=%d;warmup=%d", chains, iter, warmup),

@@ -11,36 +11,36 @@ if (!selection %in% c("baseline", "sensitivity", "full")) {
 }
 
 baseline_scripts <- c(
-  "scripts/v3/01_v3_setup_and_registry.R",
-  "scripts/v3/02_v3_build_common_sample.R",
-  "scripts/v3/03_v3_audit_cogs_inv_operating_cycle_after_fix.R",
-  "scripts/v3/04_v3_define_named_models.R",
-  "scripts/v3/05_v3_winsorize_common_samples.R",
-  "scripts/v3/06_v3_prior_predictive_checks_winsor.R",
-  "scripts/v3/07_v3_fit_brms_named_models_winsor.R",
-  "scripts/v3/08_v3_mcmc_diagnostics_winsor.R",
-  "scripts/v3/09_v3_loo_stacking_winsor.R",
-  "scripts/v3/10_v3_construct_uncertainty_adjusted_DA_winsor.R",
-  "scripts/v3/11_v3_posterior_predictive_checks_winsor.R",
-  "scripts/v3/12_v3_lofo_stacking_winsor.R",
-  "scripts/v3/13_v3_grouped_kfold_firm_winsor.R",
-  "scripts/v3/21_v3_validation_on_scaleaware_student_DA.R"
+  "scripts/01_setup_and_registry.R",
+  "scripts/02_build_common_sample.R",
+  "scripts/03_audit_cogs_inv_operating_cycle.R",
+  "scripts/04_define_named_models.R",
+  "scripts/05_winsorize_common_samples.R",
+  "scripts/06_prior_predictive_checks.R",
+  "scripts/07_fit_brms_named_models.R",
+  "scripts/08_mcmc_diagnostics.R",
+  "scripts/09_loo_stacking.R",
+  "scripts/10_construct_uncertainty_adjusted_DA.R",
+  "scripts/11_posterior_predictive_checks.R",
+  "scripts/12_lofo_stacking.R",
+  "scripts/13_grouped_kfold_firm.R",
+  "scripts/21_validation_on_scaleaware_student_DA.R"
 )
 
 sensitivity_scripts <- c(
-  "scripts/v3/14_v3_sensitivity_prior_predictive_winsor.R",
-  "scripts/v3/15_v3_sensitivity_refit_prior_scenarios_winsor.R",
-  "scripts/v3/16_v3_sensitivity_mcmc_diagnostics_winsor.R",
-  "scripts/v3/17_v3_sensitivity_stacking_winsor.R",
-  "scripts/v3/18_v3_sensitivity_construct_DA_winsor.R",
-  "scripts/v3/19_v3_sensitivity_validation_winsor.R",
-  "scripts/v3/20_v3_sensitivity_report_winsor.R"
+  "scripts/14_sensitivity_prior_predictive.R",
+  "scripts/15_sensitivity_refit_prior_scenarios.R",
+  "scripts/16_sensitivity_mcmc_diagnostics.R",
+  "scripts/17_sensitivity_stacking.R",
+  "scripts/18_sensitivity_construct_DA.R",
+  "scripts/19_sensitivity_validation.R",
+  "scripts/20_sensitivity_report.R"
 )
 
 heavy_scripts <- c(
-  "scripts/v3/07_v3_fit_brms_named_models_winsor.R",
-  "scripts/v3/13_v3_grouped_kfold_firm_winsor.R",
-  "scripts/v3/15_v3_sensitivity_refit_prior_scenarios_winsor.R"
+  "scripts/07_fit_brms_named_models.R",
+  "scripts/13_grouped_kfold_firm.R",
+  "scripts/15_sensitivity_refit_prior_scenarios.R"
 )
 
 selected_scripts <- switch(
@@ -50,26 +50,26 @@ selected_scripts <- switch(
   full = c(baseline_scripts, sensitivity_scripts)
 )
 
-run_heavy <- flag_from_env("V3_RUN_HEAVY", FALSE)
-dry_run <- flag_from_env("V3_DRY_RUN", TRUE)
-Sys.setenv(V3_RUN_HEAVY = if (run_heavy) "TRUE" else "FALSE")
-Sys.setenv(V3_DRY_RUN = if (dry_run) "TRUE" else "FALSE")
+run_heavy <- flag_from_env("ACCRUAL_RUN_HEAVY", FALSE)
+dry_run <- flag_from_env("ACCRUAL_DRY_RUN", TRUE)
+Sys.setenv(ACCRUAL_RUN_HEAVY = if (run_heavy) "TRUE" else "FALSE")
+Sys.setenv(ACCRUAL_DRY_RUN = if (dry_run) "TRUE" else "FALSE")
 
 print_header <- function() {
   cat("Bayesian Accrual Uncertainty Vietnam\n")
   cat("Selection :", selection, "\n")
   cat("Dry run   :", dry_run, "\n")
   cat("Run heavy :", run_heavy, "\n")
-  cat("Data path :", Sys.getenv("V3_DATA_PATH", "data/raw/data.xlsx"), "\n\n")
+  cat("Data path :", Sys.getenv("ACCRUAL_DATA_PATH", "data/raw/data.xlsx"), "\n\n")
 }
 
 print_manual_heavy_commands <- function() {
   cat("Heavy steps were skipped. Run them manually when needed:\n")
-  cat("  Rscript scripts/v3/07_v3_fit_brms_named_models_winsor.R\n")
-  cat("  Rscript scripts/v3/13_v3_grouped_kfold_firm_winsor.R\n")
-  cat("  Rscript scripts/v3/15_v3_sensitivity_refit_prior_scenarios_winsor.R\n")
+  cat("  Rscript scripts/07_fit_brms_named_models.R\n")
+  cat("  Rscript scripts/13_grouped_kfold_firm.R\n")
+  cat("  Rscript scripts/15_sensitivity_refit_prior_scenarios.R\n")
   cat("PowerShell example:\n")
-  cat("  $env:V3_DRY_RUN='FALSE'; $env:V3_RUN_HEAVY='TRUE'; Rscript run.R full\n\n")
+  cat("  $env:ACCRUAL_DRY_RUN='FALSE'; $env:ACCRUAL_RUN_HEAVY='TRUE'; Rscript run.R full\n\n")
 }
 
 run_script <- function(path) {

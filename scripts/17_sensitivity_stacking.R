@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 17_v3_sensitivity_stacking_winsor.R
+# Script: 17_sensitivity_stacking.R
 # Purpose: Recompute LOO stacking weights separately for each sensitivity scenario.
 # -----------------------------------------------------------------------------
 
@@ -7,20 +7,20 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-ensure_v3_sensitivity_dirs()
-validate_v3_final_analysis_config("sensitivity stacking", final_mode = TRUE)
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+ensure_sensitivity_dirs()
+validate_final_analysis_config("sensitivity stacking", final_mode = TRUE)
 
-dry_run <- env_flag_v3("V3_DRY_RUN", "TRUE")
-validation_engine <- tolower(env_value_v3("V3_VALIDATION_ENGINE", "row_loo"))
-moment_match <- env_flag_v3("V3_SENS_LOO_MOMENT_MATCH", "FALSE")
+dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
+validation_engine <- tolower(env_value("ACCRUAL_VALIDATION_ENGINE", "row_loo"))
+moment_match <- env_flag("ACCRUAL_SENS_LOO_MOMENT_MATCH", "FALSE")
 if (!validation_engine %in% c("row_loo", "firm_lofo", "grouped_kfold")) {
-  stop("[BLOCKER] V3_VALIDATION_ENGINE must be row_loo, firm_lofo, or grouped_kfold.")
+  stop("[BLOCKER] ACCRUAL_VALIDATION_ENGINE must be row_loo, firm_lofo, or grouped_kfold.")
 }
 
-scenarios <- selected_sensitivity_scenarios_v3()
-diag_path <- file.path(v3_sensitivity_root(), "tables", "sensitivity_mcmc_diagnostics_summary.csv")
+scenarios <- selected_sensitivity_scenarios()
+diag_path <- file.path(sensitivity_root(), "tables", "sensitivity_mcmc_diagnostics_summary.csv")
 if (!file.exists(diag_path)) stop("[BLOCKER] Missing sensitivity MCMC diagnostics. Run script 16 first.")
 diag_df <- read.csv(diag_path, stringsAsFactors = FALSE)
 
@@ -31,27 +31,27 @@ if (!dry_run && (!requireNamespace("brms", quietly = TRUE) || !requireNamespace(
 weight_rows <- list()
 comparison_rows <- list()
 
-normalize_target_space_v3 <- function(x) {
+normalize_target_space <- function(x) {
   out <- tolower(as.character(x))
   out[out %in% c("real_time", "no_lookahead")] <- "real_time"
   out
 }
 
 resolve_sensitivity_kfold_base_root <- function(scenario) {
-  explicit_root <- trimws(env_value_v3("V3_SENS_KFOLD_ROOT", ""))
+  explicit_root <- trimws(env_value("ACCRUAL_SENS_KFOLD_ROOT", ""))
   if (nzchar(explicit_root)) return(explicit_root)
-  file.path(v3_sensitivity_root(scenario), "kfold_firm")
+  file.path(sensitivity_root(scenario), "kfold_firm")
 }
 
 resolve_sensitivity_kfold_run_root <- function(scenario) {
   base_root <- resolve_sensitivity_kfold_base_root(scenario)
-  baseline_root <- normalizePath(file.path(v3_output_root, "kfold_firm"), winslash = "/", mustWork = FALSE)
+  baseline_root <- normalizePath(file.path(output_root, "kfold_firm"), winslash = "/", mustWork = FALSE)
   base_root_norm <- normalizePath(base_root, winslash = "/", mustWork = FALSE)
 
   if (identical(base_root_norm, baseline_root)) {
     stop("[BLOCKER] grouped_kfold for sensitivity stacking cannot reuse baseline K-fold outputs. Generate scenario-specific exact K-fold outputs under '",
-         file.path(v3_sensitivity_root(scenario), "kfold_firm"),
-         "' or set V3_SENS_KFOLD_ROOT to a scenario-specific K-fold root.")
+         file.path(sensitivity_root(scenario), "kfold_firm"),
+         "' or set ACCRUAL_SENS_KFOLD_ROOT to a scenario-specific K-fold root.")
   }
   if (!dir.exists(base_root)) {
     stop("[BLOCKER] Missing scenario-specific grouped K-fold root for scenario '", scenario, "': ", base_root,
@@ -68,7 +68,7 @@ resolve_sensitivity_kfold_run_root <- function(scenario) {
   }
 
   candidate_scores <- list.files(base_root,
-                                 pattern = "table_v3_winsor_kfold_model_scores\\.csv$",
+                                 pattern = "table_winsor_kfold_model_scores\\.csv$",
                                  recursive = TRUE,
                                  full.names = TRUE)
   if (length(candidate_scores) == 0) {
@@ -77,7 +77,7 @@ resolve_sensitivity_kfold_run_root <- function(scenario) {
   if (length(candidate_scores) > 1) {
     stop("[BLOCKER] Multiple grouped K-fold runs found under scenario-specific root without LATEST_RUN.txt: ",
          base_root,
-         ". Add LATEST_RUN.txt or set V3_SENS_KFOLD_ROOT to one exact run root.")
+         ". Add LATEST_RUN.txt or set ACCRUAL_SENS_KFOLD_ROOT to one exact run root.")
   }
 
   dirname(dirname(candidate_scores[[1]]))
@@ -85,25 +85,25 @@ resolve_sensitivity_kfold_run_root <- function(scenario) {
 
 for (sidx in seq_len(nrow(scenarios))) {
   scenario <- scenarios$Scenario[sidx]
-  scenario_root <- v3_sensitivity_root(scenario)
-  ensure_v3_sensitivity_dirs(scenario)
+  scenario_root <- sensitivity_root(scenario)
+  ensure_sensitivity_dirs(scenario)
   rows <- diag_df %>% filter(scenario == !!scenario)
   if (!dry_run) rows <- rows %>% filter(stacking_allowed == TRUE)
   if (nrow(rows) > 0) {
     rows <- rows %>%
-      filter(mapply(function(space, id) id %in% v3_main_model_ids_for_space(space), target_space, model_id)) %>%
+      filter(mapply(function(space, id) id %in% main_model_ids_for_space(space), target_space, model_id)) %>%
       arrange(target_space, model_id, heterogeneity_variant)
   }
 
   model_list <- unique(paste(rows$target_space, rows$model_id, sep = ":"))
-  write_v3_run_manifest(
+  write_run_manifest(
     file.path(scenario_root, "manifests", "stacking_manifest.csv"),
     scenario = scenario,
     prior_set_id = scenarios$Prior_Set_ID[sidx],
     family = scenarios$Likelihood_Family[sidx],
     model_structure = scenarios$Model_Structure[sidx],
     model_list = model_list,
-    seed = as.integer(env_value_v3("V3_SENS_SEED", "20260614")),
+    seed = as.integer(env_value("ACCRUAL_SENS_SEED", "20260614")),
     sampling_config = sprintf("validation_engine=%s; moment_match=%s; dry_run=%s", validation_engine, moment_match, dry_run),
     status = if (dry_run) "DRY_RUN_PLANNED" else "STARTED",
     notes = "Stacking weights are computed from scenario posterior fits only.",
@@ -145,7 +145,7 @@ for (sidx in seq_len(nrow(scenarios))) {
     if (validation_engine == "row_loo") {
       for (i in seq_len(nrow(space_rows))) {
         row <- space_rows[i, ]
-        key <- model_key_v3_sampled(row$model_id, row$target_space, row$sample_group, row$heterogeneity_variant, paste0("_", scenario, "_winsor"))
+        key <- model_key_sampled(row$model_id, row$target_space, row$sample_group, row$heterogeneity_variant, paste0("_", scenario, "_winsor"))
         cache_path <- file.path(scenario_root, "cache", paste0(key, "_row_loo.rds"))
         if (file.exists(cache_path)) {
           loo_obj <- readRDS(cache_path)
@@ -204,14 +204,14 @@ for (sidx in seq_len(nrow(scenarios))) {
         ll_firm
       }
 
-      sample_file <- if (space == "ex_post") "final_v3_common_ex_post_sample_winsor.csv" else "final_v3_common_realtime_sample_winsor.csv"
+      sample_file <- if (space == "ex_post") "final_common_ex_post_sample_winsor.csv" else "final_common_realtime_sample_winsor.csv"
       sample_df <- read_winsor_sample(sample_file)
       firm_ids <- sample_df$company
       firm_levels <- unique(firm_ids)
 
       for (i in seq_len(nrow(space_rows))) {
         row <- space_rows[i, ]
-        key <- model_key_v3_sampled(row$model_id, row$target_space, row$sample_group, row$heterogeneity_variant, paste0("_", scenario, "_winsor"))
+        key <- model_key_sampled(row$model_id, row$target_space, row$sample_group, row$heterogeneity_variant, paste0("_", scenario, "_winsor"))
         cache_path <- file.path(scenario_root, "cache", paste0(key, "_firm_lofo.rds"))
         if (file.exists(cache_path)) {
           loo_obj <- readRDS(cache_path)
@@ -272,7 +272,7 @@ for (sidx in seq_len(nrow(scenarios))) {
         }
       }
 
-      model_scores_path <- file.path(kfold_run_root, "tables", "table_v3_winsor_kfold_model_scores.csv")
+      model_scores_path <- file.path(kfold_run_root, "tables", "table_winsor_kfold_model_scores.csv")
       if (!file.exists(model_scores_path)) {
         stop("[BLOCKER] Missing scenario-specific grouped K-fold model scores: ", model_scores_path)
       }
@@ -280,12 +280,12 @@ for (sidx in seq_len(nrow(scenarios))) {
       if (!all(c("Target_Space", "Model_ID", "Heterogeneity_Variant", "elpd_kfold", "se_elpd_fold") %in% names(model_scores_df))) {
         stop("[BLOCKER] Scenario-specific grouped K-fold model scores have unexpected schema: ", model_scores_path)
       }
-      model_scores_df$Target_Space_Normalized <- normalize_target_space_v3(model_scores_df$Target_Space)
+      model_scores_df$Target_Space_Normalized <- normalize_target_space(model_scores_df$Target_Space)
 
       kfold_weights_file <- if (space == "ex_post") {
-        "table_v3_winsor_kfold_weights_ex_post.csv"
+        "table_winsor_kfold_weights_ex_post.csv"
       } else {
-        "table_v3_winsor_kfold_weights_no_lookahead.csv"
+        "table_winsor_kfold_weights_no_lookahead.csv"
       }
 
       weights_path <- file.path(kfold_run_root, "tables", kfold_weights_file)
@@ -296,11 +296,11 @@ for (sidx in seq_len(nrow(scenarios))) {
       if (!all(c("Target_Space", "Model_ID", "Heterogeneity_Variant", "Weight_KFold") %in% names(weights_df_kf))) {
         stop("[BLOCKER] Scenario-specific grouped K-fold weights have unexpected schema: ", weights_path)
       }
-      weights_df_kf$Target_Space_Normalized <- normalize_target_space_v3(weights_df_kf$Target_Space)
+      weights_df_kf$Target_Space_Normalized <- normalize_target_space(weights_df_kf$Target_Space)
 
       for (i in seq_len(nrow(space_rows))) {
         row <- space_rows[i, ]
-        match_space <- normalize_target_space_v3(space)
+        match_space <- normalize_target_space(space)
         score_row <- model_scores_df %>%
           filter(Target_Space_Normalized == match_space,
                  Model_ID == row$model_id,
@@ -354,7 +354,7 @@ for (sidx in seq_len(nrow(scenarios))) {
 }
 
 weights_df <- bind_rows(weight_rows)
-tables_root <- file.path(v3_sensitivity_root(), "tables")
+tables_root <- file.path(sensitivity_root(), "tables")
 write.csv(weights_df, file.path(tables_root, "sensitivity_stacking_weights_by_scenario.csv"), row.names = FALSE)
 
 if (nrow(weights_df) > 0 && any(is.finite(weights_df$stacking_weight))) {
@@ -388,7 +388,7 @@ if (nrow(weights_df) > 0 && any(is.finite(weights_df$stacking_weight))) {
 
 for (scenario in unique(weights_df$scenario)) {
   write.csv(weights_df[weights_df$scenario == scenario, , drop = FALSE],
-            file.path(v3_sensitivity_root(scenario), "stacking", paste0("table_v3_sensitivity_stacking_weights_", scenario, ".csv")),
+            file.path(sensitivity_root(scenario), "stacking", paste0("table_sensitivity_stacking_weights_", scenario, ".csv")),
             row.names = FALSE)
 }
 
@@ -398,6 +398,6 @@ writeLines(c(
   sprintf("Validation engine: %s", validation_engine),
   "Weights are recomputed by scenario from scenario posterior fits. Baseline posterior draws are not reused.",
   "Row-level PSIS-LOO is direct in this script. Firm LOFO/grouped K-fold require scenario-specific grouped runs and never receive placeholder weights."
-), file.path(v3_sensitivity_root(), "logs", "v3_sensitivity_stacking_notes.txt"))
+), file.path(sensitivity_root(), "logs", "sensitivity_stacking_notes.txt"))
 
 cat("\n[SUCCESS] Sensitivity stacking completed.\n")

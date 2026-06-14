@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------
-# Script: 21_v3_validation_on_scaleaware_student_DA.R
-# Purpose: Rerun outcome validation on the current V3_OUTPUT_ROOT DA file.
+# Script: 21_validation_on_scaleaware_student_DA.R
+# Purpose: Rerun outcome validation on the current ACCRUAL_OUTPUT_ROOT DA file.
 # -----------------------------------------------------------------------------
 
 library(dplyr)
@@ -8,17 +8,17 @@ library(readxl)
 library(sandwich)
 library(lmtest)
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-validate_v3_final_analysis_config("Phase 6b baseline validation", final_mode = TRUE)
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+validate_final_analysis_config("Phase 6b baseline validation", final_mode = TRUE)
 
-validation_root <- file.path(v3_output_root, "validation")
+validation_root <- file.path(output_root, "validation")
 dir.create(validation_root, recursive = TRUE, showWarnings = FALSE)
 
-master_path <- v3_baseline_accruals_path()
-ep_sample_path <- file.path(v3_input_winsor_root, "tables", "final_v3_common_ex_post_sample_winsor.csv")
-rt_sample_path <- file.path(v3_input_winsor_root, "tables", "final_v3_common_realtime_sample_winsor.csv")
-data_path <- v3_data_path
+master_path <- baseline_accruals_path()
+ep_sample_path <- file.path(input_winsor_root, "tables", "final_common_ex_post_sample_winsor.csv")
+rt_sample_path <- file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv")
+data_path <- data_path
 
 if (!file.exists(master_path)) stop("[BLOCKER] Missing current-root DA file: ", master_path)
 if (!file.exists(ep_sample_path)) stop("[BLOCKER] Missing winsor ex-post sample: ", ep_sample_path)
@@ -51,11 +51,11 @@ df_raw_leads <- df_raw %>%
 add_metadata <- function(df) {
   df %>%
     mutate(
-      Prior_Set_ID = v3_prior_set_id,
-      Likelihood_Family = v3_likelihood_family,
-      Model_Structure = v3_model_structure,
+      Prior_Set_ID = prior_set_id,
+      Likelihood_Family = likelihood_family,
+      Model_Structure = model_structure,
       DA_Source = "scale-aware Student-t baseline",
-      Output_Root = v3_output_root
+      Output_Root = output_root
     )
 }
 
@@ -182,17 +182,17 @@ validation_results <- bind_rows(
 unweighted_df <- validation_results %>% filter(Weighted == FALSE)
 weighted_df <- validation_results %>% filter(Weighted == TRUE)
 
-write.csv(unweighted_df, file.path(validation_root, "table_v3_unweighted_validation_scaleaware_student.csv"), row.names = FALSE)
-write.csv(weighted_df, file.path(validation_root, "table_v3_precision_weighted_validation_scaleaware_student.csv"), row.names = FALSE)
-write.csv(validation_results, file.path(validation_root, "table_v3_validation_comparison_summary_scaleaware_student.csv"), row.names = FALSE)
+write.csv(unweighted_df, file.path(validation_root, "table_unweighted_validation_scaleaware_student.csv"), row.names = FALSE)
+write.csv(weighted_df, file.path(validation_root, "table_precision_weighted_validation_scaleaware_student.csv"), row.names = FALSE)
+write.csv(validation_results, file.path(validation_root, "table_validation_comparison_summary_scaleaware_student.csv"), row.names = FALSE)
 
 writeLines(c(
   "Phase 6b validation on scale-aware Student-t DA",
   sprintf("DA source: %s", master_path),
-  sprintf("Prior set: %s", v3_prior_set_id),
-  sprintf("Likelihood family: %s", v3_likelihood_family),
-  sprintf("Model structure: %s", v3_model_structure),
+  sprintf("Prior set: %s", prior_set_id),
+  sprintf("Likelihood family: %s", likelihood_family),
+  sprintf("Model structure: %s", model_structure),
   "Validation tables are rerun from the current-root DA file and do not reuse old wide-prior Gaussian validation outputs."
-), file.path(validation_root, "v3_phase6b_validation_scaleaware_student_notes.txt"))
+), file.path(validation_root, "phase6b_validation_scaleaware_student_notes.txt"))
 
 cat("\n[SUCCESS] Phase 6b validation on current-root DA completed.\n")

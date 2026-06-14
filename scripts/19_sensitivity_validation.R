@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 19_v3_sensitivity_validation_winsor.R
+# Script: 19_sensitivity_validation.R
 # Purpose: Outcome validation rerun for each sensitivity-scenario DA output.
 # -----------------------------------------------------------------------------
 
@@ -7,16 +7,16 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-ensure_v3_sensitivity_dirs()
-validate_v3_final_analysis_config("sensitivity validation", final_mode = TRUE)
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+ensure_sensitivity_dirs()
+validate_final_analysis_config("sensitivity validation", final_mode = TRUE)
 
-dry_run <- env_flag_v3("V3_DRY_RUN", "TRUE")
-scenarios <- selected_sensitivity_scenarios_v3()
-ep_sample_path <- file.path(v3_input_winsor_root, "tables", "final_v3_common_ex_post_sample_winsor.csv")
-rt_sample_path <- file.path(v3_input_winsor_root, "tables", "final_v3_common_realtime_sample_winsor.csv")
-data_path <- v3_data_path
+dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
+scenarios <- selected_sensitivity_scenarios()
+ep_sample_path <- file.path(input_winsor_root, "tables", "final_common_ex_post_sample_winsor.csv")
+rt_sample_path <- file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv")
+data_path <- data_path
 
 if (!dry_run) {
   for (pkg in c("readxl", "sandwich", "lmtest")) {
@@ -140,8 +140,8 @@ if (!dry_run) {
 }
 
 for (scenario in scenarios$Scenario) {
-  scenario_root <- v3_sensitivity_root(scenario)
-  da_path <- v3_sensitivity_accruals_path(scenario)
+  scenario_root <- sensitivity_root(scenario)
+  da_path <- sensitivity_accruals_path(scenario)
   plan_rows[[length(plan_rows) + 1]] <- data.frame(
     scenario = scenario,
     dry_run = dry_run,
@@ -156,13 +156,13 @@ for (scenario in scenarios$Scenario) {
     run_one_validation(scenario, da_df, df_ep, df_raw, "ex_post"),
     run_one_validation(scenario, da_df, df_rt, df_raw, "real_time")
   )
-  write.csv(res, file.path(scenario_root, "validation", paste0("table_v3_sensitivity_validation_", scenario, ".csv")), row.names = FALSE)
+  write.csv(res, file.path(scenario_root, "validation", paste0("table_sensitivity_validation_", scenario, ".csv")), row.names = FALSE)
   result_rows[[length(result_rows) + 1]] <- res
 }
 
 plan_df <- bind_rows(plan_rows)
 results_df <- bind_rows(result_rows)
-tables_root <- file.path(v3_sensitivity_root(), "tables")
+tables_root <- file.path(sensitivity_root(), "tables")
 write.csv(plan_df, file.path(tables_root, "sensitivity_validation_plan.csv"), row.names = FALSE)
 write.csv(results_df, file.path(tables_root, "sensitivity_validation_summary.csv"), row.names = FALSE)
 
@@ -171,6 +171,6 @@ writeLines(c(
   sprintf("Dry run: %s", dry_run),
   "Validation is rerun separately for each scenario and target space.",
   "Ex-post DA validation against future CFO/earnings is flagged for look-ahead/circularity risk when applicable."
-), file.path(v3_sensitivity_root(), "logs", "v3_sensitivity_validation_notes.txt"))
+), file.path(sensitivity_root(), "logs", "sensitivity_validation_notes.txt"))
 
 cat("\n[SUCCESS] Sensitivity validation completed.\n")

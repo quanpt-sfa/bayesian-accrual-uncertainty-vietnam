@@ -1,17 +1,17 @@
 # -----------------------------------------------------------------------------
-# Script: 04_v3_define_named_models.R
-# Purpose: Define formulas, stacking tiers, space memberships, and heterogeneity levels for v3 models.
+# Script: 04_define_named_models.R
+# Purpose: Define formulas, stacking tiers, space memberships, and heterogeneity levels for the active models.
 # Author: Antigravity
 # Date: 2026-06-04
 # -----------------------------------------------------------------------------
 
-source("scripts/v3/00_v3_winsor_helpers.R")
+source("scripts/00_helpers.R")
 
 library(dplyr)
 
 # Paths
-ensure_v3_baseline_dirs()
-registry_path <- v3_baseline_table_path("table_v3_model_registry.csv")
+ensure_baseline_dirs()
+registry_path <- baseline_table_path("table_model_registry.csv")
 if (!file.exists(registry_path)) {
   stop("[BLOCKER] Model registry CSV not found. Please run Phase 0 script first.")
 }
@@ -117,9 +117,9 @@ for (i in 1:nrow(feasible_models)) {
   # Ex-Post Space
   if (m$In_ExPost_Stack) {
     target_sample <- dplyr::case_when(
-      m$Model_ID == "M08" ~ "final_v3_M08_ex_post_subsample.csv",
-      m$Model_ID == "M10" ~ "final_v3_secondary_operating_cycle_ex_post_sample.csv",
-      TRUE ~ "final_v3_common_ex_post_sample.csv"
+      m$Model_ID == "M08" ~ "final_M08_ex_post_subsample.csv",
+      m$Model_ID == "M10" ~ "final_secondary_operating_cycle_ex_post_sample.csv",
+      TRUE ~ "final_common_ex_post_sample.csv"
     )
     model_formulas_expanded <- rbind(model_formulas_expanded, add_formula_entries(m, "ex_post", target_sample))
   }
@@ -127,15 +127,15 @@ for (i in 1:nrow(feasible_models)) {
   # Real-Time Space
   if (m$In_RealTime_Stack) {
     target_sample <- dplyr::case_when(
-      m$Model_ID == "M10" ~ "final_v3_secondary_operating_cycle_realtime_sample.csv",
-      TRUE ~ "final_v3_common_realtime_sample.csv"
+      m$Model_ID == "M10" ~ "final_secondary_operating_cycle_realtime_sample.csv",
+      TRUE ~ "final_common_realtime_sample.csv"
     )
     model_formulas_expanded <- rbind(model_formulas_expanded, add_formula_entries(m, "real_time", target_sample))
   }
 }
 
 # Export expanded formulas
-model_formulas_out <- v3_baseline_table_path("table_v3_named_model_formulas.csv")
+model_formulas_out <- baseline_table_path("table_named_model_formulas.csv")
 write.csv(model_formulas_expanded, model_formulas_out, row.names = FALSE)
 message("Saved expanded named-model formulas to ", model_formulas_out)
 
@@ -159,7 +159,7 @@ feasibility_overview <- registry %>%
       TRUE ~ "main_common"
     )
   )
-write.csv(feasibility_overview, v3_baseline_table_path("table_v3_model_feasibility.csv"), row.names = FALSE)
+write.csv(feasibility_overview, baseline_table_path("table_model_feasibility.csv"), row.names = FALSE)
 
 # Export required variables
 model_req_vars <- registry %>%
@@ -170,7 +170,7 @@ model_req_vars <- registry %>%
     Main_Stack_Inclusion = Model_ID %in% c(main_ex_post_ids, main_no_lookahead_ids),
     Secondary_Robustness = Model_ID %in% c("M08", "M10")
   )
-write.csv(model_req_vars, v3_baseline_table_path("table_v3_model_required_variables.csv"), row.names = FALSE)
+write.csv(model_req_vars, baseline_table_path("table_model_required_variables.csv"), row.names = FALSE)
 
 # 2. WRITE PHASE 2 LOG NOTES
 phase2_notes <- "=============================================================================
@@ -180,19 +180,19 @@ Date: 2026-06-04
 Author: Antigravity
 
 Space Membership & Sample Routing:
-1. ex_post_measurement_space main stack (Target Sample: final_v3_common_ex_post_sample.csv):
+1. ex_post_measurement_space main stack (Target Sample: final_common_ex_post_sample.csv):
    - Feasible CORE models: M01, M02, M03, M04, M05, M06, M07.
    - M10 is excluded from the main stack because it requires operating_cycle.
-   - Robustness Model: M08 (secondary_volatility on final_v3_M08_ex_post_subsample.csv).
-   - Robustness Model: M10 (secondary_operating_cycle on final_v3_secondary_operating_cycle_ex_post_sample.csv).
+   - Robustness Model: M08 (secondary_volatility on final_M08_ex_post_subsample.csv).
+   - Robustness Model: M10 (secondary_operating_cycle on final_secondary_operating_cycle_ex_post_sample.csv).
    - M09 is EXCLUDED (not CFO_lead-capable by design).
    
-2. real_time_prediction_space main stack (Target Sample: final_v3_common_realtime_sample.csv):
+2. real_time_prediction_space main stack (Target Sample: final_common_realtime_sample.csv):
    - Feasible CORE models: M01, M02, M03, M07, M09.
    - M10 is excluded from the main stack because it requires operating_cycle.
    - M04, M05, M06 are EXCLUDED (requires CFO_lead look-ahead).
    - M08 is EXCLUDED (restricted to ex-post space robustness only).
-   - M10 is available only as secondary_operating_cycle robustness on final_v3_secondary_operating_cycle_realtime_sample.csv.
+   - M10 is available only as secondary_operating_cycle robustness on final_secondary_operating_cycle_realtime_sample.csv.
 
 Double Fitting:
 - Models marked 'both' (M01, M02, M03, M07) are listed twice for main_common when space-feasible.
@@ -200,7 +200,7 @@ Double Fitting:
 - Main model weights and secondary M10 results must not be read as one unified stacking space unless all models are rerun on the same secondary sample.
 "
 
-writeLines(phase2_notes, con = v3_baseline_log_path("v3_phase2_model_space_notes.txt"))
+writeLines(phase2_notes, con = baseline_log_path("phase2_model_space_notes.txt"))
 message("Saved Phase 2 model space notes.")
 
 cat("\n[SUCCESS] Phase 2 Define Named-Model Space (with explicit Stacking Spaces) completed successfully.\n")

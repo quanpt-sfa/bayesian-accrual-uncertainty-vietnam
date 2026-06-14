@@ -1,6 +1,10 @@
 # Local raw workbook
 /data/raw/data.xlsx
 
+# Local one-off rename helpers
+/_normalize_names.ps1
+/_replace_map.tsv
+
 # Generated outputs under out/
 out/
 !out/
@@ -20,6 +24,11 @@ out/**
 *.csv.tmp
 *.log
 *.html
+
+# renv local state
+renv/library/
+renv/staging/
+renv/local/
 
 # OS and editor noise
 .DS_Store

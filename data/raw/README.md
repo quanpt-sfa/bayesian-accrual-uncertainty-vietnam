@@ -9,4 +9,4 @@ Expected workbook layout:
 - `Sheet1`: firm-year financial observations.
 - `Sheet2`: metadata and industry mapping.
 
-To use a workbook stored elsewhere, set `V3_DATA_PATH` before running the pipeline.
+To use a workbook stored elsewhere, set `ACCRUAL_DATA_PATH` before running the pipeline.

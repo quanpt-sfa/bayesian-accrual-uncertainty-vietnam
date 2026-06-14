@@ -2,11 +2,11 @@
 
 Bayesian pipeline for uncertainty-adjusted discretionary accruals using Vietnamese firm-year data.
 
-This repository organizes the active v3 Bayesian accrual workflow into a reproducible root-level structure. The layout is inspired by reproducible Bayesian accruals research workflows, but it does not claim exact equivalence to any external repository.
+This repository organizes the accrual uncertainty pipeline into a reproducible root-level structure. The layout is inspired by reproducible Bayesian accruals research workflows, but it does not claim exact equivalence to any external repository.
 
 ## Repository structure
 
-- `scripts/v3/`: active pipeline scripts.
+- `scripts/`: active pipeline scripts.
 - `data/raw/data.xlsx`: canonical local workbook path.
 - `R/`: lightweight helper modules for orchestration and path access.
 - `out/`: intermediate tables, fits, diagnostics, logs, and manifests.
@@ -17,16 +17,16 @@ This repository organizes the active v3 Bayesian accrual workflow into a reprodu
 
 ## Data location
 
-The default data path is `data/raw/data.xlsx`. The file is copied locally and ignored by Git by default. To run against a workbook stored elsewhere, set `V3_DATA_PATH`.
+The default data path is `data/raw/data.xlsx`. The file is copied locally and ignored by Git by default. To run against a workbook stored elsewhere, set `ACCRUAL_DATA_PATH`.
 
 ## Quick start
 
-1. Install required R packages used by the v3 scripts, including at least `readxl`, `dplyr`, `brms`, `loo`, `sandwich`, and `lmtest`.
-2. Keep the raw workbook at `data/raw/data.xlsx`, or set `V3_DATA_PATH` to another local path.
+1. Install required R packages used by the pipeline scripts, including at least `readxl`, `dplyr`, `brms`, `loo`, `sandwich`, and `lmtest`.
+2. Keep the raw workbook at `data/raw/data.xlsx`, or set `ACCRUAL_DATA_PATH` to another local path.
 3. Run a dry-run orchestration:
    `Rscript run.R full`
 4. Enable actual heavy computation only when ready:
-   `V3_DRY_RUN=FALSE V3_RUN_HEAVY=TRUE Rscript run.R full`
+   `ACCRUAL_DRY_RUN=FALSE ACCRUAL_RUN_HEAVY=TRUE Rscript run.R full`
 
 ## Baseline pipeline
 
@@ -74,4 +74,4 @@ No `renv.lock` was available in the source workspace, so environment setup is do
 
 ## Computational requirements
 
-The light setup, sample-building, and manifest scripts are inexpensive. The `07`, `13`, and `15` stages can be computationally expensive because they trigger Bayesian fitting or grouped K-fold refits. The repository entrypoint skips those stages unless `V3_RUN_HEAVY=TRUE`.
+The light setup, sample-building, and manifest scripts are inexpensive. The `07`, `13`, and `15` stages can be computationally expensive because they trigger Bayesian fitting or grouped K-fold refits. The repository entrypoint skips those stages unless `ACCRUAL_RUN_HEAVY=TRUE`.

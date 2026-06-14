@@ -1,35 +1,35 @@
 # -----------------------------------------------------------------------------
-# Script: 06_v3_prior_predictive_checks_winsor.R
+# Script: 06_prior_predictive_checks.R
 # Purpose: Document prior specification and run representative prior predictive
-#          checks for the corrected winsorized v3 Bayesian accrual pipeline.
+#          checks for the corrected winsorized accrual uncertainty pipeline.
 # -----------------------------------------------------------------------------
 
 library(dplyr)
 library(brms)
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-write_method_design_files_v3()
-write_prior_registry_v3()
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+write_method_design_files()
+write_prior_registry()
 
 set.seed(42)
 options(mc.cores = 1)
 
-mode <- v3_prior_predictive_mode
+mode <- prior_predictive_mode
 include_m10 <- identical(mode, "FULL") || identical(mode, "EXTENDED")
 
-formulas_path <- file.path(v3_input_winsor_root, "tables", "table_v3_named_model_formulas_winsor.csv")
+formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
 if (!file.exists(formulas_path)) {
   stop("[BLOCKER] Winsor formula table not found. Run Phase 1b first.")
 }
 
-prior_spec_path <- file.path(v3_output_root, "tables", "table_v3_prior_specification.csv")
-prior_summary_path <- file.path(v3_output_root, "tables", "table_v3_prior_predictive_summary.csv")
-prior_extreme_path <- file.path(v3_output_root, "tables", "table_v3_prior_predictive_extreme_rates.csv")
-prior_notes_path <- file.path(v3_output_root, "logs", "v3_phase3a_prior_predictive_notes.txt")
-prior_method_note_path <- file.path(v3_output_root, "logs", "v3_method_note_scale_aware_student_priors.txt")
+prior_spec_path <- file.path(output_root, "tables", "table_prior_specification.csv")
+prior_summary_path <- file.path(output_root, "tables", "table_prior_predictive_summary.csv")
+prior_extreme_path <- file.path(output_root, "tables", "table_prior_predictive_extreme_rates.csv")
+prior_notes_path <- file.path(output_root, "logs", "phase3a_prior_predictive_notes.txt")
+prior_method_note_path <- file.path(output_root, "logs", "method_note_scale_aware_student_priors.txt")
 
-prior_spec <- default_prior_specification_v3()
+prior_spec <- default_prior_specification()
 write.csv(prior_spec, prior_spec_path, row.names = FALSE)
 
 formulas_df <- read.csv(formulas_path, stringsAsFactors = FALSE)
@@ -52,7 +52,7 @@ if (nrow(representative_rows) == 0) {
 }
 
 chains <- 2
-iter <- v3_prior_pred_n_draws
+iter <- prior_pred_n_draws
 warmup <- min(500L, floor(iter / 2))
 seed <- 42
 
@@ -78,12 +78,12 @@ plausibility_flag <- function(share_gt_1, share_gt_2) {
 
 sample_prior_predictions <- function(row) {
   df_scaled <- read_winsor_sample(row$Target_Sample)
-  formula_str <- fix_formula_v3(row$brms_Formula)
+  formula_str <- fix_formula(row$brms_Formula)
   fit_prior <- brm(
     formula = bf(as.formula(formula_str)),
     data = df_scaled,
-    family = brms_family_v3(),
-    prior = default_prior_list_v3(row$Heterogeneity_Variant),
+    family = brms_family(),
+    prior = default_prior_list(row$Heterogeneity_Variant),
     sample_prior = "only",
     chains = chains,
     iter = iter,
@@ -127,12 +127,12 @@ extreme_rows <- list()
 notes <- c(
   "Phase 3a prior predictive notes",
   sprintf("Mode: %s", mode),
-  sprintf("Output root: %s", v3_output_root),
-  sprintf("Input winsor root: %s", v3_input_winsor_root),
-  sprintf("Prior set: %s", v3_prior_set_id),
-  sprintf("Likelihood family: %s", v3_likelihood_family),
+  sprintf("Output root: %s", output_root),
+  sprintf("Input winsor root: %s", input_winsor_root),
+  sprintf("Prior set: %s", prior_set_id),
+  sprintf("Likelihood family: %s", likelihood_family),
   sprintf("Representative configurations checked: %d", nrow(representative_rows)),
-  "Priors are formalized in table_v3_prior_specification.csv and table_v3_prior_sets.csv and match the current Phase 3b defaults.",
+  "Priors are formalized in table_prior_specification.csv and table_prior_sets.csv and match the current Phase 3b defaults.",
   "Main-stack design is unchanged: winsorized samples remain primary, and M08/M10 stay outside the main stacks.",
   "Flags use domain thresholds: PASS if share |TA_scaled| > 1 <= 0.05 and share |TA_scaled| > 2 <= 0.005; REVIEW if <= 0.15 and <= 0.02; otherwise FAIL.",
   ""
@@ -140,7 +140,7 @@ notes <- c(
 
 for (i in seq_len(nrow(representative_rows))) {
   row <- representative_rows[i, ]
-  model_key <- model_key_v3_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
+  model_key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
   message(sprintf("[%d/%d] Prior predictive check: %s", i, nrow(representative_rows), model_key))
 
   observed_df <- read_winsor_sample(row$Target_Sample)
@@ -173,10 +173,10 @@ for (i in seq_len(nrow(representative_rows))) {
     PriorPred_Share_Abs_GT_2 = share_gt_2,
     PriorPred_Share_Abs_GT_5 = share_gt_5,
     Prior_Plausibility_Flag = flag,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 
@@ -188,17 +188,17 @@ for (i in seq_len(nrow(representative_rows))) {
     Heterogeneity_Variant = row$Heterogeneity_Variant,
     Threshold = c("abs(TA_scaled) > 1", "abs(TA_scaled) > 2", "abs(TA_scaled) > 5"),
     Rate = c(share_gt_1, share_gt_2, share_gt_5),
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 
   write_overlay_plot(
     observed = observed,
     simulated = simulated,
-    figure_path = file.path(v3_output_root, "figures", paste0("fig_v3_prior_predictive_overlay_", model_key, ".png")),
+    figure_path = file.path(output_root, "figures", paste0("fig_prior_predictive_overlay_", model_key, ".png")),
     title_text = sprintf("Prior Predictive Overlay: %s", model_key)
   )
 
@@ -227,15 +227,15 @@ status_line <- if (any(summary_df$Prior_Plausibility_Flag == "FAIL")) {
 
 # Compile gate status
 config_hash_val <- if (requireNamespace("digest", quietly = TRUE)) {
-  digest::digest(list(v3_prior_set_id, v3_likelihood_family, v3_model_structure), algo = "sha256")
+  digest::digest(list(prior_set_id, likelihood_family, model_structure), algo = "sha256")
 } else {
-  paste(v3_prior_set_id, v3_likelihood_family, v3_model_structure, sep = "_")
+  paste(prior_set_id, likelihood_family, model_structure, sep = "_")
 }
 
 gate_df <- data.frame(
   model_id = summary_df$Model_ID,
-  prior_set_id = v3_prior_set_id,
-  family = v3_likelihood_family,
+  prior_set_id = prior_set_id,
+  family = likelihood_family,
   status = summary_df$Prior_Plausibility_Flag,
   reason = sprintf("Share abs(TA) > 1: %.4f; Share abs(TA) > 2: %.4f",
                    summary_df$PriorPred_Share_Abs_GT_1,
@@ -245,8 +245,8 @@ gate_df <- data.frame(
   stringsAsFactors = FALSE
 )
 
-gate_csv_path <- file.path(v3_output_root, "prior_predictive_gate_status.csv")
-gate_rds_path <- file.path(v3_output_root, "prior_predictive_gate_status.rds")
+gate_csv_path <- file.path(output_root, "prior_predictive_gate_status.csv")
+gate_rds_path <- file.path(output_root, "prior_predictive_gate_status.rds")
 write.csv(gate_df, gate_csv_path, row.names = FALSE)
 saveRDS(gate_df, gate_rds_path)
 message("Saved prior predictive check gate status to ", gate_csv_path)
@@ -263,21 +263,21 @@ writeLines(notes, prior_notes_path)
 method_note <- c(
   "Scale-aware Student-t prior note for the corrected winsorized Bayesian accrual pipeline",
   "",
-  sprintf("Prior set: %s", v3_prior_set_id),
-  sprintf("Likelihood family: %s", v3_likelihood_family),
+  sprintf("Prior set: %s", prior_set_id),
+  sprintf("Likelihood family: %s", likelihood_family),
   "The wide_original Gaussian prior set is retained only as a diagnostic reference because its prior predictive checks imply implausibly wide TA_scaled distributions.",
   "The scale-aware Student-t baseline uses normal(0, 0.10) priors on coefficients and intercepts, exponential(10) priors on residual/group scales, and gamma(2, 0.1) on Student-t nu.",
   "Prior predictive checks are domain-based rather than fitted-data-range-based: PASS requires share |TA_scaled| > 1 <= 0.05 and share |TA_scaled| > 2 <= 0.005.",
-  "FAIL blocks the baseline pipeline unless overridden with V3_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE."
+  "FAIL blocks the baseline pipeline unless overridden with ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE."
 )
 writeLines(method_note, prior_method_note_path)
 
 if (status_line == "FAIL") {
-  allow_fail <- env_flag_v3("V3_ALLOW_PRIOR_PREDICTIVE_FAIL", "FALSE")
+  allow_fail <- env_flag("ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL", "FALSE")
   if (!allow_fail) {
-    stop("[GATEKEEPER STOP] Prior predictive check FAIL detected. Proceeding to fitting is blocked. Set V3_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE to override.")
+    stop("[GATEKEEPER STOP] Prior predictive check FAIL detected. Proceeding to fitting is blocked. Set ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE to override.")
   } else {
-    warning("[GATEKEEPER OVERRIDE] Prior predictive check FAIL detected, but V3_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE bypass is enabled.")
+    warning("[GATEKEEPER OVERRIDE] Prior predictive check FAIL detected, but ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE bypass is enabled.")
   }
 }
 if (status_line == "REVIEW") {

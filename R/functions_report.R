@@ -1,13 +1,13 @@
-source("scripts/v3/00_v3_winsor_helpers.R")
+source("scripts/00_helpers.R")
 
-v3_reports_dir <- function(...) {
-  v3_reports_path(...)
+reports_dir <- function(...) {
+  reports_path(...)
 }
 
-v3_sensitivity_report_path <- function() {
-  v3_reports_path("sensitivity", "sensitivity_report_v3.md")
+sensitivity_report_path <- function() {
+  reports_path("sensitivity", "sensitivity_report.md")
 }
 
-v3_method_design_dir <- function() {
-  v3_method_design_root
+method_design_dir <- function() {
+  method_design_root
 }

@@ -1,4 +1,4 @@
-script_17 <- readLines("scripts/v3/17_v3_sensitivity_stacking_winsor.R", warn = FALSE)
+script_17 <- readLines("scripts/17_sensitivity_stacking.R", warn = FALSE)
 required_tokens <- c("row_loo", "firm_lofo", "grouped_kfold")
 missing_tokens <- required_tokens[!vapply(required_tokens, function(token) any(grepl(token, script_17, fixed = TRUE)), logical(1))]
 if (length(missing_tokens) > 0) {

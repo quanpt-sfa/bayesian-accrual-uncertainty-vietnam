@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 16_v3_sensitivity_mcmc_diagnostics_winsor.R
+# Script: 16_sensitivity_mcmc_diagnostics.R
 # Purpose: MCMC diagnostics gate for sensitivity refit scenarios.
 # -----------------------------------------------------------------------------
 
@@ -7,19 +7,19 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-ensure_v3_sensitivity_dirs()
-validate_v3_final_analysis_config("sensitivity MCMC diagnostics", final_mode = TRUE)
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+ensure_sensitivity_dirs()
+validate_final_analysis_config("sensitivity MCMC diagnostics", final_mode = TRUE)
 
-dry_run <- env_flag_v3("V3_DRY_RUN", "TRUE")
-min_ess <- as.numeric(env_value_v3("V3_MCMC_MIN_ESS", "400"))
-strict_ess <- as.numeric(env_value_v3("V3_MCMC_STRICT_ESS", "1000"))
-max_rhat_allowed <- as.numeric(env_value_v3("V3_MCMC_MAX_RHAT", "1.01"))
+dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
+min_ess <- as.numeric(env_value("ACCRUAL_MCMC_MIN_ESS", "400"))
+strict_ess <- as.numeric(env_value("ACCRUAL_MCMC_STRICT_ESS", "1000"))
+max_rhat_allowed <- as.numeric(env_value("ACCRUAL_MCMC_MAX_RHAT", "1.01"))
 if (any(is.na(c(min_ess, strict_ess, max_rhat_allowed)))) stop("[BLOCKER] Invalid MCMC diagnostic thresholds.")
 
-scenarios <- selected_sensitivity_scenarios_v3()
-plan_path <- file.path(v3_sensitivity_root(), "tables", "sensitivity_refit_plan.csv")
+scenarios <- selected_sensitivity_scenarios()
+plan_path <- file.path(sensitivity_root(), "tables", "sensitivity_refit_plan.csv")
 if (!file.exists(plan_path)) stop("[BLOCKER] Missing sensitivity refit plan. Run script 15 first.")
 plan_df <- read.csv(plan_path, stringsAsFactors = FALSE)
 
@@ -44,7 +44,7 @@ detail_rows <- list()
 
 for (sidx in seq_len(nrow(scenarios))) {
   scenario <- scenarios$Scenario[sidx]
-  scenario_root <- v3_sensitivity_root(scenario)
+  scenario_root <- sensitivity_root(scenario)
   rows <- plan_df[plan_df$scenario == scenario, , drop = FALSE]
   if (nrow(rows) == 0) next
 
@@ -52,7 +52,7 @@ for (sidx in seq_len(nrow(scenarios))) {
     row <- rows[i, ]
     if (dry_run || !file.exists(row$fit_path)) {
       status <- if (dry_run) "NOT_RUN_DRY_RUN" else "FAIL"
-      reason <- if (dry_run) "V3_DRY_RUN=TRUE; fit was not read." else paste("Missing fit file:", row$fit_path)
+      reason <- if (dry_run) "ACCRUAL_DRY_RUN=TRUE; fit was not read." else paste("Missing fit file:", row$fit_path)
       summary_rows[[length(summary_rows) + 1]] <- data.frame(
         scenario = scenario,
         model_id = row$model_id,
@@ -136,14 +136,14 @@ for (sidx in seq_len(nrow(scenarios))) {
 
 summary_df <- bind_rows(summary_rows)
 detail_df <- bind_rows(detail_rows)
-tables_root <- file.path(v3_sensitivity_root(), "tables")
+tables_root <- file.path(sensitivity_root(), "tables")
 write.csv(summary_df, file.path(tables_root, "sensitivity_mcmc_diagnostics_summary.csv"), row.names = FALSE)
 write.csv(detail_df, file.path(tables_root, "sensitivity_mcmc_diagnostics_detailed.csv"), row.names = FALSE)
 
 for (scenario in unique(summary_df$scenario)) {
-  sc_root <- v3_sensitivity_root(scenario)
+  sc_root <- sensitivity_root(scenario)
   write.csv(summary_df[summary_df$scenario == scenario, , drop = FALSE],
-            file.path(sc_root, "diagnostics", paste0("table_v3_sensitivity_mcmc_diagnostics_", scenario, ".csv")),
+            file.path(sc_root, "diagnostics", paste0("table_sensitivity_mcmc_diagnostics_", scenario, ".csv")),
             row.names = FALSE)
 }
 
@@ -167,6 +167,6 @@ writeLines(c(
   sprintf("Dry run: %s", dry_run),
   sprintf("Thresholds: max Rhat <= %.2f; divergences = 0; bulk/tail ESS >= %.0f; strict marker %.0f.", max_rhat_allowed, min_ess, strict_ess),
   "Only diagnostics_status == PASS is eligible for stacking."
-), file.path(v3_sensitivity_root(), "logs", "v3_sensitivity_mcmc_diagnostics_notes.txt"))
+), file.path(sensitivity_root(), "logs", "sensitivity_mcmc_diagnostics_notes.txt"))
 
 cat("\n[SUCCESS] Sensitivity MCMC diagnostics completed.\n")

@@ -1,13 +1,13 @@
-source("scripts/v3/00_v3_winsor_helpers.R")
+source("scripts/00_helpers.R")
 
-v3_baseline_accruals_file <- function() {
-  v3_baseline_accruals_path()
+baseline_accruals_file <- function() {
+  baseline_accruals_path()
 }
 
-v3_sensitivity_accruals_file <- function(scenario) {
-  v3_sensitivity_accruals_path(scenario)
+sensitivity_accruals_file <- function(scenario) {
+  sensitivity_accruals_path(scenario)
 }
 
-v3_baseline_da_summary_path <- function() {
-  file.path(v3_output_root, "tables", "table_v3_DA_distribution_summary_winsor.csv")
+baseline_da_summary_path <- function() {
+  file.path(output_root, "tables", "table_DA_distribution_summary_winsor.csv")
 }

@@ -1,13 +1,13 @@
 # -----------------------------------------------------------------------------
 # Script: 22_reset_and_rerun_after_cogs_inv_fix.R
-# Purpose: Quarantine invalid v3 outputs after corrected COGS/INV data, then
-#          optionally rerun the corrected v3 pipeline.
+# Purpose: Quarantine invalid legacy outputs after corrected COGS/INV data, then
+#          optionally rerun the corrected accrual uncertainty pipeline.
 # -----------------------------------------------------------------------------
 
 options(stringsAsFactors = FALSE)
 
 script_start <- Sys.time()
-script_path <- "scripts/v3/22_reset_and_rerun_after_cogs_inv_fix.R"
+script_path <- "scripts/22_reset_and_rerun_after_cogs_inv_fix.R"
 
 env_true <- function(name, default = "FALSE") {
   identical(toupper(Sys.getenv(name, unset = default)), "TRUE")
@@ -18,43 +18,43 @@ env_value <- function(name, default) {
   if (!nzchar(val)) default else val
 }
 
-dry_run <- env_true("V3_RESET_DRY_RUN", "TRUE")
-reset_confirm <- env_true("V3_RESET_CONFIRM", "FALSE")
-rerun_after_reset <- env_true("V3_RERUN_AFTER_RESET", "FALSE")
-run_kfold <- env_true("V3_RUN_KFOLD", "FALSE")
-continue_after_audit_warning <- env_true("V3_CONTINUE_AFTER_AUDIT_WARNING", "FALSE")
-run_scaleaware_student_only <- env_true("V3_RUN_SCALEAWARE_STUDENT_ONLY", "FALSE")
-run_prior_predictive <- env_true("V3_RUN_PRIOR_PREDICTIVE", "FALSE")
-run_mcmc_diagnostics <- env_true("V3_RUN_MCMC_DIAGNOSTICS", "FALSE")
-run_posterior_ppc <- env_true("V3_RUN_POSTERIOR_PPC", "FALSE")
-run_sensitivity <- env_true("V3_RUN_SENSITIVITY", "FALSE")
-run_varying_slopes <- env_true("V3_RUN_VARYING_SLOPES", "FALSE")
-run_validation <- env_true("V3_RUN_VALIDATION", "FALSE")
-prior_predictive_mode <- env_value("V3_PRIOR_PREDICTIVE_MODE", "REPRESENTATIVE")
-sensitivity_mode <- env_value("V3_SENSITIVITY_MODE", "SUMMARY_ONLY")
-sensitivity_dry_run <- env_value("V3_DRY_RUN", "TRUE")
-kfold_target_mode <- env_value("V3_KFOLD_TARGET_MODE", "PARETO_PROBLEM_ONLY")
-kfold_mode <- env_value("V3_KFOLD_MODE", env_value("V3_KFOLD_FIRM_MODE", "FULL_MODE"))
-kfold_k <- env_value("V3_KFOLD_K", env_value("V3_KFOLD_FIRM_K", "5"))
+dry_run <- env_true("ACCRUAL_RESET_DRY_RUN", "TRUE")
+reset_confirm <- env_true("ACCRUAL_RESET_CONFIRM", "FALSE")
+rerun_after_reset <- env_true("ACCRUAL_RERUN_AFTER_RESET", "FALSE")
+run_kfold <- env_true("ACCRUAL_RUN_KFOLD", "FALSE")
+continue_after_audit_warning <- env_true("ACCRUAL_CONTINUE_AFTER_AUDIT_WARNING", "FALSE")
+run_scaleaware_student_only <- env_true("ACCRUAL_RUN_SCALEAWARE_STUDENT_ONLY", "FALSE")
+run_prior_predictive <- env_true("ACCRUAL_RUN_PRIOR_PREDICTIVE", "FALSE")
+run_mcmc_diagnostics <- env_true("ACCRUAL_RUN_MCMC_DIAGNOSTICS", "FALSE")
+run_posterior_ppc <- env_true("ACCRUAL_RUN_POSTERIOR_PPC", "FALSE")
+run_sensitivity <- env_true("ACCRUAL_RUN_SENSITIVITY", "FALSE")
+run_varying_slopes <- env_true("ACCRUAL_RUN_VARYING_SLOPES", "FALSE")
+run_validation <- env_true("ACCRUAL_RUN_VALIDATION", "FALSE")
+prior_predictive_mode <- env_value("ACCRUAL_PRIOR_PREDICTIVE_MODE", "REPRESENTATIVE")
+sensitivity_mode <- env_value("ACCRUAL_SENSITIVITY_MODE", "SUMMARY_ONLY")
+sensitivity_dry_run <- env_value("ACCRUAL_DRY_RUN", "TRUE")
+kfold_target_mode <- env_value("ACCRUAL_KFOLD_TARGET_MODE", "PARETO_PROBLEM_ONLY")
+kfold_mode <- env_value("ACCRUAL_KFOLD_MODE", env_value("ACCRUAL_KFOLD_FIRM_MODE", "FULL_MODE"))
+kfold_k <- env_value("ACCRUAL_KFOLD_K", env_value("ACCRUAL_KFOLD_FIRM_K", "5"))
 
 if (!kfold_mode %in% c("FULL_MODE", "FAST_MODE")) {
-  stop("[BLOCKER] V3_KFOLD_MODE must be FULL_MODE or FAST_MODE.")
+  stop("[BLOCKER] ACCRUAL_KFOLD_MODE must be FULL_MODE or FAST_MODE.")
 }
 
 dir.create("out", recursive = TRUE, showWarnings = FALSE)
-if (file.exists("scripts/v3/00_v3_winsor_helpers.R")) {
-  source("scripts/v3/00_v3_winsor_helpers.R")
-  ensure_v3_baseline_dirs()
-  ensure_v3_winsor_dirs()
-  ensure_v3_sensitivity_dirs()
-  write_method_design_files_v3()
-  write_prior_registry_v3()
+if (file.exists("scripts/00_helpers.R")) {
+  source("scripts/00_helpers.R")
+  ensure_baseline_dirs()
+  ensure_analysis_dirs()
+  ensure_sensitivity_dirs()
+  write_method_design_files()
+  write_prior_registry()
 }
 
-baseline_root <- if (exists("v3_original_root", inherits = FALSE)) v3_original_root else file.path("out", "interim", "baseline")
-winsor_input_root <- if (exists("v3_input_winsor_root", inherits = FALSE)) v3_input_winsor_root else file.path("out", "interim", "winsor")
-scaleaware_root <- env_value("V3_OUTPUT_ROOT", file.path("out", "interim", "winsor_scaleaware_student"))
-method_design_root <- if (exists("v3_method_design_root", inherits = FALSE)) v3_method_design_root else file.path("out", "manifests", "method_design")
+baseline_root <- if (exists("baseline_root", inherits = FALSE)) baseline_root else file.path("out", "interim", "baseline")
+winsor_input_root <- if (exists("input_winsor_root", inherits = FALSE)) input_winsor_root else file.path("out", "interim", "winsor")
+scaleaware_root <- env_value("ACCRUAL_OUTPUT_ROOT", file.path("out", "interim", "winsor_scaleaware_student"))
+method_design_root <- if (exists("method_design_root", inherits = FALSE)) method_design_root else file.path("out", "manifests", "method_design")
 reset_manifest_root <- file.path("out", "manifests")
 reset_log_root <- file.path("out", "logs")
 dir.create(reset_manifest_root, recursive = TRUE, showWarnings = FALSE)
@@ -93,7 +93,7 @@ file_info_row <- function(path) {
   list(size = as.numeric(info$size[1]), mtime = format(info$mtime[1], "%Y-%m-%d %H:%M:%S %z"))
 }
 
-data_path <- if (exists("v3_data_path", inherits = FALSE)) v3_data_path else file.path("data", "raw", "data.xlsx")
+data_path <- if (exists("data_path", inherits = FALSE)) data_path else file.path("data", "raw", "data.xlsx")
 if (!file.exists(data_path)) {
   stop("[BLOCKER] Corrected raw data workbook not found at: ", data_path)
 }
@@ -146,7 +146,7 @@ list_existing_files <- function(path) {
 
 target_specs <- data.frame(
   Path = c(baseline_root, winsor_input_root, scaleaware_root, file.path("out", "INVALID_OLD_RUNS")),
-  Reason = c("old_v3_output", "old_v3_winsor_output", "old_scaleaware_output", "old_lofo_or_kfold_output"),
+  Reason = c("old_output", "old_winsor_output", "old_scaleaware_output", "old_lofo_or_kfold_output"),
   stringsAsFactors = FALSE
 )
 
@@ -270,7 +270,7 @@ if (!dry_run && reset_confirm) {
   actual_reset <- TRUE
 } else {
   if (!dry_run && !reset_confirm && !rerun_after_reset) {
-    stop("[BLOCKER] Refusing to move outputs because V3_RESET_CONFIRM is not TRUE.")
+    stop("[BLOCKER] Refusing to move outputs because ACCRUAL_RESET_CONFIRM is not TRUE.")
   }
 }
 
@@ -399,19 +399,19 @@ read_first_line <- function(path) {
 
 compare_old_invalid_vs_corrected <- function() {
   quarantine <- if (file.exists(latest_quarantine_path)) trimws(readLines(latest_quarantine_path, warn = FALSE)[1]) else ""
-  out_path <- baseline_table_path("table_v3_old_invalid_vs_corrected_sample_comparison.csv")
+  out_path <- baseline_table_path("table_old_invalid_vs_corrected_sample_comparison.csv")
   if (!nzchar(quarantine)) return(FALSE)
-  baseline_summary_rel <- normalizePath(baseline_table_path("table_v3_common_sample_summary.csv"), winslash = "/", mustWork = FALSE)
-  winsor_summary_rel <- normalizePath(winsor_table_path("table_v3_common_sample_summary_winsor.csv"), winslash = "/", mustWork = FALSE)
+  baseline_summary_rel <- normalizePath(baseline_table_path("table_common_sample_summary.csv"), winslash = "/", mustWork = FALSE)
+  winsor_summary_rel <- normalizePath(winsor_table_path("table_common_sample_summary_winsor.csv"), winslash = "/", mustWork = FALSE)
   comparisons <- list(
     list(
       old = file.path(quarantine, baseline_summary_rel),
-      new = baseline_table_path("table_v3_common_sample_summary.csv"),
+      new = baseline_table_path("table_common_sample_summary.csv"),
       note = "old_invalid non-winsorized"
     ),
     list(
       old = file.path(quarantine, winsor_summary_rel),
-      new = winsor_table_path("table_v3_common_sample_summary_winsor.csv"),
+      new = winsor_table_path("table_common_sample_summary_winsor.csv"),
       note = "old_invalid winsorized"
     )
   )
@@ -453,7 +453,7 @@ if (!dry_run && reset_confirm && !rerun_after_reset) {
 }
 
 if (dry_run && rerun_after_reset) {
-  stop("[BLOCKER] Refusing rerun in dry-run mode. Set V3_RESET_DRY_RUN='FALSE' and V3_RESET_CONFIRM='TRUE'.")
+  stop("[BLOCKER] Refusing rerun in dry-run mode. Set ACCRUAL_RESET_DRY_RUN='FALSE' and ACCRUAL_RESET_CONFIRM='TRUE'.")
 }
 
 if (!rerun_after_reset) {
@@ -466,22 +466,22 @@ if (!rerun_after_reset) {
               if (actual_reset) "SUCCESS" else "SKIPPED", 0L, quarantine_root, corrected_data_manifest_path,
               if (actual_reset) "Invalid outputs quarantined." else "Reset skipped; rerun requested without moving outputs.")
 
-  append_step("POSITIONING", "Method positioning and adaptation-not-replication note", "scripts/v3/00_v3_winsor_helpers.R",
+  append_step("POSITIONING", "Method positioning and adaptation-not-replication note", "scripts/00_helpers.R",
               script_start, Sys.time(), "SUCCESS", 0L,
               file.path(method_design_root, "differences_from_AccForUncertaintyCode.csv"),
               file.path(method_design_root, "method_note_adaptation_not_replication.txt"),
               "Created/updated method design documentation; no model phase run.")
 
-  run_r_script("P0", "Phase 0 setup and registry", "scripts/v3/01_v3_setup_and_registry.R",
-               baseline_table_path("table_v3_model_registry.csv"), baseline_log_path("v3_phase0_registry_notes.txt"))
-  run_r_script("P1", "Phase 1 build common sample", "scripts/v3/02_v3_build_common_sample.R",
-               baseline_table_path("table_v3_common_sample_summary.csv"), baseline_table_path("final_v3_common_ex_post_sample.csv"))
+  run_r_script("P0", "Phase 0 setup and registry", "scripts/01_setup_and_registry.R",
+               baseline_table_path("table_model_registry.csv"), baseline_log_path("phase0_registry_notes.txt"))
+  run_r_script("P1", "Phase 1 build common sample", "scripts/02_build_common_sample.R",
+               baseline_table_path("table_common_sample_summary.csv"), baseline_table_path("final_common_ex_post_sample.csv"))
 
   audit_started <- Sys.time()
-  audit_exit <- system2(rscript_bin, args = "scripts/v3/03_v3_audit_cogs_inv_operating_cycle_after_fix.R",
-                        env = paste0("V3_COGS_INV_QUARANTINE_PATH=", normalizePath(quarantine_root, mustWork = FALSE)))
+  audit_exit <- system2(rscript_bin, args = "scripts/03_audit_cogs_inv_operating_cycle.R",
+                        env = paste0("ACCRUAL_COGS_INV_QUARANTINE_PATH=", normalizePath(quarantine_root, mustWork = FALSE)))
   audit_ended <- Sys.time()
-  audit_table <- baseline_table_path("table_v3_cogs_inv_operating_cycle_audit_corrected.csv")
+  audit_table <- baseline_table_path("table_cogs_inv_operating_cycle_audit_corrected.csv")
   audit_status_file <- baseline_log_path("cogs_inv_correction_audit_status.txt")
   audit_status_from_file <- read_first_line(audit_status_file)
   audit_status_value <- if (!is.na(audit_status_from_file) && nzchar(audit_status_from_file)) {
@@ -513,235 +513,235 @@ if (!rerun_after_reset) {
   } else {
     audit_status_value
   }
-  append_step("P1C", "COGS/INV operating-cycle audit", "scripts/v3/03_v3_audit_cogs_inv_operating_cycle_after_fix.R",
+  append_step("P1C", "COGS/INV operating-cycle audit", "scripts/03_audit_cogs_inv_operating_cycle.R",
               audit_started, audit_ended, ifelse(audit_status %in% allowed_audit_statuses, "SUCCESS", "REVIEW_REQUIRED"), as.integer(audit_exit),
-              baseline_table_path("table_v3_cogs_inv_operating_cycle_audit_corrected.csv"),
+              baseline_table_path("table_cogs_inv_operating_cycle_audit_corrected.csv"),
               baseline_log_path("cogs_inv_correction_audit_notes.txt"),
               paste("Audit status:", audit_status))
   if (audit_status == "REVIEW_REQUIRED_COGS_INV_STILL_SUSPECT" && !continue_after_audit_warning) {
     final_status <- "REVIEW_REQUIRED_AFTER_COGS_INV_AUDIT"
   } else {
-    run_r_script("P2", "Phase 2 define named-model spaces", "scripts/v3/04_v3_define_named_models.R",
-                 baseline_table_path("table_v3_named_model_formulas.csv"),
-                 baseline_log_path("v3_phase2_model_space_notes.txt"))
+    run_r_script("P2", "Phase 2 define named-model spaces", "scripts/04_define_named_models.R",
+                 baseline_table_path("table_named_model_formulas.csv"),
+                 baseline_log_path("phase2_model_space_notes.txt"))
 
-    run_r_script("P1B", "Phase 1b winsorize common samples", "scripts/v3/05_v3_winsorize_common_samples.R",
-                 winsor_table_path("final_v3_common_ex_post_sample_winsor.csv"),
-                 winsor_table_path("final_v3_common_realtime_sample_winsor.csv"))
+    run_r_script("P1B", "Phase 1b winsorize common samples", "scripts/05_winsorize_common_samples.R",
+                 winsor_table_path("final_common_ex_post_sample_winsor.csv"),
+                 winsor_table_path("final_common_realtime_sample_winsor.csv"))
     if (run_prior_predictive) {
-      run_r_script("P3A_PRIOR_PREDICTIVE", "Phase 3a prior predictive checks", "scripts/v3/06_v3_prior_predictive_checks_winsor.R",
-                   scaleaware_table_path("table_v3_prior_predictive_summary.csv"),
-                   scaleaware_log_path("v3_phase3a_prior_predictive_notes.txt"),
+      run_r_script("P3A_PRIOR_PREDICTIVE", "Phase 3a prior predictive checks", "scripts/06_prior_predictive_checks.R",
+                   scaleaware_table_path("table_prior_predictive_summary.csv"),
+                   scaleaware_log_path("phase3a_prior_predictive_notes.txt"),
                    c(
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_PRIOR_PREDICTIVE_MODE = prior_predictive_mode
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_PRIOR_PREDICTIVE_MODE = prior_predictive_mode
                    ))
     } else {
-      mark_skipped_step("P3A_PRIOR_PREDICTIVE", "Phase 3a prior predictive checks", "scripts/v3/06_v3_prior_predictive_checks_winsor.R",
-                        "", "", "V3_RUN_PRIOR_PREDICTIVE is FALSE.")
+      mark_skipped_step("P3A_PRIOR_PREDICTIVE", "Phase 3a prior predictive checks", "scripts/06_prior_predictive_checks.R",
+                        "", "", "ACCRUAL_RUN_PRIOR_PREDICTIVE is FALSE.")
     }
     if (run_scaleaware_student_only) {
-      run_r_script("P3B_SCALEAWARE_STUDENT", "Scale-aware Student-t brms fits", "scripts/v3/07_v3_fit_brms_named_models_winsor.R",
-                   scaleaware_table_path("table_v3_brms_diagnostics_winsor.csv"),
-                   scaleaware_log_path("v3_phase3b_fit_notes_winsor.txt"),
+      run_r_script("P3B_SCALEAWARE_STUDENT", "Scale-aware Student-t brms fits", "scripts/07_fit_brms_named_models.R",
+                   scaleaware_table_path("table_brms_diagnostics_winsor.csv"),
+                   scaleaware_log_path("phase3b_fit_notes_winsor.txt"),
                    c(
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_MODEL_STRUCTURE = env_value("V3_MODEL_STRUCTURE", "pooled_random_intercept")
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_MODEL_STRUCTURE = env_value("ACCRUAL_MODEL_STRUCTURE", "pooled_random_intercept")
                    ))
     } else {
-      mark_skipped_step("P3B_SCALEAWARE_STUDENT", "Scale-aware Student-t brms fits", "scripts/v3/07_v3_fit_brms_named_models_winsor.R",
-                        scaleaware_table_path("table_v3_brms_diagnostics_winsor.csv"),
-                        "", "V3_RUN_SCALEAWARE_STUDENT_ONLY is FALSE.")
+      mark_skipped_step("P3B_SCALEAWARE_STUDENT", "Scale-aware Student-t brms fits", "scripts/07_fit_brms_named_models.R",
+                        scaleaware_table_path("table_brms_diagnostics_winsor.csv"),
+                        "", "ACCRUAL_RUN_SCALEAWARE_STUDENT_ONLY is FALSE.")
     }
     if (run_mcmc_diagnostics) {
-      run_r_script("P3C_MCMC_DIAGNOSTICS", "Phase 3c MCMC diagnostics", "scripts/v3/08_v3_mcmc_diagnostics_winsor.R",
-                   scaleaware_table_path("table_v3_mcmc_diagnostics_model_summary.csv"),
-                   scaleaware_log_path("v3_phase3c_mcmc_diagnostics_notes.txt"),
+      run_r_script("P3C_MCMC_DIAGNOSTICS", "Phase 3c MCMC diagnostics", "scripts/08_mcmc_diagnostics.R",
+                   scaleaware_table_path("table_mcmc_diagnostics_model_summary.csv"),
+                   scaleaware_log_path("phase3c_mcmc_diagnostics_notes.txt"),
                    c(
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_MODEL_STRUCTURE = env_value("V3_MODEL_STRUCTURE", "pooled_random_intercept")
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_MODEL_STRUCTURE = env_value("ACCRUAL_MODEL_STRUCTURE", "pooled_random_intercept")
                    ))
     } else {
-      mark_skipped_step("P3C_MCMC_DIAGNOSTICS", "Phase 3c MCMC diagnostics", "scripts/v3/08_v3_mcmc_diagnostics_winsor.R",
-                        "", "", "V3_RUN_MCMC_DIAGNOSTICS is FALSE.")
+      mark_skipped_step("P3C_MCMC_DIAGNOSTICS", "Phase 3c MCMC diagnostics", "scripts/08_mcmc_diagnostics.R",
+                        "", "", "ACCRUAL_RUN_MCMC_DIAGNOSTICS is FALSE.")
     }
     if (run_scaleaware_student_only) {
-      run_r_script("P4C_SCALEAWARE_STUDENT", "Scale-aware Student-t row-level LOO stacking", "scripts/v3/09_v3_loo_stacking_winsor.R",
-                   scaleaware_table_path("table_v3_stacking_weights_ex_post_winsor_corrected.csv"),
-                   scaleaware_table_path("table_v3_stacking_weights_no_lookahead_winsor_corrected.csv"),
+      run_r_script("P4C_SCALEAWARE_STUDENT", "Scale-aware Student-t row-level LOO stacking", "scripts/09_loo_stacking.R",
+                   scaleaware_table_path("table_stacking_weights_ex_post_winsor_corrected.csv"),
+                   scaleaware_table_path("table_stacking_weights_no_lookahead_winsor_corrected.csv"),
                    c(
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_MODEL_STRUCTURE = env_value("V3_MODEL_STRUCTURE", "pooled_random_intercept")
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_MODEL_STRUCTURE = env_value("ACCRUAL_MODEL_STRUCTURE", "pooled_random_intercept")
                    ))
-      run_r_script("P5B_SCALEAWARE_STUDENT", "Scale-aware Student-t uncertainty-adjusted DA", "scripts/v3/10_v3_construct_uncertainty_adjusted_DA_winsor.R",
-                   file.path("accruals", "baseline", "final_v3_uncertainty_adjusted_accruals_winsor.csv"),
-                   scaleaware_log_path("v3_phase5b_uncertainty_adjusted_DA_notes_winsor.txt"),
+      run_r_script("P5B_SCALEAWARE_STUDENT", "Scale-aware Student-t uncertainty-adjusted DA", "scripts/10_construct_uncertainty_adjusted_DA.R",
+                   file.path("accruals", "baseline", "final_uncertainty_adjusted_accruals_winsor.csv"),
+                   scaleaware_log_path("phase5b_uncertainty_adjusted_DA_notes_winsor.txt"),
                    c(
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_MODEL_STRUCTURE = env_value("V3_MODEL_STRUCTURE", "pooled_random_intercept")
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_MODEL_STRUCTURE = env_value("ACCRUAL_MODEL_STRUCTURE", "pooled_random_intercept")
                    ))
     } else {
-      mark_skipped_step("P4C_SCALEAWARE_STUDENT", "Scale-aware Student-t row-level LOO stacking", "scripts/v3/09_v3_loo_stacking_winsor.R",
-                        scaleaware_table_path("table_v3_stacking_weights_ex_post_winsor_corrected.csv"),
-                        "", "V3_RUN_SCALEAWARE_STUDENT_ONLY is FALSE.")
-      mark_skipped_step("P5B_SCALEAWARE_STUDENT", "Scale-aware Student-t uncertainty-adjusted DA", "scripts/v3/10_v3_construct_uncertainty_adjusted_DA_winsor.R",
-                        file.path("accruals", "baseline", "final_v3_uncertainty_adjusted_accruals_winsor.csv"),
-                        "", "V3_RUN_SCALEAWARE_STUDENT_ONLY is FALSE.")
+      mark_skipped_step("P4C_SCALEAWARE_STUDENT", "Scale-aware Student-t row-level LOO stacking", "scripts/09_loo_stacking.R",
+                        scaleaware_table_path("table_stacking_weights_ex_post_winsor_corrected.csv"),
+                        "", "ACCRUAL_RUN_SCALEAWARE_STUDENT_ONLY is FALSE.")
+      mark_skipped_step("P5B_SCALEAWARE_STUDENT", "Scale-aware Student-t uncertainty-adjusted DA", "scripts/10_construct_uncertainty_adjusted_DA.R",
+                        file.path("accruals", "baseline", "final_uncertainty_adjusted_accruals_winsor.csv"),
+                        "", "ACCRUAL_RUN_SCALEAWARE_STUDENT_ONLY is FALSE.")
     }
     if (run_posterior_ppc) {
-      run_r_script("P5C_POSTERIOR_PPC", "Phase 5c posterior predictive checks", "scripts/v3/11_v3_posterior_predictive_checks_winsor.R",
-                   scaleaware_table_path("table_v3_posterior_predictive_check_summary.csv"),
-                   scaleaware_log_path("v3_phase5c_posterior_predictive_check_notes.txt"),
+      run_r_script("P5C_POSTERIOR_PPC", "Phase 5c posterior predictive checks", "scripts/11_posterior_predictive_checks.R",
+                   scaleaware_table_path("table_posterior_predictive_check_summary.csv"),
+                   scaleaware_log_path("phase5c_posterior_predictive_check_notes.txt"),
                    c(
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_MODEL_STRUCTURE = env_value("V3_MODEL_STRUCTURE", "pooled_random_intercept")
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_MODEL_STRUCTURE = env_value("ACCRUAL_MODEL_STRUCTURE", "pooled_random_intercept")
                    ))
     } else {
-      mark_skipped_step("P5C_POSTERIOR_PPC", "Phase 5c posterior predictive checks", "scripts/v3/11_v3_posterior_predictive_checks_winsor.R",
-                        "", "", "V3_RUN_POSTERIOR_PPC is FALSE.")
+      mark_skipped_step("P5C_POSTERIOR_PPC", "Phase 5c posterior predictive checks", "scripts/11_posterior_predictive_checks.R",
+                        "", "", "ACCRUAL_RUN_POSTERIOR_PPC is FALSE.")
     }
     if (run_scaleaware_student_only) {
-      run_r_script("P4D_SCALEAWARE_STUDENT", "Scale-aware Student-t grouped PSIS-LOFO", "scripts/v3/12_v3_lofo_stacking_winsor.R",
+      run_r_script("P4D_SCALEAWARE_STUDENT", "Scale-aware Student-t grouped PSIS-LOFO", "scripts/12_lofo_stacking.R",
                    scaleaware_lofo_table_path("table_reviewer_priority2_lofo_decision.csv"),
-                   scaleaware_lofo_log_path("v3_phase4d_lofo_stacking_winsor_notes.txt"),
+                   scaleaware_lofo_log_path("phase4d_lofo_stacking_winsor_notes.txt"),
                    c(
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_MODEL_STRUCTURE = env_value("V3_MODEL_STRUCTURE", "pooled_random_intercept")
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_MODEL_STRUCTURE = env_value("ACCRUAL_MODEL_STRUCTURE", "pooled_random_intercept")
                    ))
     } else {
-      mark_skipped_step("P4D_SCALEAWARE_STUDENT", "Scale-aware Student-t grouped PSIS-LOFO", "scripts/v3/12_v3_lofo_stacking_winsor.R",
+      mark_skipped_step("P4D_SCALEAWARE_STUDENT", "Scale-aware Student-t grouped PSIS-LOFO", "scripts/12_lofo_stacking.R",
                         scaleaware_lofo_table_path("table_reviewer_priority2_lofo_decision.csv"),
-                        "", "V3_RUN_SCALEAWARE_STUDENT_ONLY is FALSE.")
+                        "", "ACCRUAL_RUN_SCALEAWARE_STUDENT_ONLY is FALSE.")
     }
 
     if (run_kfold) {
-      run_r_script("P4E_PRE", "Priority 2b exact grouped K-fold preflight", "scripts/v3/13_v3_grouped_kfold_firm_winsor.R",
+      run_r_script("P4E_PRE", "Priority 2b exact grouped K-fold preflight", "scripts/13_grouped_kfold_firm.R",
                    file.path(scaleaware_root, "kfold_firm", "LATEST_RUN.txt"), "",
                    c(
-                     V3_KFOLD_FIRM_PREFLIGHT_ONLY = "TRUE",
-                     V3_KFOLD_FIRM_MODE = kfold_mode,
-                     V3_KFOLD_FIRM_K = kfold_k,
-                     V3_KFOLD_TARGET_MODE = kfold_target_mode,
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_KFOLD_FIRM_RUN_ID = "corrected_data_main_preflight"
+                     ACCRUAL_KFOLD_FIRM_PREFLIGHT_ONLY = "TRUE",
+                     ACCRUAL_KFOLD_FIRM_MODE = kfold_mode,
+                     ACCRUAL_KFOLD_FIRM_K = kfold_k,
+                     ACCRUAL_KFOLD_TARGET_MODE = kfold_target_mode,
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_KFOLD_FIRM_RUN_ID = "corrected_data_main_preflight"
                    ))
-      run_r_script("P4E", "Priority 2b exact grouped K-fold", "scripts/v3/13_v3_grouped_kfold_firm_winsor.R",
+      run_r_script("P4E", "Priority 2b exact grouped K-fold", "scripts/13_grouped_kfold_firm.R",
                    file.path(scaleaware_root, "kfold_firm", "LATEST_RUN.txt"), "",
                    c(
-                     V3_KFOLD_FIRM_PREFLIGHT_ONLY = "FALSE",
-                     V3_KFOLD_FIRM_MODE = kfold_mode,
-                     V3_KFOLD_FIRM_K = kfold_k,
-                     V3_KFOLD_TARGET_MODE = kfold_target_mode,
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_KFOLD_FIRM_RUN_ID = "corrected_data_main_kfold"
+                     ACCRUAL_KFOLD_FIRM_PREFLIGHT_ONLY = "FALSE",
+                     ACCRUAL_KFOLD_FIRM_MODE = kfold_mode,
+                     ACCRUAL_KFOLD_FIRM_K = kfold_k,
+                     ACCRUAL_KFOLD_TARGET_MODE = kfold_target_mode,
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_KFOLD_FIRM_RUN_ID = "corrected_data_main_kfold"
                    ))
     } else {
-      append_step("P4E", "Priority 2b exact grouped K-fold", "scripts/v3/13_v3_grouped_kfold_firm_winsor.R",
-                  NA, NA, "SKIPPED", NA_integer_, "", "", "V3_RUN_KFOLD is FALSE.")
+      append_step("P4E", "Priority 2b exact grouped K-fold", "scripts/13_grouped_kfold_firm.R",
+                  NA, NA, "SKIPPED", NA_integer_, "", "", "ACCRUAL_RUN_KFOLD is FALSE.")
     }
     if (run_sensitivity) {
       sens_env <- c(
-        V3_OUTPUT_ROOT = scaleaware_root,
-        V3_INPUT_WINSOR_ROOT = winsor_input_root,
-        V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-        V3_FAMILY = env_value("V3_FAMILY", "student"),
-        V3_MODEL_STRUCTURE = env_value("V3_MODEL_STRUCTURE", "pooled_random_intercept"),
-        V3_SENSITIVITY_MODE = sensitivity_mode,
-        V3_DRY_RUN = sensitivity_dry_run
+        ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+        ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+        ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+        ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+        ACCRUAL_MODEL_STRUCTURE = env_value("ACCRUAL_MODEL_STRUCTURE", "pooled_random_intercept"),
+        ACCRUAL_SENSITIVITY_MODE = sensitivity_mode,
+        ACCRUAL_DRY_RUN = sensitivity_dry_run
       )
-      run_r_script("P7A_SENS_PRIOR_PREDICTIVE", "Sensitivity prior predictive gate", "scripts/v3/14_v3_sensitivity_prior_predictive_winsor.R",
+      run_r_script("P7A_SENS_PRIOR_PREDICTIVE", "Sensitivity prior predictive gate", "scripts/14_sensitivity_prior_predictive.R",
                    scaleaware_sensitivity_table_path("sensitivity_prior_predictive_summary.csv"),
                    scaleaware_sensitivity_table_path("sensitivity_prior_predictive_gate.csv"),
                    sens_env)
-      run_r_script("P7B_SENS_REFIT", "Sensitivity full refits by prior scenario", "scripts/v3/15_v3_sensitivity_refit_prior_scenarios_winsor.R",
+      run_r_script("P7B_SENS_REFIT", "Sensitivity full refits by prior scenario", "scripts/15_sensitivity_refit_prior_scenarios.R",
                    scaleaware_sensitivity_table_path("sensitivity_refit_plan.csv"),
                    scaleaware_sensitivity_table_path("sensitivity_refit_fit_status.csv"),
                    sens_env)
-      run_r_script("P7C_SENS_MCMC_DIAGNOSTICS", "Sensitivity MCMC diagnostics gate", "scripts/v3/16_v3_sensitivity_mcmc_diagnostics_winsor.R",
+      run_r_script("P7C_SENS_MCMC_DIAGNOSTICS", "Sensitivity MCMC diagnostics gate", "scripts/16_sensitivity_mcmc_diagnostics.R",
                    scaleaware_sensitivity_table_path("sensitivity_mcmc_diagnostics_summary.csv"),
                    scaleaware_sensitivity_table_path("sensitivity_stacking_eligibility_counts.csv"),
                    sens_env)
-      run_r_script("P7D_SENS_STACKING", "Sensitivity stacking weights", "scripts/v3/17_v3_sensitivity_stacking_winsor.R",
+      run_r_script("P7D_SENS_STACKING", "Sensitivity stacking weights", "scripts/17_sensitivity_stacking.R",
                    scaleaware_sensitivity_table_path("sensitivity_stacking_weights_by_scenario.csv"),
                    scaleaware_sensitivity_table_path("sensitivity_top_models_comparison.csv"),
                    sens_env)
-      run_r_script("P7E_SENS_DA", "Sensitivity uncertainty-adjusted DA", "scripts/v3/18_v3_sensitivity_construct_DA_winsor.R",
+      run_r_script("P7E_SENS_DA", "Sensitivity uncertainty-adjusted DA", "scripts/18_sensitivity_construct_DA.R",
                    scaleaware_sensitivity_table_path("sensitivity_DA_by_scenario_long.csv"),
                    scaleaware_sensitivity_table_path("sensitivity_DA_stability_summary.csv"),
                    sens_env)
-      run_r_script("P7F_SENS_VALIDATION", "Sensitivity validation/outcome tests", "scripts/v3/19_v3_sensitivity_validation_winsor.R",
+      run_r_script("P7F_SENS_VALIDATION", "Sensitivity validation/outcome tests", "scripts/19_sensitivity_validation.R",
                    scaleaware_sensitivity_table_path("sensitivity_validation_summary.csv"),
-                   scaleaware_sensitivity_log_path("v3_sensitivity_validation_notes.txt"),
+                   scaleaware_sensitivity_log_path("sensitivity_validation_notes.txt"),
                    sens_env)
-      run_r_script("P7G_SENS_REPORT", "Sensitivity report", "scripts/v3/20_v3_sensitivity_report_winsor.R",
-                   scaleaware_sensitivity_report_path("sensitivity_report_v3.md"),
+      run_r_script("P7G_SENS_REPORT", "Sensitivity report", "scripts/20_sensitivity_report.R",
+                   scaleaware_sensitivity_report_path("sensitivity_report.md"),
                    scaleaware_sensitivity_table_path("sensitivity_reproducibility_info.csv"),
                    sens_env)
     } else {
-      mark_skipped_step("P7_SENSITIVITY", "Phase 7 full-refit sensitivity workflow", "scripts/v3/14_v3_sensitivity_prior_predictive_winsor.R",
+      mark_skipped_step("P7_SENSITIVITY", "Phase 7 full-refit sensitivity workflow", "scripts/14_sensitivity_prior_predictive.R",
                         scaleaware_sensitivity_table_path("sensitivity_prior_predictive_summary.csv"),
-                        "", "V3_RUN_SENSITIVITY is FALSE.")
+                        "", "ACCRUAL_RUN_SENSITIVITY is FALSE.")
     }
     if (run_validation) {
-      run_r_script("P6B_VALIDATION", "Phase 6b validation on scale-aware Student-t DA", "scripts/v3/21_v3_validation_on_scaleaware_student_DA.R",
-                   scaleaware_validation_path("table_v3_validation_comparison_summary_scaleaware_student.csv"),
-                   scaleaware_validation_path("v3_phase6b_validation_scaleaware_student_notes.txt"),
+      run_r_script("P6B_VALIDATION", "Phase 6b validation on scale-aware Student-t DA", "scripts/21_validation_on_scaleaware_student_DA.R",
+                   scaleaware_validation_path("table_validation_comparison_summary_scaleaware_student.csv"),
+                   scaleaware_validation_path("phase6b_validation_scaleaware_student_notes.txt"),
                    c(
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_MODEL_STRUCTURE = env_value("V3_MODEL_STRUCTURE", "pooled_random_intercept")
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_MODEL_STRUCTURE = env_value("ACCRUAL_MODEL_STRUCTURE", "pooled_random_intercept")
                    ))
     } else {
-      mark_skipped_step("P6B_VALIDATION", "Phase 6b validation on scale-aware Student-t DA", "scripts/v3/21_v3_validation_on_scaleaware_student_DA.R",
-                        scaleaware_validation_path("table_v3_validation_comparison_summary_scaleaware_student.csv"),
-                        "", "V3_RUN_VALIDATION is FALSE.")
+      mark_skipped_step("P6B_VALIDATION", "Phase 6b validation on scale-aware Student-t DA", "scripts/21_validation_on_scaleaware_student_DA.R",
+                        scaleaware_validation_path("table_validation_comparison_summary_scaleaware_student.csv"),
+                        "", "ACCRUAL_RUN_VALIDATION is FALSE.")
     }
     if (run_varying_slopes) {
-      run_r_script("P3B_VARYSLOPES", "Breuer-like varying-slope robustness fits", "scripts/v3/07_v3_fit_brms_named_models_winsor.R",
-                   scaleaware_varyslopes_table_path("table_v3_varyslopes_diagnostics.csv"),
-                   scaleaware_varyslopes_log_path("v3_varyslopes_notes.txt"),
+      run_r_script("P3B_VARYSLOPES", "Breuer-like varying-slope robustness fits", "scripts/07_fit_brms_named_models.R",
+                   scaleaware_varyslopes_table_path("table_varyslopes_diagnostics.csv"),
+                   scaleaware_varyslopes_log_path("varyslopes_notes.txt"),
                    c(
-                     V3_OUTPUT_ROOT = scaleaware_root,
-                     V3_INPUT_WINSOR_ROOT = winsor_input_root,
-                     V3_PRIOR_SET_ID = env_value("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
-                     V3_FAMILY = env_value("V3_FAMILY", "student"),
-                     V3_MODEL_STRUCTURE = "breuer_varying_slopes",
-                     V3_RUN_VARYING_SLOPES = "TRUE",
-                     V3_VARYSLOPE_SCOPE = env_value("V3_VARYSLOPE_SCOPE", "LEADING_ONLY"),
-                     V3_VARYSLOPE_GROUP = env_value("V3_VARYSLOPE_GROUP", "industry_year")
+                     ACCRUAL_OUTPUT_ROOT = scaleaware_root,
+                     ACCRUAL_INPUT_WINSOR_ROOT = winsor_input_root,
+                     ACCRUAL_PRIOR_SET_ID = env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1"),
+                     ACCRUAL_FAMILY = env_value("ACCRUAL_FAMILY", "student"),
+                     ACCRUAL_MODEL_STRUCTURE = "breuer_varying_slopes",
+                     ACCRUAL_RUN_VARYING_SLOPES = "TRUE",
+                     ACCRUAL_VARYSLOPE_SCOPE = env_value("ACCRUAL_VARYSLOPE_SCOPE", "LEADING_ONLY"),
+                     ACCRUAL_VARYSLOPE_GROUP = env_value("ACCRUAL_VARYSLOPE_GROUP", "industry_year")
                    ))
     } else {
-      mark_skipped_step("P3B_VARYSLOPES", "Breuer-like varying-slope robustness fits", "scripts/v3/07_v3_fit_brms_named_models_winsor.R",
-                        scaleaware_varyslopes_table_path("table_v3_varyslopes_diagnostics.csv"),
-                        "", "V3_RUN_VARYING_SLOPES is FALSE.")
+      mark_skipped_step("P3B_VARYSLOPES", "Breuer-like varying-slope robustness fits", "scripts/07_fit_brms_named_models.R",
+                        scaleaware_varyslopes_table_path("table_varyslopes_diagnostics.csv"),
+                        "", "ACCRUAL_RUN_VARYING_SLOPES is FALSE.")
     }
     compare_old_invalid_vs_corrected()
     final_status <- "CORRECTED_RERUN_SUCCESS"
@@ -755,10 +755,10 @@ phase_status <- function(pattern) {
 }
 
 corrected_counts <- c(
-  ex_post = sample_n(v3_baseline_table_path("final_v3_common_ex_post_sample.csv")),
-  no_lookahead = sample_n(v3_baseline_table_path("final_v3_common_realtime_sample.csv")),
-  winsor_ex_post = sample_n(file.path(v3_input_winsor_root, "tables", "final_v3_common_ex_post_sample_winsor.csv")),
-  winsor_no_lookahead = sample_n(file.path(v3_input_winsor_root, "tables", "final_v3_common_realtime_sample_winsor.csv"))
+  ex_post = sample_n(baseline_table_path("final_common_ex_post_sample.csv")),
+  no_lookahead = sample_n(baseline_table_path("final_common_realtime_sample.csv")),
+  winsor_ex_post = sample_n(file.path(input_winsor_root, "tables", "final_common_ex_post_sample_winsor.csv")),
+  winsor_no_lookahead = sample_n(file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv"))
 )
 
 summary_lines <- c(
@@ -804,11 +804,11 @@ summary_lines <- c(
   paste("K-fold:", ifelse(run_kfold, paste("RUN", kfold_mode, "K=", kfold_k, "target_mode=", kfold_target_mode), "SKIPPED")),
   "Next actions:",
   if (dry_run) {
-    "Set V3_RESET_DRY_RUN='FALSE' and V3_RESET_CONFIRM='TRUE' to quarantine invalid outputs."
+    "Set ACCRUAL_RESET_DRY_RUN='FALSE' and ACCRUAL_RESET_CONFIRM='TRUE' to quarantine invalid outputs."
   } else if (!rerun_after_reset) {
-    "Set V3_RERUN_AFTER_RESET='TRUE' after reviewing quarantine manifest to run the corrected pipeline."
+    "Set ACCRUAL_RERUN_AFTER_RESET='TRUE' after reviewing quarantine manifest to run the corrected pipeline."
   } else if (final_status == "REVIEW_REQUIRED_AFTER_COGS_INV_AUDIT") {
-    paste("Review", normalize_path(baseline_log_path("cogs_inv_correction_audit_notes.txt")), "then rerun with V3_CONTINUE_AFTER_AUDIT_WARNING='TRUE' only if acceptable.")
+    paste("Review", normalize_path(baseline_log_path("cogs_inv_correction_audit_notes.txt")), "then rerun with ACCRUAL_CONTINUE_AFTER_AUDIT_WARNING='TRUE' only if acceptable.")
   } else {
     "Review corrected manifests and run exact grouped K-fold separately if it was skipped."
   }

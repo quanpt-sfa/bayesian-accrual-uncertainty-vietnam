@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 15_v3_sensitivity_refit_prior_scenarios_winsor.R
+# Script: 15_sensitivity_refit_prior_scenarios.R
 # Purpose: Full MCMC refits for baseline/tight/wide prior sensitivity scenarios.
 # -----------------------------------------------------------------------------
 
@@ -7,25 +7,25 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-ensure_v3_sensitivity_dirs()
-validate_v3_final_analysis_config("sensitivity full refit", final_mode = TRUE)
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+ensure_sensitivity_dirs()
+validate_final_analysis_config("sensitivity full refit", final_mode = TRUE)
 
-dry_run <- env_flag_v3("V3_DRY_RUN", "TRUE")
-force_refit <- env_flag_v3("V3_FORCE_REFIT", "FALSE")
-include_secondary <- env_flag_v3("V3_SENS_INCLUDE_SECONDARY", "FALSE")
-seed <- as.integer(env_value_v3("V3_SENS_SEED", "20260614"))
-chains <- as.integer(env_value_v3("V3_SENS_CHAINS", "4"))
-iter <- as.integer(env_value_v3("V3_SENS_ITER", "4000"))
-warmup <- as.integer(env_value_v3("V3_SENS_WARMUP", "1000"))
-adapt_delta <- as.numeric(env_value_v3("V3_SENS_ADAPT_DELTA", "0.95"))
-max_treedepth <- as.integer(env_value_v3("V3_SENS_MAX_TREEDEPTH", "12"))
-if (any(is.na(c(seed, chains, iter, warmup, max_treedepth))) || is.na(adapt_delta)) stop("[BLOCKER] Invalid V3_SENS sampling configuration.")
+dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
+force_refit <- env_flag("ACCRUAL_FORCE_REFIT", "FALSE")
+include_secondary <- env_flag("ACCRUAL_SENS_INCLUDE_SECONDARY", "FALSE")
+seed <- as.integer(env_value("ACCRUAL_SENS_SEED", "20260614"))
+chains <- as.integer(env_value("ACCRUAL_SENS_CHAINS", "4"))
+iter <- as.integer(env_value("ACCRUAL_SENS_ITER", "4000"))
+warmup <- as.integer(env_value("ACCRUAL_SENS_WARMUP", "1000"))
+adapt_delta <- as.numeric(env_value("ACCRUAL_SENS_ADAPT_DELTA", "0.95"))
+max_treedepth <- as.integer(env_value("ACCRUAL_SENS_MAX_TREEDEPTH", "12"))
+if (any(is.na(c(seed, chains, iter, warmup, max_treedepth))) || is.na(adapt_delta)) stop("[BLOCKER] Invalid ACCRUAL_SENS sampling configuration.")
 
-scenarios <- selected_sensitivity_scenarios_v3()
-formulas_path <- file.path(v3_input_winsor_root, "tables", "table_v3_named_model_formulas_winsor.csv")
-gate_path <- file.path(v3_sensitivity_root(), "tables", "sensitivity_prior_predictive_gate.csv")
+scenarios <- selected_sensitivity_scenarios()
+formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
+gate_path <- file.path(sensitivity_root(), "tables", "sensitivity_prior_predictive_gate.csv")
 if (!file.exists(formulas_path)) stop("[BLOCKER] Missing winsor formula table: ", formulas_path)
 if (!dry_run && !file.exists(gate_path)) stop("[BLOCKER] Missing sensitivity prior predictive gate. Run script 14 first.")
 
@@ -40,7 +40,7 @@ truthy <- function(x) {
 eligible_formulas <- formulas_df %>%
   filter(Sample_Group == "main_common") %>%
   filter(vapply(Main_Stack_Inclusion, truthy, logical(1))) %>%
-  filter(mapply(function(space, id) id %in% v3_main_model_ids_for_space(space), Target_Space, Model_ID))
+  filter(mapply(function(space, id) id %in% main_model_ids_for_space(space), Target_Space, Model_ID))
 
 if (include_secondary) {
   secondary <- formulas_df %>%
@@ -78,12 +78,12 @@ audit_summary_rows <- list()
 for (sidx in seq_len(nrow(scenarios))) {
   sc <- scenarios[sidx, ]
   scenario <- sc$Scenario
-  scenario_root <- v3_sensitivity_root(scenario)
-  ensure_v3_sensitivity_dirs(scenario)
+  scenario_root <- sensitivity_root(scenario)
+  ensure_sensitivity_dirs(scenario)
   proceed <- gate_allows(scenario)
   model_list <- unique(paste(eligible_formulas$Target_Space, eligible_formulas$Model_ID, sep = ":"))
 
-  write_v3_run_manifest(
+  write_run_manifest(
     file.path(scenario_root, "manifests", "refit_manifest.csv"),
     scenario = scenario,
     prior_set_id = sc$Prior_Set_ID,
@@ -99,7 +99,7 @@ for (sidx in seq_len(nrow(scenarios))) {
 
   for (i in seq_len(nrow(eligible_formulas))) {
     row <- eligible_formulas[i, ]
-    model_key <- model_key_v3_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, paste0("_", scenario, "_winsor"))
+    model_key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, paste0("_", scenario, "_winsor"))
     fit_path <- file.path(scenario_root, "fits", paste0("fit_", model_key, ".rds"))
     draws_path <- file.path(scenario_root, "draws", paste0("draws_", model_key, ".rds"))
     meta_path <- file.path(scenario_root, "fits", paste0("fit_", model_key, "_metadata.csv"))
@@ -125,7 +125,7 @@ for (sidx in seq_len(nrow(scenarios))) {
       stringsAsFactors = FALSE
     )
 
-    existing_match <- file.exists(fit_path) && file.exists(meta_path) && v3_metadata_matches(meta_path, expected_meta)
+    existing_match <- file.exists(fit_path) && file.exists(meta_path) && metadata_matches(meta_path, expected_meta)
     plan_rows[[length(plan_rows) + 1]] <- cbind(expected_meta, data.frame(
       fit_path = fit_path,
       draws_path = draws_path,
@@ -157,7 +157,7 @@ for (sidx in seq_len(nrow(scenarios))) {
 
     if (file.exists(fit_path) && !existing_match && !force_refit) {
       stop("[BLOCKER] Existing sensitivity fit metadata does not match requested configuration: ", fit_path,
-           ". Set V3_FORCE_REFIT=TRUE only if overwrite is intentional.")
+           ". Set ACCRUAL_FORCE_REFIT=TRUE only if overwrite is intentional.")
     }
 
     if (existing_match && !force_refit) {
@@ -197,8 +197,8 @@ for (sidx in seq_len(nrow(scenarios))) {
       next
     }
 
-    formula_str <- fix_formula_v3(row$brms_Formula)
-    prior_list <- default_prior_list_v3(
+    formula_str <- fix_formula(row$brms_Formula)
+    prior_list <- default_prior_list(
       row$Heterogeneity_Variant,
       model_structure = sc$Model_Structure,
       prior_set_id = sc$Prior_Set_ID,
@@ -215,7 +215,7 @@ for (sidx in seq_len(nrow(scenarios))) {
           brms::brm(
             formula = brms::bf(as.formula(formula_str)),
             data = df_scaled,
-            family = brms_family_v3(sc$Likelihood_Family),
+            family = brms_family(sc$Likelihood_Family),
             prior = prior_list,
             chains = chains,
             iter = iter,
@@ -316,14 +316,14 @@ plan_df <- bind_rows(plan_rows)
 diag_df <- bind_rows(diag_rows)
 audit_summary_df <- bind_rows(audit_summary_rows)
 
-tables_root <- file.path(v3_sensitivity_root(), "tables")
+tables_root <- file.path(sensitivity_root(), "tables")
 write.csv(plan_df, file.path(tables_root, "sensitivity_refit_plan.csv"), row.names = FALSE)
 write.csv(diag_df, file.path(tables_root, "sensitivity_refit_fit_status.csv"), row.names = FALSE)
 write.csv(audit_summary_df, file.path(tables_root, "sensitivity_refit_audit_summary.csv"), row.names = FALSE)
 
 # Make sure it is also written in output root tables
-dir.create(file.path(v3_output_root, "tables"), recursive = TRUE, showWarnings = FALSE)
-write.csv(audit_summary_df, file.path(v3_output_root, "tables", "sensitivity_refit_audit_summary.csv"), row.names = FALSE)
+dir.create(file.path(output_root, "tables"), recursive = TRUE, showWarnings = FALSE)
+write.csv(audit_summary_df, file.path(output_root, "tables", "sensitivity_refit_audit_summary.csv"), row.names = FALSE)
 
 writeLines(c(
   "Sensitivity full-refit notes",
@@ -332,6 +332,6 @@ writeLines(c(
   sprintf("Include secondary robustness models M08/M10: %s", include_secondary),
   sprintf("Sampling config: %s", sampling_config),
   "No posterior baseline draws are reused. Existing scenario fits require metadata match before skip/resume."
-), file.path(v3_sensitivity_root(), "logs", "v3_sensitivity_refit_notes.txt"))
+), file.path(sensitivity_root(), "logs", "sensitivity_refit_notes.txt"))
 
 cat("\n[SUCCESS] Sensitivity refit phase completed.\n")

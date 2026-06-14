@@ -18,4 +18,4 @@
 
 ## Robustness status
 
-`M08` and `M10` are available as robustness checks rather than core stacking models. Grouped K-fold manifest lists in script `13_v3_grouped_kfold_firm_winsor.R` include `M02` in both ex-post and no-lookahead model sets.
+`M08` and `M10` are available as robustness checks rather than core stacking models. Grouped K-fold manifest lists in script `13_grouped_kfold_firm.R` include `M02` in both ex-post and no-lookahead model sets.

@@ -1,28 +1,28 @@
 # -----------------------------------------------------------------------------
-# Script: 14_v3_sensitivity_prior_predictive_winsor.R
-# Purpose: Prior predictive gate for v3 full-refit sensitivity scenarios.
+# Script: 14_sensitivity_prior_predictive.R
+# Purpose: Prior predictive gate for the full-refit sensitivity scenarios.
 # -----------------------------------------------------------------------------
 
 suppressPackageStartupMessages({
   library(dplyr)
 })
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-ensure_v3_sensitivity_dirs()
-write_method_design_files_v3()
-write_prior_registry_v3()
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+ensure_sensitivity_dirs()
+write_method_design_files()
+write_prior_registry()
 
-dry_run <- env_flag_v3("V3_DRY_RUN", "TRUE")
-allow_prior_fail <- env_flag_v3("V3_ALLOW_PRIOR_PREDICTIVE_FAIL", "FALSE")
-seed <- as.integer(env_value_v3("V3_SENS_SEED", "20260614"))
+dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
+allow_prior_fail <- env_flag("ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL", "FALSE")
+seed <- as.integer(env_value("ACCRUAL_SENS_SEED", "20260614"))
 if (is.na(seed)) seed <- 20260614L
-n_draws <- as.integer(env_value_v3("V3_PRIOR_PRED_N_DRAWS", as.character(v3_prior_pred_n_draws)))
-if (is.na(n_draws) || n_draws <= 0) n_draws <- v3_prior_pred_n_draws
+n_draws <- as.integer(env_value("ACCRUAL_PRIOR_PRED_N_DRAWS", as.character(prior_pred_n_draws)))
+if (is.na(n_draws) || n_draws <= 0) n_draws <- prior_pred_n_draws
 set.seed(seed)
 
-scenarios <- selected_sensitivity_scenarios_v3()
-formulas_path <- file.path(v3_input_winsor_root, "tables", "table_v3_named_model_formulas_winsor.csv")
+scenarios <- selected_sensitivity_scenarios()
+formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
 if (!file.exists(formulas_path)) stop("[BLOCKER] Missing winsor formula table: ", formulas_path)
 formulas_df <- read.csv(formulas_path, stringsAsFactors = FALSE)
 
@@ -34,7 +34,7 @@ truthy <- function(x) {
 eligible_formulas <- formulas_df %>%
   filter(Sample_Group == "main_common") %>%
   filter(vapply(Main_Stack_Inclusion, truthy, logical(1))) %>%
-  filter(mapply(function(space, id) id %in% v3_main_model_ids_for_space(space), Target_Space, Model_ID)) %>%
+  filter(mapply(function(space, id) id %in% main_model_ids_for_space(space), Target_Space, Model_ID)) %>%
   distinct(Model_ID, Model_Name, Target_Space, Sample_Group, Heterogeneity_Variant, Target_Sample, brms_Formula, .keep_all = TRUE) %>%
   arrange(Target_Space, Model_ID, Heterogeneity_Variant)
 
@@ -58,11 +58,11 @@ if (!dry_run && !requireNamespace("brms", quietly = TRUE)) {
 for (sidx in seq_len(nrow(scenarios))) {
   sc <- scenarios[sidx, ]
   scenario <- sc$Scenario
-  scenario_root <- v3_sensitivity_root(scenario)
-  ensure_v3_sensitivity_dirs(scenario)
+  scenario_root <- sensitivity_root(scenario)
+  ensure_sensitivity_dirs(scenario)
 
   model_list <- unique(paste(eligible_formulas$Target_Space, eligible_formulas$Model_ID, sep = ":"))
-  write_v3_run_manifest(
+  write_run_manifest(
     file.path(scenario_root, "manifests", "prior_predictive_manifest.csv"),
     scenario = scenario,
     prior_set_id = sc$Prior_Set_ID,
@@ -78,7 +78,7 @@ for (sidx in seq_len(nrow(scenarios))) {
 
   for (i in seq_len(nrow(eligible_formulas))) {
     row <- eligible_formulas[i, ]
-    model_key <- model_key_v3_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, paste0("_", scenario, "_priorpred"))
+    model_key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, paste0("_", scenario, "_priorpred"))
     out_fit <- file.path(scenario_root, "prior_predictive", paste0("fit_", model_key, ".rds"))
 
     if (dry_run) {
@@ -95,7 +95,7 @@ for (sidx in seq_len(nrow(scenarios))) {
         yrep_mean = NA_real_,
         yrep_sd = NA_real_,
         status = "NOT_RUN_DRY_RUN",
-        reason = "V3_DRY_RUN=TRUE; no brms prior predictive sampling executed.",
+        reason = "ACCRUAL_DRY_RUN=TRUE; no brms prior predictive sampling executed.",
         output_path = out_fit,
         stringsAsFactors = FALSE
       )
@@ -103,8 +103,8 @@ for (sidx in seq_len(nrow(scenarios))) {
     }
 
     df_scaled <- read_winsor_sample(row$Target_Sample)
-    formula_str <- fix_formula_v3(row$brms_Formula)
-    prior_list <- default_prior_list_v3(
+    formula_str <- fix_formula(row$brms_Formula)
+    prior_list <- default_prior_list(
       row$Heterogeneity_Variant,
       model_structure = sc$Model_Structure,
       prior_set_id = sc$Prior_Set_ID,
@@ -115,7 +115,7 @@ for (sidx in seq_len(nrow(scenarios))) {
       brms::brm(
         formula = brms::bf(as.formula(formula_str)),
         data = df_scaled,
-        family = brms_family_v3(sc$Likelihood_Family),
+        family = brms_family(sc$Likelihood_Family),
         prior = prior_list,
         sample_prior = "only",
         chains = 2,
@@ -174,7 +174,7 @@ for (sidx in seq_len(nrow(scenarios))) {
   }
 
   sc_rows <- bind_rows(scenario_rows) %>% filter(scenario == !!scenario)
-  write.csv(sc_rows, file.path(scenario_root, "prior_predictive", paste0("table_v3_sensitivity_prior_predictive_", scenario, ".csv")), row.names = FALSE)
+  write.csv(sc_rows, file.path(scenario_root, "prior_predictive", paste0("table_sensitivity_prior_predictive_", scenario, ".csv")), row.names = FALSE)
 
   gate_status <- if (dry_run) {
     "DRY_RUN_NOT_EVALUATED"
@@ -201,7 +201,7 @@ for (sidx in seq_len(nrow(scenarios))) {
 summary_df <- bind_rows(scenario_rows)
 gate_df <- bind_rows(gate_rows)
 
-sens_tables <- file.path(v3_sensitivity_root(), "tables")
+sens_tables <- file.path(sensitivity_root(), "tables")
 write.csv(summary_df, file.path(sens_tables, "sensitivity_prior_predictive_summary.csv"), row.names = FALSE)
 write.csv(gate_df, file.path(sens_tables, "sensitivity_prior_predictive_gate.csv"), row.names = FALSE)
 
@@ -210,11 +210,11 @@ writeLines(c(
   sprintf("Dry run: %s", dry_run),
   sprintf("Scenarios: %s", paste(scenarios$Scenario, collapse = ", ")),
   sprintf("Allow prior predictive fail override: %s", allow_prior_fail),
-  "Scenario FAIL blocks full refit unless V3_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE."
-), file.path(v3_sensitivity_root(), "logs", "v3_sensitivity_prior_predictive_notes.txt"))
+  "Scenario FAIL blocks full refit unless ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE."
+), file.path(sensitivity_root(), "logs", "sensitivity_prior_predictive_notes.txt"))
 
 if (!dry_run && any(gate_df$gate_status == "BLOCKED_FAIL", na.rm = TRUE)) {
-  stop("[BLOCKER] One or more sensitivity scenarios failed prior predictive checks. Set V3_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE only for an intentional diagnostic override.")
+  stop("[BLOCKER] One or more sensitivity scenarios failed prior predictive checks. Set ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE only for an intentional diagnostic override.")
 }
 
 cat("\n[SUCCESS] Sensitivity prior predictive gate completed.\n")

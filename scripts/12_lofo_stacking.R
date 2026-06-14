@@ -1,42 +1,42 @@
 # -----------------------------------------------------------------------------
-# Script: 12_v3_lofo_stacking_winsor.R
+# Script: 12_lofo_stacking.R
 # Purpose: Reviewer Priority 2 - grouped PSIS leave-one-firm-out stacking on
-#          already winsorized v3 brms models.
+#          already winsorized brms models.
 # -----------------------------------------------------------------------------
 
 library(dplyr)
 library(brms)
 library(loo)
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
 
 set.seed(42)
 options(mc.cores = 1)
 
-lofo_root <- file.path(v3_winsor_root, "lofo")
+lofo_root <- file.path(winsor_root, "lofo")
 lofo_dirs <- file.path(lofo_root, c("", "tables", "logs", "figures", "cache"))
 for (d in lofo_dirs) {
   if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
 }
 
-table_path_v3 <- function(file_name, prefer_input = FALSE) {
+table_path <- function(file_name, prefer_input = FALSE) {
   candidates <- if (prefer_input) {
-    c(file.path(v3_input_winsor_root, "tables", file_name), file.path(v3_output_root, "tables", file_name))
+    c(file.path(input_winsor_root, "tables", file_name), file.path(output_root, "tables", file_name))
   } else {
-    c(file.path(v3_output_root, "tables", file_name), file.path(v3_input_winsor_root, "tables", file_name))
+    c(file.path(output_root, "tables", file_name), file.path(input_winsor_root, "tables", file_name))
   }
   hit <- candidates[file.exists(candidates)][1]
   if (is.na(hit)) candidates[1] else hit
 }
 
 input_paths <- c(
-  ex_post_sample = table_path_v3("final_v3_common_ex_post_sample_winsor.csv", prefer_input = TRUE),
-  no_lookahead_sample = table_path_v3("final_v3_common_realtime_sample_winsor.csv", prefer_input = TRUE),
-  formulas = table_path_v3("table_v3_named_model_formulas_winsor.csv"),
-  diagnostics = file.path(v3_output_root, "tables", "table_v3_brms_diagnostics_winsor.csv"),
-  rowloo_ex_post = file.path(v3_output_root, "tables", "table_v3_stacking_weights_ex_post_winsor_corrected.csv"),
-  rowloo_no_lookahead = file.path(v3_output_root, "tables", "table_v3_stacking_weights_no_lookahead_winsor_corrected.csv")
+  ex_post_sample = table_path("final_common_ex_post_sample_winsor.csv", prefer_input = TRUE),
+  no_lookahead_sample = table_path("final_common_realtime_sample_winsor.csv", prefer_input = TRUE),
+  formulas = table_path("table_named_model_formulas_winsor.csv"),
+  diagnostics = file.path(output_root, "tables", "table_brms_diagnostics_winsor.csv"),
+  rowloo_ex_post = file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv"),
+  rowloo_no_lookahead = file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv")
 )
 
 missing_inputs <- input_paths[!file.exists(input_paths)]
@@ -45,7 +45,7 @@ if (length(missing_inputs) > 0) {
        paste(names(missing_inputs), missing_inputs, sep = "=", collapse = "; "))
 }
 
-models_dir <- file.path(v3_winsor_root, "models")
+models_dir <- file.path(winsor_root, "models")
 if (!dir.exists(models_dir)) stop("[BLOCKER] Winsorized model directory missing: ", models_dir)
 if (length(list.files(models_dir, pattern = "\\.rds$", full.names = TRUE)) == 0) {
   stop("[BLOCKER] No winsorized model files found under: ", models_dir)
@@ -78,9 +78,9 @@ space_label_for_output <- function(space) {
 }
 
 model_file_candidates <- function(model_id, target_space, sample_group, heterogeneity_variant) {
-  key_no_suffix <- model_key_v3(model_id, target_space, heterogeneity_variant)
-  key_winsor <- model_key_v3(model_id, target_space, heterogeneity_variant, "_winsor")
-  key_sampled_winsor <- model_key_v3_sampled(model_id, target_space, sample_group, heterogeneity_variant, "_winsor")
+  key_no_suffix <- model_key(model_id, target_space, heterogeneity_variant)
+  key_winsor <- model_key(model_id, target_space, heterogeneity_variant, "_winsor")
+  key_sampled_winsor <- model_key_sampled(model_id, target_space, sample_group, heterogeneity_variant, "_winsor")
   file.path(models_dir, c(
     paste0("fit_", key_sampled_winsor, "_sp.rds"),
     paste0("fit_", key_sampled_winsor, ".rds"),
@@ -98,13 +98,13 @@ discover_model_file <- function(model_id, target_space, sample_group, heterogene
   if (length(existing) == 0) return(NA_character_)
   chosen <- existing[1]
   normalized <- normalizePath(chosen, winslash = "/", mustWork = TRUE)
-  baseline_models_root <- normalizePath(file.path(v3_original_root, "models"), winslash = "/", mustWork = FALSE)
+  baseline_models_root <- normalizePath(file.path(baseline_root, "models"), winslash = "/", mustWork = FALSE)
   if (startsWith(normalized, baseline_models_root)) {
     stop("[BLOCKER] Refusing to read non-winsorized model file: ", normalized)
   }
   model_root <- normalizePath(models_dir, winslash = "/", mustWork = FALSE)
   if (!startsWith(normalized, model_root)) {
-    stop("[BLOCKER] Model file is not under current V3_OUTPUT_ROOT models directory: ", normalized)
+    stop("[BLOCKER] Model file is not under current ACCRUAL_OUTPUT_ROOT models directory: ", normalized)
   }
   chosen
 }
@@ -153,7 +153,7 @@ load_or_compute_lofo <- function(model_row, sample_df, target_space, primary = T
   firm_levels <- unique(firm_ids)
   stats <- obs_per_firm_stats(firm_ids)
 
-  base_key <- model_key_v3_sampled(model_row$Model_ID, target_space, model_row$Sample_Group, model_row$Heterogeneity_Variant, "_winsor")
+  base_key <- model_key_sampled(model_row$Model_ID, target_space, model_row$Sample_Group, model_row$Heterogeneity_Variant, "_winsor")
   cache_path <- file.path(lofo_root, "cache", paste0(base_key, "_grouped_psis_lofo.rds"))
 
   empty_diag <- data.frame(
@@ -185,10 +185,10 @@ load_or_compute_lofo <- function(model_row, sample_df, target_space, primary = T
     reliability_flag = "FAILED",
     included_in_stack = FALSE,
     exclusion_reason = NA_character_,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 
@@ -216,7 +216,7 @@ load_or_compute_lofo <- function(model_row, sample_df, target_space, primary = T
       }
     }
     for (nm in c("Prior_Set_ID", "Likelihood_Family", "Model_Structure", "Output_Root")) {
-      if (!nm %in% names(cached$diag)) cached$diag[[nm]] <- metadata_columns_v3()[[nm]]
+      if (!nm %in% names(cached$diag)) cached$diag[[nm]] <- metadata_columns()[[nm]]
     }
     return(cached)
   }
@@ -367,7 +367,7 @@ run_space_lofo <- function(target_space, model_ids, sample_df) {
   meta <- list()
   for (res in included_results) {
     d <- res$diag
-    key <- model_key_v3_sampled(d$Model_ID, d$Target_Space, d$Sample_Group, d$Heterogeneity_Variant, "_winsor")
+    key <- model_key_sampled(d$Model_ID, d$Target_Space, d$Sample_Group, d$Heterogeneity_Variant, "_winsor")
     loo_list[[key]] <- res$loo
     meta[[key]] <- d
   }
@@ -390,10 +390,10 @@ run_space_lofo <- function(target_space, model_ids, sample_df) {
     ParetoK_Status = vapply(names(loo_list), function(k) meta[[k]]$ParetoK_Status, character(1)),
     Model_Level_Caution = vapply(names(loo_list), function(k) meta[[k]]$Model_Level_Caution, character(1)),
     reliability_flag = vapply(names(loo_list), function(k) meta[[k]]$reliability_flag, character(1)),
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   ) %>%
     arrange(desc(Weight_LOFO)) %>%
@@ -412,10 +412,10 @@ message("\n========= GROUPED PSIS-LOFO: NO-LOOK-AHEAD FEATURE SPACE =========")
 lofo_rt <- run_space_lofo("real_time", no_lookahead_ids, sample_rt)
 
 diagnostics_df <- bind_rows(lofo_ep$diagnostics, lofo_rt$diagnostics)
-write.csv(diagnostics_df, file.path(lofo_root, "tables", "table_v3_winsor_lofo_model_diagnostics.csv"), row.names = FALSE)
+write.csv(diagnostics_df, file.path(lofo_root, "tables", "table_winsor_lofo_model_diagnostics.csv"), row.names = FALSE)
 
-write.csv(lofo_ep$weights, file.path(lofo_root, "tables", "table_v3_winsor_lofo_weights_ex_post.csv"), row.names = FALSE)
-write.csv(lofo_rt$weights, file.path(lofo_root, "tables", "table_v3_winsor_lofo_weights_no_lookahead.csv"), row.names = FALSE)
+write.csv(lofo_ep$weights, file.path(lofo_root, "tables", "table_winsor_lofo_weights_ex_post.csv"), row.names = FALSE)
+write.csv(lofo_rt$weights, file.path(lofo_root, "tables", "table_winsor_lofo_weights_no_lookahead.csv"), row.names = FALSE)
 
 # Secondary M08 robustness only, if eligible model files exist.
 m08_rows <- diag_df %>%
@@ -428,14 +428,14 @@ m08_rows <- diag_df %>%
 m08_diag <- data.frame()
 if (nrow(m08_rows) > 0) {
   for (i in seq_len(nrow(m08_rows))) {
-    sample_path <- table_path_v3(m08_rows$Target_Sample[i], prefer_input = TRUE)
+    sample_path <- table_path(m08_rows$Target_Sample[i], prefer_input = TRUE)
     if (!file.exists(sample_path)) next
     m08_sample <- read.csv(sample_path, stringsAsFactors = FALSE)
     res <- load_or_compute_lofo(m08_rows[i, ], m08_sample, m08_rows$Target_Space[i])
     m08_diag <- bind_rows(m08_diag, res$diag)
   }
 }
-write.csv(m08_diag, file.path(lofo_root, "tables", "table_v3_winsor_lofo_m08_secondary.csv"), row.names = FALSE)
+write.csv(m08_diag, file.path(lofo_root, "tables", "table_winsor_lofo_m08_secondary.csv"), row.names = FALSE)
 
 prepare_rowloo <- function(df) {
   df %>%
@@ -564,23 +564,23 @@ stability_df <- stability_df %>%
       grepl("Firm RE", Heterogeneity_Variant) & Weight_LOFO_Winsor < Weight_RowLOO_Winsor ~ "Firm random-intercept support attenuates under new-firm evaluation.",
       TRUE ~ "Compare row-level winsor LOO and grouped PSIS-LOFO support."
     ),
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root
   ) %>%
   arrange(Target_Space, Rank_LOFO_Winsor)
 
 family_weights <- family_weights %>%
   mutate(
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root
   )
 
-write.csv(stability_df, file.path(lofo_root, "tables", "table_v3_winsor_weight_stability_rowloo_vs_lofo.csv"), row.names = FALSE)
-write.csv(family_weights, file.path(lofo_root, "tables", "table_v3_winsor_lofo_family_weights.csv"), row.names = FALSE)
+write.csv(stability_df, file.path(lofo_root, "tables", "table_winsor_weight_stability_rowloo_vs_lofo.csv"), row.names = FALSE)
+write.csv(family_weights, file.path(lofo_root, "tables", "table_winsor_lofo_family_weights.csv"), row.names = FALSE)
 
 decision_table <- data.frame(
   Criterion = c(
@@ -648,10 +648,10 @@ decision_table$ParetoK_Status <- if (any(diagnostics_df$pareto_k_gt_1_0 > 0, na.
 } else {
   "OK"
 }
-decision_table$Prior_Set_ID <- v3_prior_set_id
-decision_table$Likelihood_Family <- v3_likelihood_family
-decision_table$Model_Structure <- v3_model_structure
-decision_table$Output_Root <- v3_output_root
+decision_table$Prior_Set_ID <- prior_set_id
+decision_table$Likelihood_Family <- likelihood_family
+decision_table$Model_Structure <- model_structure
+decision_table$Output_Root <- output_root
 write.csv(decision_table, file.path(lofo_root, "tables", "table_reviewer_priority2_lofo_decision.csv"), row.names = FALSE)
 
 recommended_paragraph <- switch(
@@ -673,7 +673,7 @@ reviewer_notes <- c(
   sprintf("Ex-post dominant grouped PSIS-LOFO family: %s (weight %.4f).", dom_ep$Family, dom_ep$Weight_LOFO_Winsor),
   sprintf("No-look-ahead feature-space dominant grouped PSIS-LOFO family: %s (weight %.4f).", dom_rt$Family, dom_rt$Weight_LOFO_Winsor),
   sprintf("Final Priority 2 decision: %s.", final_decision),
-  "Pareto-k limitations are reported in table_v3_winsor_lofo_model_diagnostics.csv and should be discussed wherever LOFO weights are cited.",
+  "Pareto-k limitations are reported in table_winsor_lofo_model_diagnostics.csv and should be discussed wherever LOFO weights are cited.",
   if (any(diagnostics_df$pareto_k_gt_0_7 > 0, na.rm = TRUE)) "Exact grouped K-fold is recommended for affected models." else "No grouped PSIS-LOFO Pareto-k values exceeded 0.7.",
   "Recommended manuscript wording:",
   recommended_paragraph
@@ -708,7 +708,7 @@ technical_log <- c(
   "",
   paste("Final decision:", final_decision)
 )
-writeLines(technical_log, file.path(lofo_root, "logs", "v3_phase4d_lofo_stacking_winsor_notes.txt"))
+writeLines(technical_log, file.path(lofo_root, "logs", "phase4d_lofo_stacking_winsor_notes.txt"))
 
 cat("\n===== REVIEWER PRIORITY 2 GROUPED PSIS-LOFO SUMMARY =====\n")
 cat(sprintf("1. Ex-post N observations: %d; N firms: %d\n", nrow(sample_ep), length(unique(sample_ep$company))))

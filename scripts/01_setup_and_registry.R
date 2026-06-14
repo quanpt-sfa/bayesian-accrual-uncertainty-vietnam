@@ -1,13 +1,13 @@
 # -----------------------------------------------------------------------------
-# Script: 01_v3_setup_and_registry.R
-# Purpose: Create the v3 pipeline structure and model registry.
+# Script: 01_setup_and_registry.R
+# Purpose: Create the accrual uncertainty pipeline structure and model registry.
 # Author: Antigravity
 # Date: 2026-06-04
 # -----------------------------------------------------------------------------
 
-source("scripts/v3/00_v3_winsor_helpers.R")
+source("scripts/00_helpers.R")
 
-ensure_v3_baseline_dirs()
+ensure_baseline_dirs()
 
 # 2. Define the Model Registry data frame
 registry_data <- data.frame(
@@ -37,7 +37,7 @@ registry_data <- data.frame(
     "McNichols (2002) / Kothari et al. (2005)", 
     "Ball & Shivakumar (2005)", 
     "Extended Performance & Volatility", 
-    "Real-time No-lead (v3)", 
+    "Real-time No-lead", 
     "Operating-cycle Extended", 
     "Larcker & Richardson (2004)",
     "Lifecycle Accruals"
@@ -144,7 +144,7 @@ registry_data$Main_Stack_Reason <- ifelse(
 )
 
 # Save the registry to CSV
-registry_out <- v3_baseline_table_path("table_v3_model_registry.csv")
+registry_out <- baseline_table_path("table_model_registry.csv")
 write.csv(
   registry_data, 
   file = registry_out,
@@ -166,7 +166,7 @@ main_secondary_design <- data.frame(
 )
 write.csv(
   main_secondary_design,
-  file = v3_baseline_table_path("table_v3_main_vs_secondary_model_design.csv"),
+  file = baseline_table_path("table_main_vs_secondary_model_design.csv"),
   row.names = FALSE
 )
 
@@ -175,23 +175,23 @@ method_note <- paste(
   "M10 is therefore treated as a secondary robustness specification on the operating-cycle-available subsample.",
   "This prevents COGS/INV availability and the heavy upper tail of INV/COGS from determining the common sample used to compare the primary Jones-family, cash-flow mapping, and asymmetric accrual models."
 )
-writeLines(method_note, con = v3_baseline_log_path("v3_method_note_operating_cycle_secondary_design.txt"))
+writeLines(method_note, con = baseline_log_path("method_note_operating_cycle_secondary_design.txt"))
 
 # 3. Create the registry notes explaining the design choices
 notes_content <- "=============================================================================
-Phase 0 Registry Notes: Model Registry and Design Choices for v3 Pipeline
+Phase 0 Registry Notes: Model Registry and Design Choices for accrual uncertainty pipeline
 =============================================================================
 Date: 2026-06-04
 Author: Antigravity
 
-(a) Why v3 Abandons Separate TA/TCA BMA:
+(a) Why the unified accrual pipeline abandons separate TA/TCA BMA:
 - Under the BMA setup in v1/v2, running separate models for Total Accruals (TA) and Working
   Capital Accruals (TCA) created inconsistent model spaces and disjoint predictive uncertainty
   estimates.
 - Breuer-Schutt (2023) framework focuses on the posterior predictive distribution of normal
   accruals and the corresponding model uncertainty to scale abnormal accruals (DA_z_stacked).
   To obtain a single coherent uncertainty estimate and avoid mixing different dependent variables,
-  all models in the v3 space must predict the EXACT same dependent variable: total accruals,
+  all models in the unified model space must predict the EXACT same dependent variable: total accruals,
   TA_scaled.
 - Dechow-Dichev (2002) logic (mapping current, lagged, and future CFO) is elegantly absorbed 
   directly into total-accrual models (e.g. McNichols 2002 specification), ensuring we keep the
@@ -220,7 +220,7 @@ Author: Antigravity
 - All candidate models use TA_scaled as the dependent variable.
 "
 
-registry_notes_out <- v3_baseline_log_path("v3_phase0_registry_notes.txt")
+registry_notes_out <- baseline_log_path("phase0_registry_notes.txt")
 writeLines(notes_content, con = registry_notes_out)
 message("Saved registry notes to: ", registry_notes_out)
 

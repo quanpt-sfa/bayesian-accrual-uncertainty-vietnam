@@ -14,4 +14,4 @@ The wide scenario uses `scale_aware_student_wide_v1`. It remains scale-aware but
 
 ## Prior predictive gate logic
 
-Script `06_v3_prior_predictive_checks_winsor.R` computes representative prior predictive draws and assigns `PASS`, `REVIEW`, or `FAIL` based on domain thresholds for extreme `TA_scaled` draws. A `FAIL` blocks downstream fitting unless `V3_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE` is explicitly set. Script `07_v3_fit_brms_named_models_winsor.R` re-checks the gate before fitting.
+Script `06_prior_predictive_checks.R` computes representative prior predictive draws and assigns `PASS`, `REVIEW`, or `FAIL` based on domain thresholds for extreme `TA_scaled` draws. A `FAIL` blocks downstream fitting unless `ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE` is explicitly set. Script `07_fit_brms_named_models.R` re-checks the gate before fitting.

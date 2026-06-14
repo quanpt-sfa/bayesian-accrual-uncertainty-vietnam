@@ -1,29 +1,29 @@
 # -----------------------------------------------------------------------------
-# Script: 09_v3_loo_stacking_winsor.R
-# Purpose: Corrected LOO and stacking for v3 winsorized models.
+# Script: 09_loo_stacking.R
+# Purpose: Corrected LOO and stacking for winsorized models.
 # -----------------------------------------------------------------------------
 
 library(dplyr)
 library(brms)
 library(loo)
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-write_prior_registry_v3()
-validate_v3_final_analysis_config("Phase 4c baseline LOO stacking", final_mode = TRUE)
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+write_prior_registry()
+validate_final_analysis_config("Phase 4c baseline LOO stacking", final_mode = TRUE)
 
 options(mc.cores = 1)
 set.seed(42)
 
-compare_original_weights <- toupper(Sys.getenv("V3_COMPARE_ORIGINAL_WEIGHTS", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
+compare_original_weights <- toupper(Sys.getenv("ACCRUAL_COMPARE_ORIGINAL_WEIGHTS", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
 
-formulas_path <- file.path(v3_output_root, "tables", "table_v3_named_model_formulas_winsor.csv")
-if (!file.exists(formulas_path)) formulas_path <- file.path(v3_input_winsor_root, "tables", "table_v3_named_model_formulas_winsor.csv")
-diag_path <- file.path(v3_output_root, "tables", "table_v3_brms_diagnostics_winsor.csv")
-coeff_path <- file.path(v3_output_root, "tables", "table_v3_coefficient_summary_winsor.csv")
-loo_comp_path <- file.path(v3_output_root, "tables", "table_v3_loo_comparison_winsor_corrected.csv")
-loo_cache_dir <- file.path(v3_output_root, "draws", "loo_cache")
-models_dir <- file.path(v3_output_root, "models")
+formulas_path <- file.path(output_root, "tables", "table_named_model_formulas_winsor.csv")
+if (!file.exists(formulas_path)) formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
+diag_path <- file.path(output_root, "tables", "table_brms_diagnostics_winsor.csv")
+coeff_path <- file.path(output_root, "tables", "table_coefficient_summary_winsor.csv")
+loo_comp_path <- file.path(output_root, "tables", "table_loo_comparison_winsor_corrected.csv")
+loo_cache_dir <- file.path(output_root, "draws", "loo_cache")
+models_dir <- file.path(output_root, "models")
 
 if (!file.exists(formulas_path)) stop("[BLOCKER] Missing winsor formula table.")
 if (!file.exists(diag_path)) stop("[BLOCKER] Missing winsor diagnostics table. Run Phase 3b first.")
@@ -35,9 +35,9 @@ diag_df <- read.csv(diag_path, stringsAsFactors = FALSE)
 coeff_df <- read.csv(coeff_path, stringsAsFactors = FALSE)
 
 # Check MCMC diagnostics gate status
-diagnostics_gate_path <- file.path(v3_output_root, "tables", "table_v3_mcmc_diagnostics_gate_winsor.csv")
+diagnostics_gate_path <- file.path(output_root, "tables", "table_mcmc_diagnostics_gate_winsor.csv")
 if (!file.exists(diagnostics_gate_path)) {
-  stop("[BLOCKER] MCMC diagnostics gate table 'table_v3_mcmc_diagnostics_gate_winsor.csv' not found. Run 08_v3_mcmc_diagnostics_winsor.R first.")
+  stop("[BLOCKER] MCMC diagnostics gate table 'table_mcmc_diagnostics_gate_winsor.csv' not found. Run 08_mcmc_diagnostics.R first.")
 }
 gate_df <- read.csv(diagnostics_gate_path, stringsAsFactors = FALSE)
 
@@ -60,7 +60,7 @@ exclusions_df <- joined_diag_gate %>%
     fail_reason = ifelse(is.na(fail_reason), "Missing diagnostics / failed on MCMC checks", fail_reason)
   )
 
-exclusions_path <- file.path(v3_output_root, "tables", "table_v3_stacking_model_exclusions_winsor.csv")
+exclusions_path <- file.path(output_root, "tables", "table_stacking_model_exclusions_winsor.csv")
 write.csv(exclusions_df, exclusions_path, row.names = FALSE)
 message("Saved stacking model exclusions list to: ", exclusions_path)
 
@@ -114,7 +114,7 @@ message("\n========= WINSOR STAGES 1 & 2: REFIT, SANITY CHECK & LOO =========")
 
 for (i in seq_len(nrow(eligible_joined))) {
   row <- eligible_joined[i, ]
-  base_key <- model_key_v3_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
+  base_key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
   sp_filename <- file.path(models_dir, paste0("fit_", base_key, "_sp.rds"))
   loo_cache <- file.path(loo_cache_dir, paste0(base_key, "_loo.rds"))
 
@@ -142,10 +142,10 @@ for (i in seq_len(nrow(eligible_joined))) {
       elpd_diff_refit = NA_real_,
       moment_match_applied = NA,
       moment_match_note = "Loaded cached LOO",
-      Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else v3_prior_set_id,
-      Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else v3_likelihood_family,
-      Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else v3_model_structure,
-      Output_Root = v3_output_root,
+      Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else prior_set_id,
+      Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else likelihood_family,
+      Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else model_structure,
+      Output_Root = output_root,
       stringsAsFactors = FALSE
     ))
     next
@@ -160,16 +160,16 @@ for (i in seq_len(nrow(eligible_joined))) {
   if (is.null(fit_sp)) {
     message("  Refitting winsor model with save_pars(all=TRUE) and pre-factored variables...")
     df_scaled <- read_winsor_sample(row$Target_Sample, prefactor = TRUE)
-    formula_str <- fix_formula_v3(row$brms_Formula, prefactor = TRUE)
+    formula_str <- fix_formula(row$brms_Formula, prefactor = TRUE)
     message("  Formula: ", formula_str)
 
-    prior_list <- default_prior_list_v3(row$Heterogeneity_Variant)
+    prior_list <- default_prior_list(row$Heterogeneity_Variant)
 
     fit_sp <- tryCatch({
       brm(
         formula = bf(as.formula(formula_str)),
         data = df_scaled,
-        family = brms_family_v3(),
+        family = brms_family(),
         prior = prior_list,
         chains = chains,
         iter = iter,
@@ -269,10 +269,10 @@ for (i in seq_len(nrow(eligible_joined))) {
     elpd_diff_refit = diff_elpd,
     moment_match_applied = mm_applied,
     moment_match_note = mm_note,
-    Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else v3_prior_set_id,
-    Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else v3_likelihood_family,
-    Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else prior_set_id,
+    Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else likelihood_family,
+    Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   ))
 
@@ -289,16 +289,16 @@ message("\n========= WINSOR STAGE 3: STACKING WEIGHTS =========")
 
 sample_n <- function(file_name) {
   candidates <- c(
-    file.path(v3_output_root, "tables", file_name),
-    file.path(v3_input_winsor_root, "tables", file_name)
+    file.path(output_root, "tables", file_name),
+    file.path(input_winsor_root, "tables", file_name)
   )
   path <- candidates[file.exists(candidates)][1]
   if (is.na(path)) stop("[BLOCKER] Missing sample file: ", file_name)
   nrow(read.csv(path, stringsAsFactors = FALSE))
 }
 
-expected_n_ep <- sample_n("final_v3_common_ex_post_sample_winsor.csv")
-expected_n_rt <- sample_n("final_v3_common_realtime_sample_winsor.csv")
+expected_n_ep <- sample_n("final_common_ex_post_sample_winsor.csv")
+expected_n_rt <- sample_n("final_common_realtime_sample_winsor.csv")
 
 run_space_stacking <- function(space_name, expected_N, eligible_ids) {
   message(sprintf("\n=== WINSOR STACKING: %s (Expected N = %d) ===", toupper(space_name), expected_N))
@@ -318,7 +318,7 @@ run_space_stacking <- function(space_name, expected_N, eligible_ids) {
 
   for (i in seq_len(nrow(space_eligible))) {
     m <- space_eligible[i, ]
-    key <- model_key_v3_sampled(m$Model_ID, m$Target_Space, m$Sample_Group, m$Heterogeneity_Variant, "_winsor")
+    key <- model_key_sampled(m$Model_ID, m$Target_Space, m$Sample_Group, m$Heterogeneity_Variant, "_winsor")
     if (!(key %in% names(loo_list))) {
       warning("LOO not found for winsor model: ", key, " - excluded from stack.")
       next
@@ -352,10 +352,10 @@ run_space_stacking <- function(space_name, expected_N, eligible_ids) {
     M08_Included = FALSE,
     Heterogeneity_Variant = sapply(names(space_loos), function(k) meta_rows[[k]]$Heterogeneity_Variant),
     Weight = weights_vec,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   ) %>% arrange(desc(Weight))
 
@@ -366,8 +366,8 @@ run_space_stacking <- function(space_name, expected_N, eligible_ids) {
 w_ep <- run_space_stacking("ex_post", expected_n_ep, c("M01", "M02", "M03", "M04", "M05", "M06", "M07"))
 w_rt <- run_space_stacking("real_time", expected_n_rt, c("M01", "M02", "M03", "M07", "M09"))
 
-ep_weights_path <- file.path(v3_output_root, "tables", "table_v3_stacking_weights_ex_post_winsor_corrected.csv")
-rt_weights_path <- file.path(v3_output_root, "tables", "table_v3_stacking_weights_no_lookahead_winsor_corrected.csv")
+ep_weights_path <- file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv")
+rt_weights_path <- file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv")
 write.csv(w_ep, ep_weights_path, row.names = FALSE)
 write.csv(w_rt, rt_weights_path, row.names = FALSE)
 
@@ -376,13 +376,13 @@ secondary_oc_scores <- loo_comparison %>%
   mutate(
     Comparison_Scope = "secondary_operating_cycle_sample",
     Comparable_Weights_Computed = FALSE,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     Notes = "M10 is secondary robustness only. Main-stack models were not rerun on the exact secondary operating-cycle sample in this script, so no comparable secondary stacking weights are computed here."
   )
-write.csv(secondary_oc_scores, file.path(v3_winsor_root, "tables", "table_v3_secondary_operating_cycle_model_scores.csv"), row.names = FALSE)
+write.csv(secondary_oc_scores, file.path(winsor_root, "tables", "table_secondary_operating_cycle_model_scores.csv"), row.names = FALSE)
 
 write_skipped_stability <- function(reason, original_required, original_found, winsor_found, notes) {
   skipped_df <- data.frame(
@@ -393,15 +393,15 @@ write_skipped_stability <- function(reason, original_required, original_found, w
     Original_Weights_Found = original_found,
     Winsor_Weights_Found = winsor_found,
     Notes = notes,
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
   write.csv(
     skipped_df,
-    file.path(v3_output_root, "tables", "table_v3_weight_stability_original_vs_winsor_SKIPPED.csv"),
+    file.path(output_root, "tables", "table_weight_stability_original_vs_winsor_SKIPPED.csv"),
     row.names = FALSE
   )
   skipped_df
@@ -456,10 +456,10 @@ make_stability <- function(winsor_df, space) {
     TRUE ~ "Stable"
   )
   joined$Headline_Stability_Flag <- joined$Family_Level_Stability
-  joined$Prior_Set_ID <- v3_prior_set_id
-  joined$Likelihood_Family <- v3_likelihood_family
-  joined$Model_Structure <- v3_model_structure
-  joined$Output_Root <- v3_output_root
+  joined$Prior_Set_ID <- prior_set_id
+  joined$Likelihood_Family <- likelihood_family
+  joined$Model_Structure <- model_structure
+  joined$Output_Root <- output_root
   joined %>%
     select(Target_Space, Model_ID, Model_Name, Heterogeneity_Variant,
            Weight_Original, Weight_Winsor, Weight_Difference, Abs_Weight_Difference,
@@ -484,12 +484,12 @@ if (!compare_original_weights) {
   )
 } else {
   original_candidates <- c(
-    file.path(v3_original_root, "tables", "table_v3_stacking_weights_ex_post_corrected.csv"),
-    file.path(v3_original_root, "tables", "table_v3_stacking_weights_ex_post.csv"),
-    file.path(v3_original_root, "tables", "table_v3_stacking_weights_real_time_corrected.csv"),
-    file.path(v3_original_root, "tables", "table_v3_stacking_weights_real_time.csv"),
-    file.path(v3_original_root, "tables", "table_v3_stacking_weights_no_lookahead_corrected.csv"),
-    file.path(v3_original_root, "tables", "table_v3_stacking_weights_no_lookahead.csv")
+    file.path(baseline_root, "tables", "table_stacking_weights_ex_post_corrected.csv"),
+    file.path(baseline_root, "tables", "table_stacking_weights_ex_post.csv"),
+    file.path(baseline_root, "tables", "table_stacking_weights_real_time_corrected.csv"),
+    file.path(baseline_root, "tables", "table_stacking_weights_real_time.csv"),
+    file.path(baseline_root, "tables", "table_stacking_weights_no_lookahead_corrected.csv"),
+    file.path(baseline_root, "tables", "table_stacking_weights_no_lookahead.csv")
   )
   existing_originals <- unique(original_candidates[file.exists(original_candidates)])
 
@@ -500,26 +500,26 @@ if (!compare_original_weights) {
       original_required = TRUE,
       original_found = FALSE,
       winsor_found = winsor_weights_found,
-      notes = "Set V3_COMPARE_ORIGINAL_WEIGHTS=TRUE only when original weight files are present."
+      notes = "Set ACCRUAL_COMPARE_ORIGINAL_WEIGHTS=TRUE only when original weight files are present."
     )
     stability_note <- "Original/no-winsor comparison was requested but skipped because original files were missing."
   } else {
     stability_df <- bind_rows(make_stability(w_ep, "ex_post"), make_stability(w_rt, "real_time"))
     write.csv(
       stability_df,
-      file.path(v3_output_root, "tables", "table_v3_weight_stability_original_vs_winsor.csv"),
+      file.path(output_root, "tables", "table_weight_stability_original_vs_winsor.csv"),
       row.names = FALSE
     )
     original_sources <- unique(stability_df$Original_Weight_Source)
-    stability_note <- "Original/no-winsor comparison was performed because V3_COMPARE_ORIGINAL_WEIGHTS=TRUE and original files were available."
+    stability_note <- "Original/no-winsor comparison was performed because ACCRUAL_COMPARE_ORIGINAL_WEIGHTS=TRUE and original files were available."
   }
 }
 
 notes <- c(
   "Phase 4c winsor corrected LOO/stacking notes",
-  sprintf("Output root: %s", v3_output_root),
-  sprintf("Input winsor root for sample sizes/formulas when needed: %s", v3_input_winsor_root),
-  sprintf("Prior set: %s; likelihood family: %s; model structure: %s", v3_prior_set_id, v3_likelihood_family, v3_model_structure),
+  sprintf("Output root: %s", output_root),
+  sprintf("Input winsor root for sample sizes/formulas when needed: %s", input_winsor_root),
+  sprintf("Prior set: %s; likelihood family: %s; model structure: %s", prior_set_id, likelihood_family, model_structure),
   "Phase 4C is based only on current-root winsorized model files and LOO cache.",
   "Authoritative logic adapted from the earlier corrected refit workflow.",
   "Features retained: pre-factored industry/year variables, save_pars(all=TRUE), coefficient sanity check, raw elpd sanity check, moment matching, N-check before stacking, separate ex-post and no-look-ahead stacks.",
@@ -530,11 +530,11 @@ notes <- c(
   "M10 is excluded from main stacks because it requires operating_cycle and uses the secondary operating-cycle sample.",
   "Main stacking outputs therefore exclude M08 and M10.",
   "Family labels: M01-M03 Jones-family; M04-M06 Cash-flow/McNichols-family; M07 Ball-Shivakumar/asymmetry; M09 No-lookahead/real-time; M08 and M10 secondary only.",
-  "Moment-matching failures are blockers. Remaining high Pareto-k counts are reported in table_v3_loo_comparison_winsor_corrected.csv.",
+  "Moment-matching failures are blockers. Remaining high Pareto-k counts are reported in table_loo_comparison_winsor_corrected.csv.",
   "Firm random-effect models can still have high Pareto-k observations; this limitation should be documented when interpreting LOO.",
   stability_note,
   "Original/no-winsor comparison is skipped by default.",
-  "To enable optional comparison, set V3_COMPARE_ORIGINAL_WEIGHTS=TRUE.",
+  "To enable optional comparison, set ACCRUAL_COMPARE_ORIGINAL_WEIGHTS=TRUE.",
   "Missing original/no-winsor weights are not a fatal error.",
   if (length(original_sources) > 0) {
     paste("Original weight source files used:", paste(original_sources, collapse = "; "))
@@ -542,6 +542,6 @@ notes <- c(
     "Original weight source files used: none"
   }
 )
-writeLines(notes, file.path(v3_output_root, "logs", "v3_phase4c_loo_stacking_winsor_notes.txt"))
+writeLines(notes, file.path(output_root, "logs", "phase4c_loo_stacking_winsor_notes.txt"))
 
 cat("\n[SUCCESS] Phase 4c winsor corrected LOO and stacking completed.\n")

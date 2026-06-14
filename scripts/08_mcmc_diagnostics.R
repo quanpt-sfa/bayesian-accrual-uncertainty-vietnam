@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 08_v3_mcmc_diagnostics_winsor.R
+# Script: 08_mcmc_diagnostics.R
 # Purpose: Build a transparent MCMC diagnostics report from existing winsorized
 #          brms fit files without refitting any models.
 # -----------------------------------------------------------------------------
@@ -8,26 +8,26 @@ library(dplyr)
 library(brms)
 library(posterior)
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
 
-diag_input_path <- file.path(v3_output_root, "tables", "table_v3_brms_diagnostics_winsor.csv")
-models_dir <- file.path(v3_output_root, "models")
+diag_input_path <- file.path(output_root, "tables", "table_brms_diagnostics_winsor.csv")
+models_dir <- file.path(output_root, "models")
 
 if (!file.exists(diag_input_path)) stop("[BLOCKER] Missing winsor diagnostics table from Phase 3b.")
 if (!dir.exists(models_dir)) stop("[BLOCKER] Missing winsor models directory.")
 
 diag_input <- read.csv(diag_input_path, stringsAsFactors = FALSE)
 
-detail_path <- file.path(v3_output_root, "tables", "table_v3_mcmc_diagnostics_detailed.csv")
-summary_path <- file.path(v3_output_root, "tables", "table_v3_mcmc_diagnostics_model_summary.csv")
-flag_path <- file.path(v3_output_root, "tables", "table_v3_mcmc_diagnostics_flags.csv")
-notes_path <- file.path(v3_output_root, "logs", "v3_phase3c_mcmc_diagnostics_notes.txt")
+detail_path <- file.path(output_root, "tables", "table_mcmc_diagnostics_detailed.csv")
+summary_path <- file.path(output_root, "tables", "table_mcmc_diagnostics_model_summary.csv")
+flag_path <- file.path(output_root, "tables", "table_mcmc_diagnostics_flags.csv")
+notes_path <- file.path(output_root, "logs", "phase3c_mcmc_diagnostics_notes.txt")
 
 model_file_for <- function(row) {
   candidates <- c(
-    file.path(models_dir, paste0("fit_", model_key_v3_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor"), ".rds")),
-    file.path(models_dir, paste0("fit_", model_key_v3_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor"), "_sp.rds"))
+    file.path(models_dir, paste0("fit_", model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor"), ".rds")),
+    file.path(models_dir, paste0("fit_", model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor"), "_sp.rds"))
   )
   candidates[file.exists(candidates)][1]
 }
@@ -84,10 +84,10 @@ for (i in seq_len(nrow(diag_input))) {
     Tail_ESS = draw_summ$ess_tail,
     ESS_Minimum_Acceptable = 400,
     ESS_Strict_Marker = 1000,
-    Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else v3_prior_set_id,
-    Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else v3_likelihood_family,
-    Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else prior_set_id,
+    Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else likelihood_family,
+    Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
   detailed_rows[[length(detailed_rows) + 1]] <- detail_df
@@ -128,10 +128,10 @@ for (i in seq_len(nrow(diag_input))) {
     ESS_Strict_Marker_Passed = min_bulk >= 1000 && min_tail >= 1000,
     Convergence_Flag = flag,
     Model_File = model_file,
-    Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else v3_prior_set_id,
-    Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else v3_likelihood_family,
-    Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else prior_set_id,
+    Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else likelihood_family,
+    Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 
@@ -153,10 +153,10 @@ for (i in seq_len(nrow(diag_input))) {
       ),
       collapse = "; "
     ),
-    Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else v3_prior_set_id,
-    Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else v3_likelihood_family,
-    Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = if ("Prior_Set_ID" %in% names(row)) row$Prior_Set_ID else prior_set_id,
+    Likelihood_Family = if ("Likelihood_Family" %in% names(row)) row$Likelihood_Family else likelihood_family,
+    Model_Structure = if ("Model_Structure" %in% names(row)) row$Model_Structure else model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 }
@@ -207,16 +207,16 @@ gate_df <- summary_df %>%
     )
   )
 
-gate_path <- file.path(v3_output_root, "tables", "table_v3_mcmc_diagnostics_gate_winsor.csv")
+gate_path <- file.path(output_root, "tables", "table_mcmc_diagnostics_gate_winsor.csv")
 write.csv(gate_df, gate_path, row.names = FALSE)
 message("Saved MCMC diagnostics gate status to ", gate_path)
 
 if (nrow(detailed_df) > 0) {
-  write_hist(detailed_df$Rhat, file.path(v3_output_root, "figures", "fig_v3_mcmc_rhat_distribution.png"),
+  write_hist(detailed_df$Rhat, file.path(output_root, "figures", "fig_mcmc_rhat_distribution.png"),
              "Winsorized BRMS Rhat Distribution", "Rhat")
-  write_hist(detailed_df$Bulk_ESS, file.path(v3_output_root, "figures", "fig_v3_mcmc_bulk_ess_distribution.png"),
+  write_hist(detailed_df$Bulk_ESS, file.path(output_root, "figures", "fig_mcmc_bulk_ess_distribution.png"),
              "Winsorized BRMS Bulk ESS Distribution", "Bulk ESS")
-  write_hist(detailed_df$Tail_ESS, file.path(v3_output_root, "figures", "fig_v3_mcmc_tail_ess_distribution.png"),
+  write_hist(detailed_df$Tail_ESS, file.path(output_root, "figures", "fig_mcmc_tail_ess_distribution.png"),
              "Winsorized BRMS Tail ESS Distribution", "Tail ESS")
 }
 
@@ -227,8 +227,8 @@ notes <- c(
           sum(summary_df$Convergence_Flag == "PASS", na.rm = TRUE),
           sum(summary_df$Convergence_Flag == "REVIEW", na.rm = TRUE),
           sum(summary_df$Convergence_Flag == "FAIL", na.rm = TRUE)),
-  sprintf("Output root: %s", v3_output_root),
-  sprintf("Prior set: %s; likelihood family: %s; model structure: %s", v3_prior_set_id, v3_likelihood_family, v3_model_structure),
+  sprintf("Output root: %s", output_root),
+  sprintf("Prior set: %s; likelihood family: %s; model structure: %s", prior_set_id, likelihood_family, model_structure),
   "Thresholds: Rhat <= 1.01, Bulk_ESS >= 400, Tail_ESS >= 400, divergences = 0. ESS >= 1000 is reported as a stricter marker.",
   "Phase 3c reads existing fit files only and does not refit any models."
 )

@@ -1,4 +1,4 @@
-data_path <- Sys.getenv("V3_DATA_PATH", file.path("data", "raw", "data.xlsx"))
+data_path <- Sys.getenv("ACCRUAL_DATA_PATH", file.path("data", "raw", "data.xlsx"))
 
 if (!file.exists(data_path)) {
   message("Data workbook not found at ", data_path, ". Skipping schema validation.")

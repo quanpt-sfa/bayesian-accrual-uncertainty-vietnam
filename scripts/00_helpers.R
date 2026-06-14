@@ -1,51 +1,51 @@
 # -----------------------------------------------------------------------------
-# Script: 00_v3_winsor_helpers.R
-# Purpose: Shared helpers for the v3 winsorized robustness pipeline.
+# Script: 00_helpers.R
+# Purpose: Shared helpers for the accrual uncertainty pipeline.
 # -----------------------------------------------------------------------------
 
-env_value_v3 <- function(name, default) {
+env_value <- function(name, default) {
   val <- Sys.getenv(name, unset = default)
   if (!nzchar(val)) default else val
 }
 
-env_flag_v3 <- function(name, default = "FALSE") {
-  toupper(env_value_v3(name, default)) %in% c("TRUE", "1", "YES", "Y")
+env_flag <- function(name, default = "FALSE") {
+  toupper(env_value(name, default)) %in% c("TRUE", "1", "YES", "Y")
 }
 
-v3_data_path <- env_value_v3("V3_DATA_PATH", file.path("data", "raw", "data.xlsx"))
-v3_original_root <- env_value_v3("V3_BASELINE_ROOT", file.path("out", "interim", "baseline"))
-v3_output_root <- env_value_v3("V3_OUTPUT_ROOT", file.path("out", "interim", "winsor"))
-v3_input_winsor_root <- env_value_v3("V3_INPUT_WINSOR_ROOT", file.path("out", "interim", "winsor"))
-v3_reports_root <- env_value_v3("V3_REPORTS_ROOT", "reports")
-v3_accruals_root <- env_value_v3("V3_ACCRUALS_ROOT", "accruals")
-v3_method_design_root <- env_value_v3("V3_METHOD_DESIGN_ROOT", file.path("out", "manifests", "method_design"))
-v3_prior_set_id <- env_value_v3("V3_PRIOR_SET_ID", "scale_aware_student_baseline_v1")
-v3_likelihood_family <- tolower(env_value_v3("V3_FAMILY", "student"))
-v3_model_structure <- env_value_v3("V3_MODEL_STRUCTURE", "pooled_random_intercept")
-v3_run_varying_slopes <- env_flag_v3("V3_RUN_VARYING_SLOPES", "FALSE")
-v3_varyslope_scope <- toupper(env_value_v3("V3_VARYSLOPE_SCOPE", "LEADING_ONLY"))
-v3_varyslope_group <- env_value_v3("V3_VARYSLOPE_GROUP", "industry_year")
-v3_force_refit <- env_flag_v3("V3_FORCE_REFIT", "FALSE")
-v3_prior_predictive_mode <- toupper(env_value_v3("V3_PRIOR_PREDICTIVE_MODE", "REPRESENTATIVE"))
-v3_prior_pred_n_draws <- as.integer(env_value_v3("V3_PRIOR_PRED_N_DRAWS", "1000"))
-v3_stacking_mixture_draws <- as.integer(env_value_v3("V3_STACKING_MIXTURE_DRAWS", "12000"))
+data_path <- env_value("ACCRUAL_DATA_PATH", file.path("data", "raw", "data.xlsx"))
+baseline_root <- env_value("ACCRUAL_BASELINE_ROOT", file.path("out", "interim", "baseline"))
+output_root <- env_value("ACCRUAL_OUTPUT_ROOT", file.path("out", "interim", "winsor"))
+input_winsor_root <- env_value("ACCRUAL_INPUT_WINSOR_ROOT", file.path("out", "interim", "winsor"))
+reports_root <- env_value("ACCRUAL_REPORTS_ROOT", "reports")
+accruals_root <- env_value("ACCRUAL_ACCRUALS_ROOT", "accruals")
+method_design_root <- env_value("ACCRUAL_METHOD_DESIGN_ROOT", file.path("out", "manifests", "method_design"))
+prior_set_id <- env_value("ACCRUAL_PRIOR_SET_ID", "scale_aware_student_baseline_v1")
+likelihood_family <- tolower(env_value("ACCRUAL_FAMILY", "student"))
+model_structure <- env_value("ACCRUAL_MODEL_STRUCTURE", "pooled_random_intercept")
+run_varying_slopes <- env_flag("ACCRUAL_RUN_VARYING_SLOPES", "FALSE")
+varyslope_scope <- toupper(env_value("ACCRUAL_VARYSLOPE_SCOPE", "LEADING_ONLY"))
+varyslope_group <- env_value("ACCRUAL_VARYSLOPE_GROUP", "industry_year")
+force_refit <- env_flag("ACCRUAL_FORCE_REFIT", "FALSE")
+prior_predictive_mode <- toupper(env_value("ACCRUAL_PRIOR_PREDICTIVE_MODE", "REPRESENTATIVE"))
+prior_pred_n_draws <- as.integer(env_value("ACCRUAL_PRIOR_PRED_N_DRAWS", "1000"))
+stacking_mixture_draws <- as.integer(env_value("ACCRUAL_STACKING_MIXTURE_DRAWS", "12000"))
 
-if (is.na(v3_prior_pred_n_draws) || v3_prior_pred_n_draws <= 0) v3_prior_pred_n_draws <- 1000L
-if (is.na(v3_stacking_mixture_draws) || v3_stacking_mixture_draws <= 0) v3_stacking_mixture_draws <- 12000L
-if (!v3_likelihood_family %in% c("gaussian", "student")) {
-  stop("[BLOCKER] V3_FAMILY must be 'gaussian' or 'student'.")
+if (is.na(prior_pred_n_draws) || prior_pred_n_draws <= 0) prior_pred_n_draws <- 1000L
+if (is.na(stacking_mixture_draws) || stacking_mixture_draws <= 0) stacking_mixture_draws <- 12000L
+if (!likelihood_family %in% c("gaussian", "student")) {
+  stop("[BLOCKER] ACCRUAL_FAMILY must be 'gaussian' or 'student'.")
 }
 
-v3_winsor_root <- v3_output_root
-v3_varyslopes_root <- file.path(v3_output_root, "varyslopes")
+winsor_root <- output_root
+varyslopes_root <- file.path(output_root, "varyslopes")
 
-v3_baseline_dirs <- file.path(
-  v3_original_root,
+baseline_dirs <- file.path(
+  baseline_root,
   c("", "tables", "models", "draws", "figures", "logs", "validation", "appendix")
 )
 
-v3_winsor_dirs <- file.path(
-  v3_winsor_root,
+winsor_dirs <- file.path(
+  winsor_root,
   c(
     "",
     "tables",
@@ -77,17 +77,17 @@ v3_winsor_dirs <- file.path(
   )
 )
 
-v3_sensitivity_scenario_ids <- c("baseline", "tight", "wide")
+sensitivity_scenario_ids <- c("baseline", "tight", "wide")
 
-v3_main_model_ids_for_space <- function(target_space) {
+main_model_ids_for_space <- function(target_space) {
   if (identical(target_space, "ex_post")) return(c("M01", "M02", "M03", "M04", "M05", "M06", "M07"))
   if (identical(target_space, "real_time")) return(c("M01", "M02", "M03", "M07", "M09"))
   character()
 }
 
-v3_sensitivity_scenarios <- function() {
+sensitivity_scenarios <- function() {
   data.frame(
-    Scenario = v3_sensitivity_scenario_ids,
+    Scenario = sensitivity_scenario_ids,
     Prior_Set_ID = c(
       "scale_aware_student_baseline_v1",
       "scale_aware_student_tight_v1",
@@ -105,53 +105,53 @@ v3_sensitivity_scenarios <- function() {
   )
 }
 
-v3_sensitivity_root <- function(scenario = NULL, root = v3_output_root) {
+sensitivity_root <- function(scenario = NULL, root = output_root) {
   base <- file.path(root, "sensitivity")
   if (is.null(scenario) || !nzchar(scenario)) return(base)
   file.path(base, scenario)
 }
 
-ensure_v3_sensitivity_dirs <- function(scenario = NULL, root = v3_output_root) {
-  base_dirs <- file.path(v3_sensitivity_root(NULL, root), c("", "tables", "logs", "manifests", "reports", "cache"))
+ensure_sensitivity_dirs <- function(scenario = NULL, root = output_root) {
+  base_dirs <- file.path(sensitivity_root(NULL, root), c("", "tables", "logs", "manifests", "reports", "cache"))
   for (d in base_dirs) if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
-  scenarios <- if (is.null(scenario) || !nzchar(scenario)) v3_sensitivity_scenario_ids else scenario
+  scenarios <- if (is.null(scenario) || !nzchar(scenario)) sensitivity_scenario_ids else scenario
   subdirs <- c("", "prior_predictive", "fits", "models", "draws", "diagnostics", "stacking", "DA", "validation", "logs", "manifests", "cache", "tables")
   for (sc in scenarios) {
-    for (d in file.path(v3_sensitivity_root(sc, root), subdirs)) {
+    for (d in file.path(sensitivity_root(sc, root), subdirs)) {
       if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
     }
   }
   invisible(TRUE)
 }
 
-ensure_v3_baseline_dirs <- function() {
-  for (d in v3_baseline_dirs) {
+ensure_baseline_dirs <- function() {
+  for (d in baseline_dirs) {
     if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
   }
   invisible(TRUE)
 }
 
-v3_baseline_table_path <- function(file_name) {
-  file.path(v3_original_root, "tables", file_name)
+baseline_table_path <- function(file_name) {
+  file.path(baseline_root, "tables", file_name)
 }
 
-v3_baseline_log_path <- function(file_name) {
-  file.path(v3_original_root, "logs", file_name)
+baseline_log_path <- function(file_name) {
+  file.path(baseline_root, "logs", file_name)
 }
 
-v3_reports_path <- function(...) {
-  file.path(v3_reports_root, ...)
+reports_path <- function(...) {
+  file.path(reports_root, ...)
 }
 
-v3_baseline_accruals_path <- function(file_name = "final_v3_uncertainty_adjusted_accruals_winsor.csv") {
-  file.path(v3_accruals_root, "baseline", file_name)
+baseline_accruals_path <- function(file_name = "final_uncertainty_adjusted_accruals_winsor.csv") {
+  file.path(accruals_root, "baseline", file_name)
 }
 
-v3_sensitivity_accruals_path <- function(scenario, file_name = NULL) {
+sensitivity_accruals_path <- function(scenario, file_name = NULL) {
   if (is.null(file_name) || !nzchar(file_name)) {
-    file_name <- paste0("final_v3_sensitivity_uncertainty_adjusted_accruals_", scenario, ".csv")
+    file_name <- paste0("final_sensitivity_uncertainty_adjusted_accruals_", scenario, ".csv")
   }
-  file.path(v3_accruals_root, "sensitivity", scenario, file_name)
+  file.path(accruals_root, "sensitivity", scenario, file_name)
 }
 
 continuous_vars_to_winsor <- c(
@@ -176,13 +176,13 @@ continuous_vars_to_winsor <- c(
 
 binary_vars_do_not_winsor <- c("NEG_CFO", "NEG_EARN")
 
-pred_vars_v3 <- c(
+pred_vars <- c(
   "inv_A_lag", "dREV_scaled", "dREC_scaled", "dREV_dREC_scaled", "PPE_scaled",
   "ROA_lag", "CFO_lag_scaled", "CFO_curr_scaled", "CFO_lead_scaled", "Size",
   "operating_cycle", "sales_growth", "sd_REV", "sd_CFO"
 )
 
-appendix1_vars_v3 <- c(
+appendix1_vars <- c(
   "TA_scaled",
   "dREV_scaled",
   "dREC_scaled",
@@ -197,13 +197,13 @@ appendix1_vars_v3 <- c(
   "sales_growth"
 )
 
-ensure_v3_winsor_dirs <- function() {
-  for (d in v3_winsor_dirs) {
+ensure_analysis_dirs <- function() {
+  for (d in winsor_dirs) {
     if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
   }
 }
 
-prior_registry_v3 <- function() {
+prior_registry <- function() {
   row <- function(id, cls, dist, loc, scale, applies, family, role, use, notes) {
     data.frame(
       Prior_Set_ID = id,
@@ -253,27 +253,27 @@ prior_registry_v3 <- function() {
   ))
 }
 
-default_prior_specification_v3 <- function() {
-  prior_registry_v3()
+default_prior_specification <- function() {
+  prior_registry()
 }
 
-write_prior_registry_v3 <- function(root = v3_output_root) {
-  ensure_v3_winsor_dirs()
-  out <- file.path(root, "tables", "table_v3_prior_sets.csv")
-  write.csv(prior_registry_v3(), out, row.names = FALSE)
+write_prior_registry <- function(root = output_root) {
+  ensure_analysis_dirs()
+  out <- file.path(root, "tables", "table_prior_sets.csv")
+  write.csv(prior_registry(), out, row.names = FALSE)
   out
 }
 
-prior_set_rows_v3 <- function(prior_set_id = v3_prior_set_id) {
-  rows <- prior_registry_v3()
+prior_set_rows <- function(prior_set_id = prior_set_id) {
+  rows <- prior_registry()
   rows <- rows[rows$Prior_Set_ID == prior_set_id, , drop = FALSE]
-  if (nrow(rows) == 0) stop("[BLOCKER] Unknown V3_PRIOR_SET_ID: ", prior_set_id)
+  if (nrow(rows) == 0) stop("[BLOCKER] Unknown ACCRUAL_PRIOR_SET_ID: ", prior_set_id)
   rows
 }
 
-default_prior_list_v3 <- function(heterogeneity_variant = "", model_structure = v3_model_structure,
-                                  prior_set_id = v3_prior_set_id, family = v3_likelihood_family) {
-  rows <- prior_set_rows_v3(prior_set_id)
+default_prior_list <- function(heterogeneity_variant = "", model_structure = model_structure,
+                                  prior_set_id = prior_set_id, family = likelihood_family) {
+  rows <- prior_set_rows(prior_set_id)
   prior_for <- function(cls) rows$Prior_Distribution[rows$Parameter_Class == cls][1]
   prior_list <- c(
     brms::prior(prior_for("b"), class = "b"),
@@ -294,50 +294,50 @@ default_prior_list_v3 <- function(heterogeneity_variant = "", model_structure = 
   prior_list
 }
 
-brms_family_v3 <- function(family = v3_likelihood_family) {
+brms_family <- function(family = likelihood_family) {
   if (identical(tolower(family), "student")) brms::student() else brms::gaussian()
 }
 
-metadata_columns_v3 <- function() {
+metadata_columns <- function() {
   data.frame(
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 }
 
-validate_v3_final_analysis_config <- function(context = "final analysis", final_mode = TRUE) {
-  is_invalid <- !identical(v3_prior_set_id, "scale_aware_student_baseline_v1") || 
-                !identical(v3_likelihood_family, "student") || 
-                !identical(v3_model_structure, "pooled_random_intercept")
+validate_final_analysis_config <- function(context = "final analysis", final_mode = TRUE) {
+  is_invalid <- !identical(prior_set_id, "scale_aware_student_baseline_v1") || 
+                !identical(likelihood_family, "student") || 
+                !identical(model_structure, "pooled_random_intercept")
   if (!is_invalid) return(invisible(TRUE))
 
   msg <- paste0(
     "[CONFIG WARNING] ", context, " has a deviant/diagnostic configuration: ",
-    "(V3_PRIOR_SET_ID=", v3_prior_set_id, ", V3_FAMILY=", v3_likelihood_family, ", V3_MODEL_STRUCTURE=", v3_model_structure, "). ",
-    "The standard final-analysis config should have V3_PRIOR_SET_ID='scale_aware_student_baseline_v1', ",
-    "V3_FAMILY='student', and V3_MODEL_STRUCTURE='pooled_random_intercept'."
+    "(ACCRUAL_PRIOR_SET_ID=", prior_set_id, ", ACCRUAL_FAMILY=", likelihood_family, ", ACCRUAL_MODEL_STRUCTURE=", model_structure, "). ",
+    "The standard final-analysis config should have ACCRUAL_PRIOR_SET_ID='scale_aware_student_baseline_v1', ",
+    "ACCRUAL_FAMILY='student', and ACCRUAL_MODEL_STRUCTURE='pooled_random_intercept'."
   )
-  if (final_mode && !env_flag_v3("V3_ALLOW_DIAGNOSTIC_CONFIG", "FALSE")) {
-    stop(msg, " Set V3_ALLOW_DIAGNOSTIC_CONFIG=TRUE only for an intentional diagnostic run.")
+  if (final_mode && !env_flag("ACCRUAL_ALLOW_DIAGNOSTIC_CONFIG", "FALSE")) {
+    stop(msg, " Set ACCRUAL_ALLOW_DIAGNOSTIC_CONFIG=TRUE only for an intentional diagnostic run.")
   }
   warning(msg, call. = FALSE)
   invisible(FALSE)
 }
 
-selected_sensitivity_scenarios_v3 <- function() {
-  requested <- env_value_v3("V3_SENS_SCENARIO", "")
-  scenarios <- v3_sensitivity_scenarios()
+selected_sensitivity_scenarios <- function() {
+  requested <- env_value("ACCRUAL_SENS_SCENARIO", "")
+  scenarios <- sensitivity_scenarios()
   if (!nzchar(requested) || toupper(requested) == "ALL") return(scenarios)
   keep <- trimws(unlist(strsplit(requested, ",", fixed = TRUE)))
   unknown <- setdiff(keep, scenarios$Scenario)
-  if (length(unknown) > 0) stop("[BLOCKER] Unknown V3_SENS_SCENARIO: ", paste(unknown, collapse = ", "))
+  if (length(unknown) > 0) stop("[BLOCKER] Unknown ACCRUAL_SENS_SCENARIO: ", paste(unknown, collapse = ", "))
   scenarios[scenarios$Scenario %in% keep, , drop = FALSE]
 }
 
-v3_package_versions <- function(pkgs = c("brms", "rstan", "cmdstanr", "posterior", "loo", "bayesplot", "dplyr", "readr", "tibble", "ggplot2")) {
+package_versions <- function(pkgs = c("brms", "rstan", "cmdstanr", "posterior", "loo", "bayesplot", "dplyr", "readr", "tibble", "ggplot2")) {
   vals <- vapply(pkgs, function(pkg) {
     if (!requireNamespace(pkg, quietly = TRUE)) return("NOT_INSTALLED")
     as.character(utils::packageVersion(pkg))
@@ -345,7 +345,7 @@ v3_package_versions <- function(pkgs = c("brms", "rstan", "cmdstanr", "posterior
   paste(paste(names(vals), vals, sep = "="), collapse = "; ")
 }
 
-v3_file_fingerprint <- function(path) {
+file_fingerprint <- function(path) {
   if (!file.exists(path)) return(NA_character_)
   if (requireNamespace("digest", quietly = TRUE)) {
     return(paste0("sha256:", digest::digest(path, algo = "sha256", file = TRUE)))
@@ -354,11 +354,11 @@ v3_file_fingerprint <- function(path) {
   paste0("mtime:", format(info$mtime[1], "%Y-%m-%d %H:%M:%S %z"), ";size:", as.numeric(info$size[1]))
 }
 
-v3_session_info_string <- function() {
+session_info_string <- function() {
   paste(capture.output(sessionInfo()), collapse = "\n")
 }
 
-v3_metadata_matches <- function(path, expected) {
+metadata_matches <- function(path, expected) {
   if (!file.exists(path)) return(FALSE)
   old <- tryCatch(read.csv(path, stringsAsFactors = FALSE), error = function(e) data.frame())
   if (nrow(old) == 0) return(FALSE)
@@ -371,12 +371,12 @@ v3_metadata_matches <- function(path, expected) {
   TRUE
 }
 
-write_v3_run_manifest <- function(path, scenario, prior_set_id, family, model_structure,
+write_run_manifest <- function(path, scenario, prior_set_id, family, model_structure,
                                   model_list, seed, sampling_config, status,
                                   notes = "", input_paths = character()) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   input_hash <- if (length(input_paths) > 0) {
-    paste(paste(input_paths, vapply(input_paths, v3_file_fingerprint, character(1)), sep = "="), collapse = "; ")
+    paste(paste(input_paths, vapply(input_paths, file_fingerprint, character(1)), sep = "="), collapse = "; ")
   } else {
     NA_character_
   }
@@ -389,45 +389,45 @@ write_v3_run_manifest <- function(path, scenario, prior_set_id, family, model_st
     Seed = seed,
     Timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
     Input_Hash = input_hash,
-    Package_Versions = v3_package_versions(),
+    Package_Versions = package_versions(),
     R_Version = paste(R.version$major, R.version$minor, sep = "."),
     Sampling_Config = sampling_config,
     Status = status,
     Notes = notes,
-    Session_Info = v3_session_info_string(),
+    Session_Info = session_info_string(),
     stringsAsFactors = FALSE
   )
   write.csv(manifest, path, row.names = FALSE)
   path
 }
 
-write_v3_pipeline_index <- function() {
-  dir.create(v3_method_design_root, recursive = TRUE, showWarnings = FALSE)
+write_pipeline_index <- function() {
+  dir.create(method_design_root, recursive = TRUE, showWarnings = FALSE)
   pipeline <- data.frame(
     Order = sprintf("%02d", 0:22),
     Script = c(
-      "00_v3_winsor_helpers.R",
-      "01_v3_setup_and_registry.R",
-      "02_v3_build_common_sample.R",
-      "03_v3_audit_cogs_inv_operating_cycle_after_fix.R",
-      "04_v3_define_named_models.R",
-      "05_v3_winsorize_common_samples.R",
-      "06_v3_prior_predictive_checks_winsor.R",
-      "07_v3_fit_brms_named_models_winsor.R",
-      "08_v3_mcmc_diagnostics_winsor.R",
-      "09_v3_loo_stacking_winsor.R",
-      "10_v3_construct_uncertainty_adjusted_DA_winsor.R",
-      "11_v3_posterior_predictive_checks_winsor.R",
-      "12_v3_lofo_stacking_winsor.R",
-      "13_v3_grouped_kfold_firm_winsor.R",
-      "14_v3_sensitivity_prior_predictive_winsor.R",
-      "15_v3_sensitivity_refit_prior_scenarios_winsor.R",
-      "16_v3_sensitivity_mcmc_diagnostics_winsor.R",
-      "17_v3_sensitivity_stacking_winsor.R",
-      "18_v3_sensitivity_construct_DA_winsor.R",
-      "19_v3_sensitivity_validation_winsor.R",
-      "20_v3_sensitivity_report_winsor.R",
-      "21_v3_validation_on_scaleaware_student_DA.R",
+      "00_helpers.R",
+      "01_setup_and_registry.R",
+      "02_build_common_sample.R",
+      "03_audit_cogs_inv_operating_cycle.R",
+      "04_define_named_models.R",
+      "05_winsorize_common_samples.R",
+      "06_prior_predictive_checks.R",
+      "07_fit_brms_named_models.R",
+      "08_mcmc_diagnostics.R",
+      "09_loo_stacking.R",
+      "10_construct_uncertainty_adjusted_DA.R",
+      "11_posterior_predictive_checks.R",
+      "12_lofo_stacking.R",
+      "13_grouped_kfold_firm.R",
+      "14_sensitivity_prior_predictive.R",
+      "15_sensitivity_refit_prior_scenarios.R",
+      "16_sensitivity_mcmc_diagnostics.R",
+      "17_sensitivity_stacking.R",
+      "18_sensitivity_construct_DA.R",
+      "19_sensitivity_validation.R",
+      "20_sensitivity_report.R",
+      "21_validation_on_scaleaware_student_DA.R",
       "22_reset_and_rerun_after_cogs_inv_fix.R"
     ),
     Role = c(
@@ -458,27 +458,10 @@ write_v3_pipeline_index <- function() {
     Active = TRUE,
     stringsAsFactors = FALSE
   )
-  write.csv(pipeline, file.path(v3_method_design_root, "pipeline_index_v3.csv"), row.names = FALSE)
-
-  mapping <- data.frame(
-    Old_Script = c(
-      "14_v3_sensitivity_analysis_winsor.R",
-      "15_v3_validation_on_scaleaware_student_DA.R",
-      "16_reset_and_rerun_after_cogs_inv_fix.R"
-    ),
-    New_Script = c(
-      "14_v3_sensitivity_prior_predictive_winsor.R; 15_v3_sensitivity_refit_prior_scenarios_winsor.R; 16_v3_sensitivity_mcmc_diagnostics_winsor.R; 17_v3_sensitivity_stacking_winsor.R; 18_v3_sensitivity_construct_DA_winsor.R; 19_v3_sensitivity_validation_winsor.R; 20_v3_sensitivity_report_winsor.R",
-      "21_v3_validation_on_scaleaware_student_DA.R",
-      "22_reset_and_rerun_after_cogs_inv_fix.R"
-    ),
-    Status = c("replaced_by_full_refit_sensitivity_workflow", "renumbered", "renumbered"),
-    Deprecated_But_Kept = c(FALSE, FALSE, FALSE),
-    stringsAsFactors = FALSE
-  )
-  write.csv(mapping, file.path(v3_method_design_root, "script_renaming_mapping.csv"), row.names = FALSE)
+  write.csv(pipeline, file.path(method_design_root, "pipeline_index.csv"), row.names = FALSE)
 
   readme_lines <- c(
-    "# v3 pipeline index",
+    "# accrual uncertainty pipeline index",
     "",
     "Active scripts use numeric prefixes only. No letter suffixes are used in script numbers.",
     "",
@@ -486,11 +469,11 @@ write_v3_pipeline_index <- function() {
     "|---|---|---|",
     sprintf("| %s | `%s` | %s |", pipeline$Order, pipeline$Script, pipeline$Role),
     "",
-    "Sensitivity phases 14-20 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `V3_DRY_RUN=FALSE` and the relevant phase is launched intentionally.",
+    "Sensitivity phases 14-20 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `ACCRUAL_DRY_RUN=FALSE` and the relevant phase is launched intentionally.",
     "",
-    paste0("Old-to-new mapping is written to `", file.path(v3_method_design_root, "script_renaming_mapping.csv"), "`.")
+    paste0("The machine-readable pipeline index is written to `", file.path(method_design_root, "pipeline_index.csv"), "`.")
   )
-  writeLines(readme_lines, "scripts/v3/README_pipeline_index.md")
+  writeLines(readme_lines, file.path("doc", "pipeline_index.md"))
   invisible(pipeline)
 }
 
@@ -503,20 +486,20 @@ safe_variant_name <- function(x) {
   gsub(" ", "_", gsub("[()|]", "", x))
 }
 
-model_key_v3 <- function(model_id, target_space, heterogeneity_variant, suffix = NULL) {
+model_key <- function(model_id, target_space, heterogeneity_variant, suffix = NULL) {
   key <- sprintf("%s_%s_%s", model_id, target_space, safe_variant_name(heterogeneity_variant))
   if (!is.null(suffix) && nzchar(suffix)) key <- paste0(key, suffix)
   key
 }
 
-model_key_v3_sampled <- function(model_id, target_space, sample_group, heterogeneity_variant, suffix = NULL) {
+model_key_sampled <- function(model_id, target_space, sample_group, heterogeneity_variant, suffix = NULL) {
   if (is.null(sample_group) || is.na(sample_group) || !nzchar(sample_group)) sample_group <- "main_common"
   key <- sprintf("%s_%s_%s_%s", model_id, target_space, sample_group, safe_variant_name(heterogeneity_variant))
   if (!is.null(suffix) && nzchar(suffix)) key <- paste0(key, suffix)
   key
 }
 
-standardize_predictors_v3 <- function(df, pred_vars = pred_vars_v3) {
+standardize_predictors <- function(df, pred_vars = pred_vars) {
   for (v in pred_vars) {
     if (v %in% colnames(df)) {
       m <- mean(df[[v]], na.rm = TRUE)
@@ -527,7 +510,7 @@ standardize_predictors_v3 <- function(df, pred_vars = pred_vars_v3) {
   df
 }
 
-fix_formula_v3 <- function(formula_str, pred_vars = pred_vars_v3, prefactor = FALSE) {
+fix_formula <- function(formula_str, pred_vars = pred_vars, prefactor = FALSE) {
   if (prefactor) {
     formula_str <- gsub("factor\\(industry\\)", "industry_f", formula_str)
     formula_str <- gsub("factor\\(year\\)", "year_f", formula_str)
@@ -538,11 +521,11 @@ fix_formula_v3 <- function(formula_str, pred_vars = pred_vars_v3, prefactor = FA
   formula_str
 }
 
-read_winsor_sample <- function(sample_file, prefactor = FALSE, root = v3_input_winsor_root) {
+read_winsor_sample <- function(sample_file, prefactor = FALSE, root = input_winsor_root) {
   path <- file.path(root, "tables", sample_file)
   if (!file.exists(path)) stop("[BLOCKER] Winsorized sample file missing: ", path)
   df <- read.csv(path, stringsAsFactors = FALSE)
-  df <- standardize_predictors_v3(df)
+  df <- standardize_predictors(df)
   if (prefactor) {
     df$industry_f <- factor(df$industry)
     df$year_f <- factor(df$year)
@@ -550,7 +533,7 @@ read_winsor_sample <- function(sample_file, prefactor = FALSE, root = v3_input_w
   df
 }
 
-prepare_varying_slope_data_v3 <- function(df, group = v3_varyslope_group) {
+prepare_varying_slope_data <- function(df, group = varyslope_group) {
   if (identical(group, "industry_year")) {
     if (!all(c("industry", "year") %in% names(df))) {
       stop("[BLOCKER] industry_year varying slopes require industry and year columns.")
@@ -560,7 +543,7 @@ prepare_varying_slope_data_v3 <- function(df, group = v3_varyslope_group) {
   df
 }
 
-varying_slope_formula_v3 <- function(formula_str, group = v3_varyslope_group) {
+varying_slope_formula <- function(formula_str, group = varyslope_group) {
   parts <- strsplit(formula_str, "~", fixed = TRUE)[[1]]
   if (length(parts) != 2) stop("[BLOCKER] Cannot parse formula for varying slopes: ", formula_str)
   rhs <- trimws(parts[2])
@@ -572,8 +555,8 @@ varying_slope_formula_v3 <- function(formula_str, group = v3_varyslope_group) {
   sprintf("TA_scaled ~ 1 + %s + (1 + %s | %s)", rhs, rhs, group_var)
 }
 
-varying_slope_candidate_v3 <- function(model_id, target_space) {
-  if (identical(v3_varyslope_scope, "FULL")) return(TRUE)
+varying_slope_candidate <- function(model_id, target_space) {
+  if (identical(varyslope_scope, "FULL")) return(TRUE)
   paste(model_id, target_space) %in% c(
     "M06 ex_post",
     "M07 ex_post",
@@ -624,13 +607,13 @@ extract_base_model_name <- function(model_name) {
 read_original_weight_file <- function(space) {
   if (space == "ex_post") {
     candidates <- c(
-      file.path(v3_original_root, "tables", "table_v3_stacking_weights_ex_post_corrected.csv"),
-      file.path(v3_original_root, "tables", "table_v3_stacking_weights_ex_post.csv")
+      file.path(baseline_root, "tables", "table_stacking_weights_ex_post_corrected.csv"),
+      file.path(baseline_root, "tables", "table_stacking_weights_ex_post.csv")
     )
   } else {
     candidates <- c(
-      file.path(v3_original_root, "tables", "table_v3_stacking_weights_real_time_corrected.csv"),
-      file.path(v3_original_root, "tables", "table_v3_stacking_weights_real_time.csv")
+      file.path(baseline_root, "tables", "table_stacking_weights_real_time_corrected.csv"),
+      file.path(baseline_root, "tables", "table_stacking_weights_real_time.csv")
     )
   }
   source_path <- candidates[file.exists(candidates)][1]
@@ -650,8 +633,8 @@ classify_model_family <- function(model_id, model_name) {
   model_name
 }
 
-write_method_design_files_v3 <- function() {
-  design_root <- v3_method_design_root
+write_method_design_files <- function() {
+  design_root <- method_design_root
   dir.create(design_root, recursive = TRUE, showWarnings = FALSE)
   differences <- data.frame(
     Dimension = c(
@@ -696,7 +679,7 @@ write_method_design_files_v3 <- function() {
   writeLines(c(
     "This study adapts the Bayesian model-averaging framework of AccForUncertaintyCode to the Vietnamese listed-firm setting. It differs from the original implementation in sample construction, scaling, outlier handling, model space, posterior predictive abnormality classification, and panel-dependence robustness checks.",
     "",
-    "The analysis is therefore positioned as an extension/adaptation, not a replication. The corrected v3 design preserves corrected COGS/INV data, the two-tier sample design, the exclusion of M08 and M10 from main stacks, and the treatment of existing wide-prior Gaussian outputs as diagnostic only."
+    "The analysis is therefore positioned as an extension/adaptation, not a replication. The corrected design preserves corrected COGS/INV data, the two-tier sample design, the exclusion of M08 and M10 from main stacks, and the treatment of existing wide-prior Gaussian outputs as diagnostic only."
   ), file.path(design_root, "method_note_adaptation_not_replication.txt"))
-  write_v3_pipeline_index()
+  write_pipeline_index()
 }

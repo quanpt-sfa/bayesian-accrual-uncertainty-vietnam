@@ -2,7 +2,7 @@
 
 ## Canonical workbook
 
-The repository expects the raw workbook at `data/raw/data.xlsx` unless `V3_DATA_PATH` is set.
+The repository expects the raw workbook at `data/raw/data.xlsx` unless `ACCRUAL_DATA_PATH` is set.
 
 ## Sheets
 

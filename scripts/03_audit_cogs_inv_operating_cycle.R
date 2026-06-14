@@ -1,22 +1,22 @@
 # -----------------------------------------------------------------------------
-# Script: 03_v3_audit_cogs_inv_operating_cycle_after_fix.R
+# Script: 03_audit_cogs_inv_operating_cycle.R
 # Purpose: Audit corrected COGS/INV fields and operating_cycle after Phase 1.
 # -----------------------------------------------------------------------------
 
 options(stringsAsFactors = FALSE)
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_baseline_dirs()
+source("scripts/00_helpers.R")
+ensure_baseline_dirs()
 
-audit_table_path <- v3_baseline_table_path("table_v3_cogs_inv_operating_cycle_audit_corrected.csv")
-audit_notes_path <- v3_baseline_log_path("cogs_inv_correction_audit_notes.txt")
-audit_status_path <- v3_baseline_log_path("cogs_inv_correction_audit_status.txt")
-top_extremes_path <- v3_baseline_table_path("table_v3_top_operating_cycle_extremes.csv")
+audit_table_path <- baseline_table_path("table_cogs_inv_operating_cycle_audit_corrected.csv")
+audit_notes_path <- baseline_log_path("cogs_inv_correction_audit_notes.txt")
+audit_status_path <- baseline_log_path("cogs_inv_correction_audit_status.txt")
+top_extremes_path <- baseline_table_path("table_top_operating_cycle_extremes.csv")
 
 required_files <- c(
-  v3_data_path,
-  v3_baseline_table_path("final_v3_common_ex_post_sample.csv"),
-  v3_baseline_table_path("final_v3_common_realtime_sample.csv")
+  data_path,
+  baseline_table_path("final_common_ex_post_sample.csv"),
+  baseline_table_path("final_common_realtime_sample.csv")
 )
 missing_files <- required_files[!file.exists(required_files)]
 if (length(missing_files) > 0) {
@@ -62,7 +62,7 @@ lead_continuous <- function(x, yr, n = 1L) {
   ifelse(!is.na(lead_yr) & lead_yr == (yr + n), lead_val, NA)
 }
 
-df_raw <- as.data.frame(readxl::read_excel(v3_data_path, sheet = "Sheet1"))
+df_raw <- as.data.frame(readxl::read_excel(data_path, sheet = "Sheet1"))
 required_cols <- c("company", "year", "A", "NI", "REV", "CFO", "REC", "PPE", "ROA", "COGS", "INV")
 missing_cols <- setdiff(required_cols, colnames(df_raw))
 if (length(missing_cols) > 0) {
@@ -123,8 +123,8 @@ dropped_due_operating_cycle <- function(vars) {
   sum(other_ok & is.na(df_vars$operating_cycle))
 }
 
-final_ep <- read.csv(v3_baseline_table_path("final_v3_common_ex_post_sample.csv"), stringsAsFactors = FALSE)
-final_rt <- read.csv(v3_baseline_table_path("final_v3_common_realtime_sample.csv"), stringsAsFactors = FALSE)
+final_ep <- read.csv(baseline_table_path("final_common_ex_post_sample.csv"), stringsAsFactors = FALSE)
+final_rt <- read.csv(baseline_table_path("final_common_realtime_sample.csv"), stringsAsFactors = FALSE)
 
 ratio <- df_vars$INV_over_COGS
 ratio_finite <- ratio[is.finite(ratio)]
@@ -233,14 +233,14 @@ top_extremes <- df_vars %>%
 write.csv(top_extremes, top_extremes_path, row.names = FALSE)
 
 old_compare_notes <- character()
-quarantine_path <- Sys.getenv("V3_COGS_INV_QUARANTINE_PATH", unset = "")
+quarantine_path <- Sys.getenv("ACCRUAL_COGS_INV_QUARANTINE_PATH", unset = "")
 latest_quarantine_path <- file.path("out", "logs", "latest_invalid_cogs_inv_quarantine.txt")
 if (quarantine_path == "" && file.exists(latest_quarantine_path)) {
   quarantine_path <- trimws(readLines(latest_quarantine_path, warn = FALSE)[1])
 }
 if (nzchar(quarantine_path)) {
-  old_summary <- file.path(quarantine_path, normalizePath(v3_baseline_table_path("table_v3_common_sample_summary.csv"), winslash = "/", mustWork = FALSE))
-  new_summary <- v3_baseline_table_path("table_v3_common_sample_summary.csv")
+  old_summary <- file.path(quarantine_path, normalizePath(baseline_table_path("table_common_sample_summary.csv"), winslash = "/", mustWork = FALSE))
+  new_summary <- baseline_table_path("table_common_sample_summary.csv")
   if (file.exists(old_summary) && file.exists(new_summary)) {
     old_df <- read.csv(old_summary, stringsAsFactors = FALSE)
     new_df <- read.csv(new_summary, stringsAsFactors = FALSE)

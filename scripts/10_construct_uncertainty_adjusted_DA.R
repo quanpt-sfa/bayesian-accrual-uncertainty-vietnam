@@ -1,20 +1,20 @@
 # -----------------------------------------------------------------------------
-# Script: 10_v3_construct_uncertainty_adjusted_DA_winsor.R
+# Script: 10_construct_uncertainty_adjusted_DA.R
 # Purpose: Construct winsorized uncertainty-adjusted abnormal accruals.
 # -----------------------------------------------------------------------------
 
 library(dplyr)
 
-source("scripts/v3/00_v3_winsor_helpers.R")
-ensure_v3_winsor_dirs()
-validate_v3_final_analysis_config("Phase 5b baseline uncertainty-adjusted DA", final_mode = TRUE)
+source("scripts/00_helpers.R")
+ensure_analysis_dirs()
+validate_final_analysis_config("Phase 5b baseline uncertainty-adjusted DA", final_mode = TRUE)
 
 set.seed(42)
 
-ep_weights_path <- file.path(v3_output_root, "tables", "table_v3_stacking_weights_ex_post_winsor_corrected.csv")
-rt_weights_path <- file.path(v3_output_root, "tables", "table_v3_stacking_weights_no_lookahead_winsor_corrected.csv")
-ep_sample_path <- file.path(v3_input_winsor_root, "tables", "final_v3_common_ex_post_sample_winsor.csv")
-rt_sample_path <- file.path(v3_input_winsor_root, "tables", "final_v3_common_realtime_sample_winsor.csv")
+ep_weights_path <- file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv")
+rt_weights_path <- file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv")
+ep_sample_path <- file.path(input_winsor_root, "tables", "final_common_ex_post_sample_winsor.csv")
+rt_sample_path <- file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv")
 
 if (!file.exists(ep_weights_path)) stop("[BLOCKER] Missing winsor ex-post stacking weights. Run Phase 4c first.")
 if (!file.exists(rt_weights_path)) stop("[BLOCKER] Missing winsor no-look-ahead stacking weights. Run Phase 4c first.")
@@ -34,10 +34,10 @@ clean_variant_name <- function(heterogeneity_variant, model_name = NULL) {
 draws_path_for <- function(row, space_name) {
   variant_clean <- clean_variant_name(row$Heterogeneity_Variant, row$Model_Name)
   sample_group <- if ("Sample_Group" %in% names(row)) row$Sample_Group else "main_common"
-  file.path(v3_output_root, "draws", paste0("draws_", model_key_v3_sampled(row$Model_ID, space_name, sample_group, row$Heterogeneity_Variant, "_winsor"), ".rds"))
+  file.path(output_root, "draws", paste0("draws_", model_key_sampled(row$Model_ID, space_name, sample_group, row$Heterogeneity_Variant, "_winsor"), ".rds"))
 }
 
-compute_stacked_accruals <- function(df_sample, weights_df, space_name, S = v3_stacking_mixture_draws) {
+compute_stacked_accruals <- function(df_sample, weights_df, space_name, S = stacking_mixture_draws) {
   N <- nrow(df_sample)
   message(sprintf("\n--- Winsor stacking for %s (N = %d, S = %d) ---", space_name, N, S))
   active_weights <- weights_df %>%
@@ -157,10 +157,10 @@ compute_stacked_accruals <- function(df_sample, weights_df, space_name, S = v3_s
     NDA_Uncertainty_Type = "epred_estimation_and_predictive_extension",
     Predictive_Tail_Extension = TRUE,
     Near_AccForUncertaintyCode_Output = "NDA_mean_stacked + NDA_sd_epred_stacked",
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root,
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root,
     stringsAsFactors = FALSE
   )
 }
@@ -172,7 +172,7 @@ message("\nFitting winsorized OLS benchmarks...")
 get_ols_data <- function(df) {
   df$industry_f <- factor(df$industry)
   df$year_f <- factor(df$year)
-  standardize_predictors_v3(df)
+  standardize_predictors(df)
 }
 
 df_rt_ols <- get_ols_data(df_rt)
@@ -227,14 +227,14 @@ master_df <- df_rt_ols %>%
     NDA_Uncertainty_Type = "NDA_sd_epred_stacked is estimation uncertainty; NDA_sd_predict_stacked is posterior predictive uncertainty.",
     Predictive_Tail_Extension = TRUE,
     Near_AccForUncertaintyCode_Output = "NDA_mean_stacked + NDA_sd_epred_stacked",
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root
   )
 
-baseline_accruals_path <- v3_baseline_accruals_path()
-write.csv(master_df, file.path(v3_output_root, "tables", "final_v3_uncertainty_adjusted_accruals_winsor.csv"), row.names = FALSE)
+baseline_accruals_path <- baseline_accruals_path()
+write.csv(master_df, file.path(output_root, "tables", "final_uncertainty_adjusted_accruals_winsor.csv"), row.names = FALSE)
 write.csv(master_df, baseline_accruals_path, row.names = FALSE)
 
 summarise_var <- function(df, v) {
@@ -270,12 +270,12 @@ da_vars <- c(
 summary_df <- bind_rows(lapply(da_vars, function(v) summarise_var(master_df, v)))
 summary_df <- summary_df %>%
   mutate(
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root
   )
-write.csv(summary_df, file.path(v3_output_root, "tables", "table_v3_DA_distribution_summary_winsor.csv"), row.names = FALSE)
+write.csv(summary_df, file.path(output_root, "tables", "table_DA_distribution_summary_winsor.csv"), row.names = FALSE)
 
 flag_count <- function(var_name, is_flag = FALSE) {
   vals <- master_df[[var_name]]
@@ -310,12 +310,12 @@ extreme_vars <- list(
 extreme_summary <- bind_rows(lapply(extreme_vars, function(x) flag_count(x[[1]], as.logical(x[[2]]))))
 extreme_summary <- extreme_summary %>%
   mutate(
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root
   )
-write.csv(extreme_summary, file.path(v3_output_root, "tables", "table_v3_extreme_flag_counts_winsor.csv"), row.names = FALSE)
+write.csv(extreme_summary, file.path(output_root, "tables", "table_extreme_flag_counts_winsor.csv"), row.names = FALSE)
 
 unc_industry <- master_df %>%
   group_by(industry) %>%
@@ -328,12 +328,12 @@ unc_industry <- master_df %>%
     .groups = "drop"
   ) %>%
   mutate(
-    Prior_Set_ID = v3_prior_set_id,
-    Likelihood_Family = v3_likelihood_family,
-    Model_Structure = v3_model_structure,
-    Output_Root = v3_output_root
+    Prior_Set_ID = prior_set_id,
+    Likelihood_Family = likelihood_family,
+    Model_Structure = model_structure,
+    Output_Root = output_root
   )
-write.csv(unc_industry, file.path(v3_output_root, "tables", "table_v3_uncertainty_summary_winsor.csv"), row.names = FALSE)
+write.csv(unc_industry, file.path(output_root, "tables", "table_uncertainty_summary_winsor.csv"), row.names = FALSE)
 
 corr_vars <- da_vars[da_vars %in% colnames(master_df)]
 corr_data <- master_df %>% select(all_of(corr_vars)) %>% na.omit()
@@ -343,7 +343,7 @@ if (nrow(corr_data) > 1) {
   corr_long <- expand.grid(Variable_1 = rownames(pearson), Variable_2 = colnames(pearson), stringsAsFactors = FALSE)
   corr_long$Pearson <- as.vector(pearson)
   corr_long$Spearman <- as.vector(spearman)
-  write.csv(corr_long, file.path(v3_output_root, "tables", "table_v3_benchmark_correlations_winsor.csv"), row.names = FALSE)
+  write.csv(corr_long, file.path(output_root, "tables", "table_benchmark_correlations_winsor.csv"), row.names = FALSE)
 }
 
 compare_measure <- function(orig_df, win_df, measure, original_col, winsor_col, flag_col_orig = NULL, flag_col_win = NULL) {
@@ -376,7 +376,7 @@ compare_measure <- function(orig_df, win_df, measure, original_col, winsor_col, 
   )
 }
 
-orig_final_path <- file.path(v3_original_root, "tables", "final_v3_uncertainty_adjusted_accruals.csv")
+orig_final_path <- file.path(baseline_root, "tables", "final_uncertainty_adjusted_accruals.csv")
 comparison_df <- data.frame()
 if (file.exists(orig_final_path)) {
   orig_df <- read.csv(orig_final_path, stringsAsFactors = FALSE)
@@ -392,10 +392,10 @@ if (file.exists(orig_final_path)) {
     compare_measure(orig_df, master_df, "DA_PerfModJones_OLS", "DA_PerfModJones_OLS", "DA_PerfModJones_OLS_winsor")
   )
 }
-write.csv(comparison_df, file.path(v3_output_root, "tables", "table_v3_DA_original_vs_winsor_comparison.csv"), row.names = FALSE)
+write.csv(comparison_df, file.path(output_root, "tables", "table_DA_original_vs_winsor_comparison.csv"), row.names = FALSE)
 
-sd_shrink_path <- file.path(v3_input_winsor_root, "tables", "table_v3_winsor_sd_shrinkage.csv")
-stability_path <- file.path(v3_output_root, "tables", "table_v3_weight_stability_original_vs_winsor.csv")
+sd_shrink_path <- file.path(input_winsor_root, "tables", "table_winsor_sd_shrinkage.csv")
+stability_path <- file.path(output_root, "tables", "table_weight_stability_original_vs_winsor.csv")
 sd_shrink <- if (file.exists(sd_shrink_path)) read.csv(sd_shrink_path, stringsAsFactors = FALSE) else data.frame()
 stability <- if (file.exists(stability_path)) read.csv(stability_path, stringsAsFactors = FALSE) else data.frame()
 
@@ -416,8 +416,8 @@ key_shrink <- sd_shrink %>%
          Variable %in% c("TA_scaled", "dREV_scaled", "dREC_scaled", "PPE_scaled", "CFO_curr_scaled", "ROA_lag")) %>%
   mutate(Evidence_Text = sprintf("%s/%s: %.2f%%", Sample, Variable, SD_Shrinkage_Pct))
 
-row_count_ok <- nrow(df_ep) == nrow(read.csv(file.path(v3_original_root, "tables", "final_v3_common_ex_post_sample.csv"))) &&
-  nrow(df_rt) == nrow(read.csv(file.path(v3_original_root, "tables", "final_v3_common_realtime_sample.csv")))
+row_count_ok <- nrow(df_ep) == nrow(read.csv(file.path(baseline_root, "tables", "final_common_ex_post_sample.csv"))) &&
+  nrow(df_rt) == nrow(read.csv(file.path(baseline_root, "tables", "final_common_realtime_sample.csv")))
 
 tail95_rt <- extreme_summary %>% filter(Variable == "DA_tail_flag_95_rt_winsor")
 ols_top5 <- extreme_summary %>% filter(Variable == "DA_Jones_OLS_winsor")
@@ -476,34 +476,34 @@ decision_table <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
-decision_table$Prior_Set_ID <- v3_prior_set_id
-decision_table$Likelihood_Family <- v3_likelihood_family
-decision_table$Model_Structure <- v3_model_structure
-decision_table$Output_Root <- v3_output_root
-write.csv(decision_table, file.path(v3_output_root, "tables", "table_reviewer_priority1_winsor_decision.csv"), row.names = FALSE)
+decision_table$Prior_Set_ID <- prior_set_id
+decision_table$Likelihood_Family <- likelihood_family
+decision_table$Model_Structure <- model_structure
+decision_table$Output_Root <- output_root
+write.csv(decision_table, file.path(output_root, "tables", "table_reviewer_priority1_winsor_decision.csv"), row.names = FALSE)
 
 notes <- c(
   "Reviewer Priority 1 winsor response notes",
-  sprintf("Output root: %s", v3_output_root),
-  sprintf("Input winsor root: %s", v3_input_winsor_root),
-  sprintf("Prior set: %s; likelihood family: %s; model structure: %s", v3_prior_set_id, v3_likelihood_family, v3_model_structure),
-  sprintf("Stacking mixture draws: %d", v3_stacking_mixture_draws),
+  sprintf("Output root: %s", output_root),
+  sprintf("Input winsor root: %s", input_winsor_root),
+  sprintf("Prior set: %s; likelihood family: %s; model structure: %s", prior_set_id, likelihood_family, model_structure),
+  sprintf("Stacking mixture draws: %d", stacking_mixture_draws),
   "NDA_sd_epred_stacked is estimation uncertainty, closest to the original AccForUncertaintyCode NDA_sd concept.",
   "NDA_sd_predict_stacked and posterior tail flags are posterior-predictive extensions.",
   paste("Variables winsorized when present:", paste(continuous_vars_to_winsor, collapse = ", ")),
   "Winsorization was applied before z-standardization.",
   "Binary variables NEG_CFO and NEG_EARN were not winsorized.",
   "",
-  "Before/after descriptive changes for key variables are in table_v3_winsor_before_after_descriptives.csv and table_v3_winsor_sd_shrinkage.csv.",
+  "Before/after descriptive changes for key variables are in table_winsor_before_after_descriptives.csv and table_winsor_sd_shrinkage.csv.",
   paste(head(key_shrink$Evidence_Text, 20), collapse = "\n"),
   "",
-  "Appendix 1 issue: compare table_v3_winsor_appendix1_descriptives_corrected.csv with the manuscript appendix. Decimal/unit-formatting errors should be described separately from the substantive winsorization robustness concern.",
+  "Appendix 1 issue: compare table_winsor_appendix1_descriptives_corrected.csv with the manuscript appendix. Decimal/unit-formatting errors should be described separately from the substantive winsorization robustness concern.",
   "Substantive winsorization concern: supported enough to warrant a winsorized robustness pipeline because scaled accrual/model variables show tail shrinkage after 1/99 caps.",
   paste("Headline findings after winsorization:", headline_decision),
   "Recommended manuscript changes: correct Appendix 1 units; state 1/99 winsorization-before-standardization robustness; report weight stability; report posterior-tail and DA_z comparison; keep claims conservative."
 )
-writeLines(notes, file.path(v3_output_root, "logs", "reviewer_priority1_winsor_response_notes.txt"))
-writeLines(notes, file.path(v3_output_root, "logs", "v3_phase5b_uncertainty_adjusted_DA_notes_winsor.txt"))
+writeLines(notes, file.path(output_root, "logs", "reviewer_priority1_winsor_response_notes.txt"))
+writeLines(notes, file.path(output_root, "logs", "phase5b_uncertainty_adjusted_DA_notes_winsor.txt"))
 
 cat("\n===== WINSOR PRIORITY 1 CONSOLE SUMMARY =====\n")
 cat("1. Ex-post winsorized sample N: ", nrow(df_ep), "\n", sep = "")
