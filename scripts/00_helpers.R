@@ -344,8 +344,20 @@ prior_set_rows <- function(selected_prior_set_id = prior_set_id) {
   rows
 }
 
-default_prior_list <- function(heterogeneity_variant = "", selected_model_structure = model_structure,
-                                  selected_prior_set_id = prior_set_id, family = likelihood_family) {
+default_prior_list <- function(heterogeneity_variant = "", selected_model_structure = NULL,
+                                  model_structure = NULL, selected_prior_set_id = NULL,
+                                  prior_set_id = NULL, family = NULL) {
+  helper_env <- environment(default_prior_list)
+  if (is.null(selected_model_structure)) {
+    selected_model_structure <- if (!is.null(model_structure)) model_structure else helper_env$model_structure
+  }
+  if (is.null(selected_prior_set_id)) {
+    selected_prior_set_id <- if (!is.null(prior_set_id)) prior_set_id else helper_env$prior_set_id
+  }
+  if (is.null(family)) {
+    family <- helper_env$likelihood_family
+  }
+
   rows <- prior_set_rows(selected_prior_set_id)
   prior_for <- function(cls) rows$Prior_Distribution[rows$Parameter_Class == cls][1]
   prior_list <- c(
