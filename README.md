@@ -70,7 +70,13 @@ Heavy outputs, fitted objects, and local workbook data are not intended for Git 
 
 ## Reproducibility
 
-No `renv.lock` was available in the source workspace, so environment setup is documented instead of pinned. If you want package lockfile reproducibility, initialize `renv` after confirming the package set for your machine.
+This repository uses `renv` for R package reproducibility.
+
+To restore the R environment:
+
+```r
+install.packages("renv")
+renv::restore()
 
 ## Computational requirements
 
