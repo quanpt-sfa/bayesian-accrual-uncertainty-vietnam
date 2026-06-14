@@ -49,6 +49,8 @@ The baseline sequence is:
 13. `13` grouped K-fold
 14. `21` validation on baseline DA
 
+Step `07` fits the winsorized BRMS configurations. Its diagnostics table records `N_Obs` and `N_Firms` from the input winsorized sample, not from `fit$data`, so pooled models retain correct firm counts. Pareto-k warnings do not fail Step `07`; they are carried forward as `PSIS_REVIEW_REQUIRED` so Step `09` and grouped K-fold review can treat those models cautiously.
+
 ## Sensitivity pipeline
 
 The sensitivity sequence is:

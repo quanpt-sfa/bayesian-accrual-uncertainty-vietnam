@@ -79,11 +79,8 @@ coeff_path <- if (run_varying_slope_models) {
   file.path(phase_root, "tables", "table_coefficient_summary_winsor.csv")
 }
 
-if (file.exists(diag_path)) {
-  diagnostics_df <- read.csv(diag_path, stringsAsFactors = FALSE)
-  message("Resuming from existing winsor diagnostics table with ", nrow(diagnostics_df), " entries.")
-} else {
-  diagnostics_df <- data.frame(
+ensure_diag_columns <- function(df) {
+  expected_columns <- list(
     Model_ID = character(),
     Model_Name = character(),
     Target_Space = character(),
@@ -103,16 +100,98 @@ if (file.exists(diag_path)) {
     divergences = integer(),
     treedepth_warnings = integer(),
     pareto_k_above_07 = integer(),
+    loo_status = character(),
+    loo_warning_reason = character(),
     random_intercept_sd = double(),
     elpd_loo = double(),
     error_message = character(),
+    Notes = character(),
     Prior_Set_ID = character(),
     Likelihood_Family = character(),
     Model_Structure = character(),
     Output_Root = character(),
-    save_pars_all = logical(),
-    stringsAsFactors = FALSE
+    save_pars_all = logical()
   )
+
+  for (nm in names(expected_columns)) {
+    if (!nm %in% names(df)) {
+      template <- expected_columns[[nm]]
+      n_rows <- nrow(df)
+      if (is.logical(template)) {
+        df[[nm]] <- rep(NA, n_rows)
+      } else if (is.integer(template)) {
+        df[[nm]] <- rep(NA_integer_, n_rows)
+      } else if (is.double(template)) {
+        df[[nm]] <- rep(NA_real_, n_rows)
+      } else {
+        df[[nm]] <- rep(NA_character_, n_rows)
+      }
+    }
+  }
+  df
+}
+
+load_step7_sample_info <- function(row) {
+  df_scaled <- read_winsor_sample(row$Target_Sample)
+  if (!"company" %in% names(df_scaled)) {
+    stop(
+      "[BLOCKER] Winsorized sample '", row$Target_Sample,
+      "' is missing required company column for Step 7 diagnostics. Available columns: ",
+      paste(names(df_scaled), collapse = ", ")
+    )
+  }
+
+  company_values <- trimws(as.character(df_scaled$company))
+  company_values[company_values == ""] <- NA_character_
+  n_firms_fit <- length(unique(company_values[!is.na(company_values)]))
+  if (n_firms_fit <= 0) {
+    stop(
+      "[BLOCKER] Winsorized sample '", row$Target_Sample,
+      "' has no valid company identifiers for Step 7 diagnostics."
+    )
+  }
+
+  list(
+    df_scaled = df_scaled,
+    n_obs_fit = nrow(df_scaled),
+    n_firms_fit = n_firms_fit
+  )
+}
+
+classify_loo_result <- function(loo_res) {
+  if (is.null(loo_res)) {
+    return(list(
+      pareto_k_above_07 = NA_integer_,
+      elpd_loo = NA_real_,
+      loo_status = "LOO_FAILED",
+      loo_warning_reason = "loo() failed; elpd_loo unavailable"
+    ))
+  }
+
+  pareto_k_above_07 <- sum(loo_res$diagnostics$pareto_k > 0.7)
+  if (pareto_k_above_07 > 0) {
+    return(list(
+      pareto_k_above_07 = pareto_k_above_07,
+      elpd_loo = loo_res$estimates["elpd_loo", "Estimate"],
+      loo_status = "PSIS_REVIEW_REQUIRED",
+      loo_warning_reason = "pareto_k_above_07 > 0; consider reloo, moment matching, or grouped K-fold before relying on PSIS-LOO"
+    ))
+  }
+
+  list(
+    pareto_k_above_07 = pareto_k_above_07,
+    elpd_loo = loo_res$estimates["elpd_loo", "Estimate"],
+    loo_status = "PSIS_OK",
+    loo_warning_reason = NA_character_
+  )
+}
+
+if (file.exists(diag_path)) {
+  diagnostics_df <- read.csv(diag_path, stringsAsFactors = FALSE)
+  diagnostics_df <- ensure_diag_columns(diagnostics_df)
+  message("Resuming from existing winsor diagnostics table with ", nrow(diagnostics_df), " entries.")
+} else {
+  diagnostics_df <- ensure_diag_columns(data.frame(stringsAsFactors = FALSE))
 }
 
 for (nm in names(metadata_columns())) {
@@ -143,7 +222,7 @@ formulas_df <- formulas_df %>%
   ) %>%
   arrange(order_key, Model_ID, Target_Space, Heterogeneity_Variant)
 
-write_failure_diag <- function(row, err) {
+write_failure_diag <- function(row, err, n_obs_fit = NA_integer_, n_firms_fit = NA_integer_) {
   fail_row <- data.frame(
     Model_ID = row$Model_ID,
     Model_Name = row$Model_Name,
@@ -152,8 +231,8 @@ write_failure_diag <- function(row, err) {
     Main_Stack_Inclusion = row$Main_Stack_Inclusion,
     Secondary_Robustness = row$Secondary_Robustness,
     Heterogeneity_Variant = row$Heterogeneity_Variant,
-    N_Obs = NA_integer_,
-    N_Firms = NA_integer_,
+    N_Obs = as.integer(n_obs_fit),
+    N_Firms = as.integer(n_firms_fit),
     Fit_Status = "FAILED",
     Rhat_Max = NA_real_,
     ESS_Min = NA_real_,
@@ -164,6 +243,8 @@ write_failure_diag <- function(row, err) {
     divergences = NA_integer_,
     treedepth_warnings = NA_integer_,
     pareto_k_above_07 = NA_integer_,
+    loo_status = "LOO_FAILED",
+    loo_warning_reason = "loo() failed; elpd_loo unavailable",
     random_intercept_sd = NA_real_,
     elpd_loo = NA_real_,
     error_message = err,
@@ -205,6 +286,14 @@ for (i in seq_len(total_runs)) {
   )
 
   fit <- NULL
+  sample_info <- tryCatch(load_step7_sample_info(row), error = function(e) {
+    write_failure_diag(row, e$message)
+    stop(e)
+  })
+  df_scaled <- sample_info$df_scaled
+  n_obs_fit <- sample_info$n_obs_fit
+  n_firms_fit <- sample_info$n_firms_fit
+
   if (file.exists(model_filename) && !force_refit) {
     message("Loading pre-existing winsor model fit from: ", model_filename)
     fit <- tryCatch(readRDS(model_filename), error = function(e) {
@@ -217,10 +306,6 @@ for (i in seq_len(total_runs)) {
   }
 
   if (is.null(fit) && !already_done) {
-    df_scaled <- tryCatch(read_winsor_sample(row$Target_Sample), error = function(e) {
-      write_failure_diag(row, e$message)
-      stop(e)
-    })
     if (run_varying_slope_models) {
       df_scaled <- prepare_varying_slope_data(df_scaled)
     }
@@ -246,7 +331,7 @@ for (i in seq_len(total_runs)) {
       )
     }, error = function(e) {
       message("[ERROR] Winsor model fitting crashed: ", e$message)
-      write_failure_diag(row, e$message)
+      write_failure_diag(row, e$message, n_obs_fit = n_obs_fit, n_firms_fit = n_firms_fit)
       NULL
     })
 
@@ -295,12 +380,7 @@ for (i in seq_len(total_runs)) {
     message("[ERROR] LOO failed: ", e$message)
     NULL
   })
-  pareto_k_above_07 <- NA_integer_
-  elpd_loo <- NA_real_
-  if (!is.null(loo_res)) {
-    pareto_k_above_07 <- sum(loo_res$diagnostics$pareto_k > 0.7)
-    elpd_loo <- loo_res$estimates["elpd_loo", "Estimate"]
-  }
+  loo_diag <- classify_loo_result(loo_res)
 
   diag_row <- data.frame(
     Model_ID = row$Model_ID,
@@ -310,8 +390,8 @@ for (i in seq_len(total_runs)) {
     Main_Stack_Inclusion = row$Main_Stack_Inclusion,
     Secondary_Robustness = row$Secondary_Robustness,
     Heterogeneity_Variant = row$Heterogeneity_Variant,
-    N_Obs = nobs(fit),
-    N_Firms = length(unique(fit$data$company)),
+    N_Obs = as.integer(n_obs_fit),
+    N_Firms = as.integer(n_firms_fit),
     Fit_Status = "SUCCESS",
     Rhat_Max = max_rhat,
     ESS_Min = min_ess,
@@ -321,9 +401,11 @@ for (i in seq_len(total_runs)) {
     max_rhat = max_rhat,
     divergences = divergences,
     treedepth_warnings = treedepth_warnings,
-    pareto_k_above_07 = pareto_k_above_07,
+    pareto_k_above_07 = loo_diag$pareto_k_above_07,
+    loo_status = loo_diag$loo_status,
+    loo_warning_reason = loo_diag$loo_warning_reason,
     random_intercept_sd = random_intercept_sd,
-    elpd_loo = elpd_loo,
+    elpd_loo = loo_diag$elpd_loo,
     error_message = NA_character_,
     Notes = row$Reason,
     Prior_Set_ID = prior_set_id,
@@ -407,7 +489,9 @@ phase3_notes <- sprintf(
     "Likelihood_Family: %s.\n",
     "Model_Structure: %s.\n",
     "Varying slopes are written separately under ACCRUAL_OUTPUT_ROOT/varyslopes and are not mixed into baseline stacking weights.\n",
-    "Stacking eligibility requires max Rhat <= 1.01 and divergences == 0.\n"
+    "Stacking eligibility requires max Rhat <= 1.01 and divergences == 0.\n",
+    "N_Obs and N_Firms are computed from the winsorized input sample rather than fit$data so pooled models retain correct firm counts.\n",
+    "Pareto-k warnings do not fail Step 7; they are recorded as loo_status='PSIS_REVIEW_REQUIRED' for downstream review in Step 9 or grouped K-fold.\n"
   ),
   input_winsor_root, phase_root, chains, iter, warmup, adapt_delta, max_treedepth, seed,
   prior_set_id, likelihood_family, model_structure
