@@ -26,6 +26,7 @@ out/**
 renv/library/
 renv/staging/
 renv/local/
+renv/cellar/
 
 # OS and editor noise
 .DS_Store

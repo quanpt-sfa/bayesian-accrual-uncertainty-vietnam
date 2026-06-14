@@ -1,0 +1,14 @@
+.git
+out
+outputs
+data/raw/data.xlsx
+renv/library
+renv/staging
+renv/local
+renv/cellar
+*.rds
+*.RData
+*.RDataTmp
+*.rda
+*.stan.csv
+*.log
