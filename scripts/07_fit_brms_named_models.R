@@ -226,7 +226,7 @@ lookup_existing_diag_row <- function(df, row) {
 }
 
 diagnostic_key <- function(df) {
-  paste(df$Model_ID, df$Target_Space, df$Sample_Group, df$Heterogeneity_Variant, sep = "||")
+  paste(df$Model_ID, df$Target_Space, df$Sample_Group, df$Heterogeneity_Variant, sep = "|")
 }
 
 parse_remediation_targets <- function(raw_value) {
