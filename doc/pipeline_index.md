@@ -28,6 +28,44 @@ Active scripts use numeric prefixes only. No letter suffixes are used in script 
 | 21 | `21_validation_on_scaleaware_student_DA.R` | Baseline validation |
 | 22 | `22_reset_and_rerun_after_cogs_inv_fix.R` | Reset/orchestrator |
 
+## Step 07 BRMS fitting parameters
+
+Default Step `07` baseline settings:
+
+```text
+ACCRUAL_PRIOR_SET_ID = scale_aware_student_baseline_v1
+ACCRUAL_FAMILY = student
+ACCRUAL_MODEL_STRUCTURE = pooled_random_intercept
+ACCRUAL_FORCE_REFIT = FALSE by default
+ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY = FALSE by default
+chains = 4
+iter = 4000
+warmup = 1000
+adapt_delta = 0.95 baseline / 0.99 varying slopes
+max_treedepth = 12 baseline / 15 varying slopes
+seed = 42
+```
+
+Standard Step `07` run without forced refit:
+
+```powershell
+$env:ACCRUAL_DRY_RUN = "FALSE"
+$env:ACCRUAL_RUN_HEAVY = "TRUE"
+$env:ACCRUAL_FORCE_REFIT = "FALSE"
+Rscript scripts/07_fit_brms_named_models.R
+```
+
+Backfill diagnostics without refit:
+
+```powershell
+$env:ACCRUAL_DRY_RUN = "FALSE"
+$env:ACCRUAL_RUN_HEAVY = "TRUE"
+$env:ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY = "TRUE"
+$env:ACCRUAL_FORCE_REFIT = "FALSE"
+Rscript scripts/07_fit_brms_named_models.R
+Rscript tests/test_step7_diagnostics_schema.R
+```
+
 Sensitivity phases 14-20 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `ACCRUAL_DRY_RUN=FALSE` and the relevant phase is launched intentionally.
 
 The machine-readable pipeline index is written to `out/manifests/method_design/pipeline_index.csv`.
