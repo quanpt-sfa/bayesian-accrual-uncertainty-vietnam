@@ -234,12 +234,13 @@ write.csv(top_extremes, top_extremes_path, row.names = FALSE)
 
 old_compare_notes <- character()
 quarantine_path <- Sys.getenv("V3_COGS_INV_QUARANTINE_PATH", unset = "")
-if (quarantine_path == "" && file.exists("outputs/latest_invalid_cogs_inv_quarantine.txt")) {
-  quarantine_path <- trimws(readLines("outputs/latest_invalid_cogs_inv_quarantine.txt", warn = FALSE)[1])
+latest_quarantine_path <- file.path("out", "logs", "latest_invalid_cogs_inv_quarantine.txt")
+if (quarantine_path == "" && file.exists(latest_quarantine_path)) {
+  quarantine_path <- trimws(readLines(latest_quarantine_path, warn = FALSE)[1])
 }
 if (nzchar(quarantine_path)) {
-  old_summary <- file.path(quarantine_path, "outputs/v3/tables/table_v3_common_sample_summary.csv")
-  new_summary <- "outputs/v3/tables/table_v3_common_sample_summary.csv"
+  old_summary <- file.path(quarantine_path, normalizePath(v3_baseline_table_path("table_v3_common_sample_summary.csv"), winslash = "/", mustWork = FALSE))
+  new_summary <- v3_baseline_table_path("table_v3_common_sample_summary.csv")
   if (file.exists(old_summary) && file.exists(new_summary)) {
     old_df <- read.csv(old_summary, stringsAsFactors = FALSE)
     new_df <- read.csv(new_summary, stringsAsFactors = FALSE)
