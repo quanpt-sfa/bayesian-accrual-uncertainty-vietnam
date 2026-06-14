@@ -66,6 +66,8 @@ Rscript scripts/07_fit_brms_named_models.R
 Rscript tests/test_step7_diagnostics_schema.R
 ```
 
+Models failing or requiring review under Step 8 may receive one pre-specified MCMC remediation run. The remediation keeps the baseline seed fixed and changes only sampler controls. It is triggered by diagnostics only, not by coefficient signs, stacking weights, DA estimates, or validation outcomes. If a model still fails after remediation, it is excluded from stacking.
+
 Sensitivity phases 14-20 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `ACCRUAL_DRY_RUN=FALSE` and the relevant phase is launched intentionally.
 
 The machine-readable pipeline index is written to `out/manifests/method_design/pipeline_index.csv`.

@@ -13,8 +13,16 @@ write_prior_registry()
 validate_final_analysis_config("Phase 3b baseline brms fit", final_mode = TRUE)
 
 backfill_diagnostics_only <- env_flag("ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY", "FALSE")
+remediation_targets_raw <- trimws(env_value("ACCRUAL_MCMC_REMEDIATION_TARGETS", ""))
+remediation_mode <- nzchar(remediation_targets_raw)
 if (backfill_diagnostics_only && force_refit) {
   stop("[BLOCKER] ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE cannot be combined with ACCRUAL_FORCE_REFIT=TRUE.")
+}
+if (remediation_mode && force_refit) {
+  stop("[BLOCKER] ACCRUAL_MCMC_REMEDIATION_TARGETS cannot be combined with ACCRUAL_FORCE_REFIT=TRUE.")
+}
+if (remediation_mode && backfill_diagnostics_only) {
+  stop("[BLOCKER] ACCRUAL_MCMC_REMEDIATION_TARGETS cannot be combined with ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE.")
 }
 
 # Check prior predictive check gatekeeper status
@@ -221,6 +229,28 @@ diagnostic_key <- function(df) {
   paste(df$Model_ID, df$Target_Space, df$Sample_Group, df$Heterogeneity_Variant, sep = "||")
 }
 
+parse_remediation_targets <- function(raw_value) {
+  if (!nzchar(raw_value)) {
+    return(character())
+  }
+
+  entries <- trimws(unlist(strsplit(raw_value, ";", fixed = TRUE)))
+  entries <- entries[nzchar(entries)]
+  invalid_entries <- entries[vapply(entries, function(entry) {
+    parts <- trimws(unlist(strsplit(entry, "|", fixed = TRUE)))
+    length(parts) != 4 || any(!nzchar(parts))
+  }, logical(1))]
+  if (length(invalid_entries) > 0) {
+    stop(
+      "[BLOCKER] Invalid ACCRUAL_MCMC_REMEDIATION_TARGETS key(s): ",
+      paste(invalid_entries, collapse = "; "),
+      ". Expected format Model_ID|Target_Space|Sample_Group|Heterogeneity_Variant"
+    )
+  }
+
+  unique(entries)
+}
+
 reuse_existing_loo_diag <- function(existing_diag_row) {
   if (nrow(existing_diag_row) == 0) {
     return(NULL)
@@ -320,6 +350,23 @@ adapt_delta <- if (run_varying_slope_models) 0.99 else 0.95
 max_treedepth <- if (run_varying_slope_models) 15 else 12
 seed <- 42
 
+baseline_sampler_controls <- list(
+  chains = 4L,
+  iter = 4000L,
+  warmup = 1000L,
+  adapt_delta = if (run_varying_slope_models) 0.99 else 0.95,
+  max_treedepth = if (run_varying_slope_models) 15L else 12L,
+  seed = 42L
+)
+remediation_sampler_controls <- list(
+  chains = 4L,
+  iter = 8000L,
+  warmup = 2000L,
+  adapt_delta = 0.99,
+  max_treedepth = 15L,
+  seed = 42L
+)
+
 main_ex_post_ids <- c("M01", "M02", "M03", "M04", "M05", "M06", "M07")
 main_no_lookahead_ids <- c("M01", "M02", "M03", "M07", "M09")
 
@@ -333,6 +380,44 @@ formulas_df <- formulas_df %>%
     )
   ) %>%
   arrange(order_key, Model_ID, Target_Space, Heterogeneity_Variant)
+
+remediation_targets <- parse_remediation_targets(remediation_targets_raw)
+if (length(remediation_targets) > 0) {
+  formula_keys <- diagnostic_key(formulas_df)
+  unmatched_targets <- setdiff(remediation_targets, formula_keys)
+  if (length(unmatched_targets) > 0) {
+    stop(
+      "[BLOCKER] ACCRUAL_MCMC_REMEDIATION_TARGETS contains key(s) that do not match any Step 7 formula row: ",
+      paste(unmatched_targets, collapse = "; ")
+    )
+  }
+
+  remediation_log_path <- file.path(phase_root, "logs", "phase3c_mcmc_remediation_log.txt")
+  remediation_log_lines <- c(
+    "Phase 3c one-time MCMC remediation log",
+    paste0("Target keys: ", paste(remediation_targets, collapse = "; ")),
+    paste0(
+      "Baseline sampler controls: chains=", baseline_sampler_controls$chains,
+      "; iter=", baseline_sampler_controls$iter,
+      "; warmup=", baseline_sampler_controls$warmup,
+      "; adapt_delta=", baseline_sampler_controls$adapt_delta,
+      "; max_treedepth=", baseline_sampler_controls$max_treedepth,
+      "; seed=", baseline_sampler_controls$seed
+    ),
+    paste0(
+      "Remediation sampler controls: chains=", remediation_sampler_controls$chains,
+      "; iter=", remediation_sampler_controls$iter,
+      "; warmup=", remediation_sampler_controls$warmup,
+      "; adapt_delta=", remediation_sampler_controls$adapt_delta,
+      "; max_treedepth=", remediation_sampler_controls$max_treedepth,
+      "; seed=", remediation_sampler_controls$seed
+    ),
+    "Seed retained as 42.",
+    "No seed search was performed.",
+    "Formulas, priors, likelihood, model structure, and samples were unchanged."
+  )
+  writeLines(remediation_log_lines, con = remediation_log_path)
+}
 
 write_failure_diag <- function(row, err, n_obs_fit = NA_integer_, n_firms_fit = NA_integer_, loo_warning_reason = NULL) {
   if (is.null(loo_warning_reason) || !nzchar(loo_warning_reason)) {
@@ -385,6 +470,9 @@ message("Total winsorized configurations to fit/evaluate: ", total_runs)
 if (backfill_diagnostics_only) {
   message("Step 7 diagnostics-only backfill mode is enabled. Existing fit .rds objects will be reused and brm() will not be called.")
 }
+if (length(remediation_targets) > 0) {
+  message("Step 7 one-time MCMC remediation mode is enabled for ", length(remediation_targets), " target row(s).")
+}
 
 for (i in seq_len(total_runs)) {
   row <- formulas_df[i, ]
@@ -392,6 +480,9 @@ for (i in seq_len(total_runs)) {
   model_filename <- file.path(phase_root, "models", paste0("fit_", model_key, ".rds"))
   draws_filename <- file.path(phase_root, "draws", paste0("draws_", model_key, ".rds"))
   existing_diag_row <- lookup_existing_diag_row(diagnostics_df, row)
+  row_target_key <- diagnostic_key(row)
+  row_is_remediation_target <- row_target_key %in% remediation_targets
+  active_sampler_controls <- if (row_is_remediation_target) remediation_sampler_controls else baseline_sampler_controls
 
   message(sprintf("\n=== [%d/%d] Winsor model %s (%s) - %s ===",
                   i, total_runs, row$Model_Name, row$Target_Space, row$Heterogeneity_Variant))
@@ -405,7 +496,7 @@ for (i in seq_len(total_runs)) {
   n_obs_fit <- sample_info$n_obs_fit
   n_firms_fit <- sample_info$n_firms_fit
 
-  if (file.exists(model_filename) && !force_refit) {
+  if (file.exists(model_filename) && !force_refit && !row_is_remediation_target) {
     message("Loading pre-existing winsor model fit from: ", model_filename)
     fit <- tryCatch(readRDS(model_filename), error = function(e) {
       message("[ERROR] Could not read existing fit: ", e$message)
@@ -413,6 +504,23 @@ for (i in seq_len(total_runs)) {
     })
     if (file.exists(draws_filename)) {
       message("Draw file already exists; Phase 3b will not regenerate it unless ACCRUAL_FORCE_REFIT='TRUE': ", draws_filename)
+    }
+  }
+
+  if (remediation_mode && !row_is_remediation_target) {
+    if (!file.exists(model_filename)) {
+      stop(
+        "[BLOCKER] Non-target remediation row is missing required fit .rds file: ",
+        row_target_key, " -> ", model_filename,
+        ". Add this row to ACCRUAL_MCMC_REMEDIATION_TARGETS if it must be refit."
+      )
+    }
+    if (!file.exists(draws_filename)) {
+      stop(
+        "[BLOCKER] Non-target remediation row is missing required draws .rds file: ",
+        row_target_key, " -> ", draws_filename,
+        ". Add this row to ACCRUAL_MCMC_REMEDIATION_TARGETS if draws must be regenerated."
+      )
     }
   }
 
@@ -432,6 +540,12 @@ for (i in seq_len(total_runs)) {
   }
 
   if (is.null(fit)) {
+    if (row_is_remediation_target) {
+      message(
+        "Refitting remediation target with stronger sampler controls and fixed seed 42: ",
+        row_target_key
+      )
+    }
     if (run_varying_slope_models) {
       df_scaled <- prepare_varying_slope_data(df_scaled)
     }
@@ -447,11 +561,11 @@ for (i in seq_len(total_runs)) {
         data = df_scaled,
         family = brms_family(),
         prior = prior_list,
-        chains = chains,
-        iter = iter,
-        warmup = warmup,
-        control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
-        seed = seed,
+        chains = active_sampler_controls$chains,
+        iter = active_sampler_controls$iter,
+        warmup = active_sampler_controls$warmup,
+        control = list(adapt_delta = active_sampler_controls$adapt_delta, max_treedepth = active_sampler_controls$max_treedepth),
+        seed = active_sampler_controls$seed,
         save_pars = save_pars(all = TRUE),
         refresh = 500
       )
@@ -555,7 +669,8 @@ for (i in seq_len(total_runs)) {
     bind_rows(diag_row)
   write.csv(diagnostics_df, diag_path, row.names = FALSE)
 
-  if (!backfill_diagnostics_only && (!file.exists(draws_filename) || force_refit) && stacking_eligible) {
+  regenerate_draws <- !backfill_diagnostics_only && stacking_eligible && (row_is_remediation_target || !file.exists(draws_filename) || force_refit)
+  if (regenerate_draws) {
     message("Generating winsor posterior_epred and posterior_predict draws...")
     ep_draws <- posterior_epred(fit)
     pp_draws <- posterior_predict(fit)
@@ -618,6 +733,7 @@ phase3_notes <- sprintf(
     "Winsorized samples are read from %s/tables/.\n",
     "Outputs are written to %s/.\n",
     "Diagnostics-only backfill mode: %s.\n",
+    "Targeted MCMC remediation mode: %s.\n",
     "Predictors are z-standardized after winsorization using winsorized sample moments.\n",
     "Sampling settings: chains=%d, iter=%d, warmup=%d, adapt_delta=%.2f, max_treedepth=%d, seed=%d.\n",
     "Prior_Set_ID: %s.\n",
@@ -631,6 +747,7 @@ phase3_notes <- sprintf(
     "Step 9 or grouped K-fold must review models flagged PSIS_REVIEW_REQUIRED before relying on PSIS-LOO.\n"
   ),
   input_winsor_root, phase_root, ifelse(backfill_diagnostics_only, "TRUE", "FALSE"),
+  ifelse(length(remediation_targets) > 0, "TRUE", "FALSE"),
   chains, iter, warmup, adapt_delta, max_treedepth, seed,
   prior_set_id, likelihood_family, model_structure
 )
@@ -662,6 +779,9 @@ if (prior_pred_override_used) {
 if (backfill_diagnostics_only) {
   manifest_notes <- c(manifest_notes, "diagnostics backfill only; reused existing fit .rds objects without refitting")
 }
+if (length(remediation_targets) > 0) {
+  manifest_notes <- c(manifest_notes, "one-time MCMC remediation; same seed as baseline; stronger sampler controls only; no model/prior/sample/formula changes")
+}
 is_deviant_config <- !identical(prior_set_id, "scale_aware_student_baseline_v1") || 
                      !identical(likelihood_family, "student") || 
                      !identical(model_structure, "pooled_random_intercept")
@@ -679,7 +799,19 @@ write_run_manifest(
   model_structure = model_structure,
   model_list = unique(formulas_df$Model_ID),
   seed = seed,
-  sampling_config = sprintf("chains=%d;iter=%d;warmup=%d", chains, iter, warmup),
+  sampling_config = if (length(remediation_targets) > 0) {
+    sprintf(
+      "baseline_chains=%d;baseline_iter=%d;baseline_warmup=%d;remediation_chains=%d;remediation_iter=%d;remediation_warmup=%d",
+      baseline_sampler_controls$chains,
+      baseline_sampler_controls$iter,
+      baseline_sampler_controls$warmup,
+      remediation_sampler_controls$chains,
+      remediation_sampler_controls$iter,
+      remediation_sampler_controls$warmup
+    )
+  } else {
+    sprintf("chains=%d;iter=%d;warmup=%d", chains, iter, warmup)
+  },
   status = "SUCCESS",
   notes = notes_str,
   input_paths = c(formulas_path, gate_csv_path)
