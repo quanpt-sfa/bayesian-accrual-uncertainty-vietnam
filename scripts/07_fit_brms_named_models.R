@@ -12,6 +12,11 @@ write_method_design_files()
 write_prior_registry()
 validate_final_analysis_config("Phase 3b baseline brms fit", final_mode = TRUE)
 
+backfill_diagnostics_only <- env_flag("ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY", "FALSE")
+if (backfill_diagnostics_only && force_refit) {
+  stop("[BLOCKER] ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE cannot be combined with ACCRUAL_FORCE_REFIT=TRUE.")
+}
+
 # Check prior predictive check gatekeeper status
 gate_csv_path <- file.path(output_root, "prior_predictive_gate_status.csv")
 if (!file.exists(gate_csv_path)) {
@@ -158,32 +163,139 @@ load_step7_sample_info <- function(row) {
   )
 }
 
-classify_loo_result <- function(loo_res) {
+classify_loo_status <- function(loo_res, pareto_k_above_07) {
   if (is.null(loo_res)) {
     return(list(
-      pareto_k_above_07 = NA_integer_,
-      elpd_loo = NA_real_,
       loo_status = "LOO_FAILED",
       loo_warning_reason = "loo() failed; elpd_loo unavailable"
     ))
   }
 
-  pareto_k_above_07 <- sum(loo_res$diagnostics$pareto_k > 0.7)
-  if (pareto_k_above_07 > 0) {
+  if (!is.na(pareto_k_above_07) && pareto_k_above_07 > 0) {
     return(list(
-      pareto_k_above_07 = pareto_k_above_07,
-      elpd_loo = loo_res$estimates["elpd_loo", "Estimate"],
       loo_status = "PSIS_REVIEW_REQUIRED",
       loo_warning_reason = "pareto_k_above_07 > 0; consider reloo, moment matching, or grouped K-fold before relying on PSIS-LOO"
     ))
   }
 
   list(
-    pareto_k_above_07 = pareto_k_above_07,
-    elpd_loo = loo_res$estimates["elpd_loo", "Estimate"],
     loo_status = "PSIS_OK",
     loo_warning_reason = NA_character_
   )
+}
+
+classify_loo_result <- function(loo_res) {
+  if (is.null(loo_res)) {
+    loo_class <- classify_loo_status(NULL, NA_integer_)
+    return(list(
+      pareto_k_above_07 = NA_integer_,
+      elpd_loo = NA_real_,
+      loo_status = loo_class$loo_status,
+      loo_warning_reason = loo_class$loo_warning_reason
+    ))
+  }
+
+  pareto_k_above_07 <- sum(loo_res$diagnostics$pareto_k > 0.7)
+  loo_class <- classify_loo_status(loo_res, pareto_k_above_07)
+
+  list(
+    pareto_k_above_07 = pareto_k_above_07,
+    elpd_loo = loo_res$estimates["elpd_loo", "Estimate"],
+    loo_status = loo_class$loo_status,
+    loo_warning_reason = loo_class$loo_warning_reason
+  )
+}
+
+lookup_existing_diag_row <- function(df, row) {
+  df %>%
+    filter(
+      Model_ID == row$Model_ID,
+      Target_Space == row$Target_Space,
+      Sample_Group == row$Sample_Group,
+      Heterogeneity_Variant == row$Heterogeneity_Variant
+    ) %>%
+    tail(1)
+}
+
+diagnostic_key <- function(df) {
+  paste(df$Model_ID, df$Target_Space, df$Sample_Group, df$Heterogeneity_Variant, sep = "||")
+}
+
+reuse_existing_loo_diag <- function(existing_diag_row) {
+  if (nrow(existing_diag_row) == 0) {
+    return(NULL)
+  }
+
+  existing_pareto <- suppressWarnings(as.integer(existing_diag_row$pareto_k_above_07[[1]]))
+  existing_elpd <- suppressWarnings(as.numeric(existing_diag_row$elpd_loo[[1]]))
+  if (is.na(existing_pareto) && is.na(existing_elpd)) {
+    return(NULL)
+  }
+
+  loo_class <- classify_loo_status(TRUE, existing_pareto)
+  list(
+    pareto_k_above_07 = existing_pareto,
+    elpd_loo = existing_elpd,
+    loo_status = loo_class$loo_status,
+    loo_warning_reason = loo_class$loo_warning_reason
+  )
+}
+
+reconcile_step7_diagnostics <- function(diagnostics_df, formulas_df) {
+  sample_rows <- formulas_df[!duplicated(diagnostic_key(formulas_df)), c(
+    "Model_ID", "Target_Space", "Sample_Group", "Heterogeneity_Variant", "Target_Sample"
+  )]
+  diagnostics_keys <- diagnostic_key(diagnostics_df)
+
+  for (i in seq_len(nrow(sample_rows))) {
+    sample_row <- sample_rows[i, ]
+    sample_info <- load_step7_sample_info(sample_row)
+    row_key <- diagnostic_key(sample_row)
+    match_idx <- which(diagnostics_keys == row_key)
+    if (length(match_idx) == 0) {
+      next
+    }
+    diagnostics_df$N_Obs[match_idx] <- as.integer(sample_info$n_obs_fit)
+    diagnostics_df$N_Firms[match_idx] <- as.integer(sample_info$n_firms_fit)
+  }
+
+  loo_fields <- lapply(seq_len(nrow(diagnostics_df)), function(i) {
+    fit_status_i <- diagnostics_df$Fit_Status[[i]]
+    pareto_i <- suppressWarnings(as.integer(diagnostics_df$pareto_k_above_07[[i]]))
+    elpd_i <- suppressWarnings(as.numeric(diagnostics_df$elpd_loo[[i]]))
+    error_i <- diagnostics_df$error_message[[i]]
+
+    if (identical(fit_status_i, "SUCCESS") && (!is.na(pareto_i) || !is.na(elpd_i))) {
+      loo_class <- classify_loo_status(TRUE, pareto_i)
+    } else if (identical(fit_status_i, "SUCCESS")) {
+      loo_class <- classify_loo_status(NULL, NA_integer_)
+    } else {
+      loo_class <- list(
+        loo_status = "LOO_FAILED",
+        loo_warning_reason = if (!is.na(error_i) && nzchar(error_i)) {
+          paste0("model fitting failed or LOO unavailable: ", error_i)
+        } else {
+          "loo() failed; elpd_loo unavailable"
+        }
+      )
+    }
+
+    data.frame(
+      loo_status_backfill = loo_class$loo_status,
+      loo_warning_reason_backfill = loo_class$loo_warning_reason,
+      stringsAsFactors = FALSE
+    )
+  })
+  loo_fields_df <- bind_rows(loo_fields)
+
+  diagnostics_df$loo_status <- loo_fields_df$loo_status_backfill
+  diagnostics_df$loo_warning_reason <- loo_fields_df$loo_warning_reason_backfill
+
+  formula_order <- diagnostic_key(formulas_df)
+  diagnostics_df %>%
+    mutate(.diagnostic_key = diagnostic_key(.)) %>%
+    arrange(match(.diagnostic_key, formula_order)) %>%
+    select(-.diagnostic_key)
 }
 
 if (file.exists(diag_path)) {
@@ -222,7 +334,10 @@ formulas_df <- formulas_df %>%
   ) %>%
   arrange(order_key, Model_ID, Target_Space, Heterogeneity_Variant)
 
-write_failure_diag <- function(row, err, n_obs_fit = NA_integer_, n_firms_fit = NA_integer_) {
+write_failure_diag <- function(row, err, n_obs_fit = NA_integer_, n_firms_fit = NA_integer_, loo_warning_reason = NULL) {
+  if (is.null(loo_warning_reason) || !nzchar(loo_warning_reason)) {
+    loo_warning_reason <- paste0("model fitting failed or LOO unavailable: ", err)
+  }
   fail_row <- data.frame(
     Model_ID = row$Model_ID,
     Model_Name = row$Model_Name,
@@ -244,7 +359,7 @@ write_failure_diag <- function(row, err, n_obs_fit = NA_integer_, n_firms_fit = 
     treedepth_warnings = NA_integer_,
     pareto_k_above_07 = NA_integer_,
     loo_status = "LOO_FAILED",
-    loo_warning_reason = "loo() failed; elpd_loo unavailable",
+    loo_warning_reason = loo_warning_reason,
     random_intercept_sd = NA_real_,
     elpd_loo = NA_real_,
     error_message = err,
@@ -267,27 +382,23 @@ write_failure_diag <- function(row, err, n_obs_fit = NA_integer_, n_firms_fit = 
 
 total_runs <- nrow(formulas_df)
 message("Total winsorized configurations to fit/evaluate: ", total_runs)
+if (backfill_diagnostics_only) {
+  message("Step 7 diagnostics-only backfill mode is enabled. Existing fit .rds objects will be reused and brm() will not be called.")
+}
 
 for (i in seq_len(total_runs)) {
   row <- formulas_df[i, ]
   model_key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
   model_filename <- file.path(phase_root, "models", paste0("fit_", model_key, ".rds"))
   draws_filename <- file.path(phase_root, "draws", paste0("draws_", model_key, ".rds"))
+  existing_diag_row <- lookup_existing_diag_row(diagnostics_df, row)
 
   message(sprintf("\n=== [%d/%d] Winsor model %s (%s) - %s ===",
                   i, total_runs, row$Model_Name, row$Target_Space, row$Heterogeneity_Variant))
 
-  already_done <- !force_refit && nrow(diagnostics_df) > 0 && any(
-      diagnostics_df$Model_ID == row$Model_ID &
-      diagnostics_df$Target_Space == row$Target_Space &
-      diagnostics_df$Sample_Group == row$Sample_Group &
-      diagnostics_df$Heterogeneity_Variant == row$Heterogeneity_Variant &
-      is.na(diagnostics_df$error_message)
-  )
-
   fit <- NULL
   sample_info <- tryCatch(load_step7_sample_info(row), error = function(e) {
-    write_failure_diag(row, e$message)
+    write_failure_diag(row, e$message, loo_warning_reason = paste0("diagnostics backfill failed before LOO: ", e$message))
     stop(e)
   })
   df_scaled <- sample_info$df_scaled
@@ -305,7 +416,22 @@ for (i in seq_len(total_runs)) {
     }
   }
 
-  if (is.null(fit) && !already_done) {
+  if (backfill_diagnostics_only && is.null(fit)) {
+    err_msg <- paste0(
+      "[BLOCKER] ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE requires an existing fit object for ",
+      model_key, ": ", model_filename
+    )
+    write_failure_diag(
+      row,
+      err_msg,
+      n_obs_fit = n_obs_fit,
+      n_firms_fit = n_firms_fit,
+      loo_warning_reason = paste0("diagnostics backfill failed: missing or unreadable fit object at ", model_filename)
+    )
+    stop(err_msg)
+  }
+
+  if (is.null(fit)) {
     if (run_varying_slope_models) {
       df_scaled <- prepare_varying_slope_data(df_scaled)
     }
@@ -376,11 +502,16 @@ for (i in seq_len(total_runs)) {
     random_intercept_sd <- post_summary$random$company["sd(Intercept)", "Estimate"]
   }
 
-  loo_res <- tryCatch(loo(fit), error = function(e) {
-    message("[ERROR] LOO failed: ", e$message)
-    NULL
-  })
-  loo_diag <- classify_loo_result(loo_res)
+  loo_diag <- reuse_existing_loo_diag(existing_diag_row)
+  if (is.null(loo_diag)) {
+    loo_res <- tryCatch(loo(fit), error = function(e) {
+      message("[ERROR] LOO failed: ", e$message)
+      NULL
+    })
+    loo_diag <- classify_loo_result(loo_res)
+  } else if (backfill_diagnostics_only) {
+    message("Reusing existing LOO metrics from diagnostics table for backfill: ", model_key)
+  }
 
   diag_row <- data.frame(
     Model_ID = row$Model_ID,
@@ -424,7 +555,7 @@ for (i in seq_len(total_runs)) {
     bind_rows(diag_row)
   write.csv(diagnostics_df, diag_path, row.names = FALSE)
 
-  if ((!file.exists(draws_filename) || force_refit) && stacking_eligible) {
+  if (!backfill_diagnostics_only && (!file.exists(draws_filename) || force_refit) && stacking_eligible) {
     message("Generating winsor posterior_epred and posterior_predict draws...")
     ep_draws <- posterior_epred(fit)
     pp_draws <- posterior_predict(fit)
@@ -432,6 +563,9 @@ for (i in seq_len(total_runs)) {
     message("Saved winsor draws to: ", draws_filename)
   }
 }
+
+diagnostics_df <- reconcile_step7_diagnostics(diagnostics_df, formulas_df)
+write.csv(diagnostics_df, diag_path, row.names = FALSE)
 
 message("\nSaving winsor coefficient table...")
 coeff_df <- data.frame(
@@ -483,6 +617,7 @@ phase3_notes <- sprintf(
     "Phase 3b winsorized BRMS fit notes\n",
     "Winsorized samples are read from %s/tables/.\n",
     "Outputs are written to %s/.\n",
+    "Diagnostics-only backfill mode: %s.\n",
     "Predictors are z-standardized after winsorization using winsorized sample moments.\n",
     "Sampling settings: chains=%d, iter=%d, warmup=%d, adapt_delta=%.2f, max_treedepth=%d, seed=%d.\n",
     "Prior_Set_ID: %s.\n",
@@ -490,10 +625,13 @@ phase3_notes <- sprintf(
     "Model_Structure: %s.\n",
     "Varying slopes are written separately under ACCRUAL_OUTPUT_ROOT/varyslopes and are not mixed into baseline stacking weights.\n",
     "Stacking eligibility requires max Rhat <= 1.01 and divergences == 0.\n",
-    "N_Obs and N_Firms are computed from the winsorized input sample rather than fit$data so pooled models retain correct firm counts.\n",
-    "Pareto-k warnings do not fail Step 7; they are recorded as loo_status='PSIS_REVIEW_REQUIRED' for downstream review in Step 9 or grouped K-fold.\n"
+    "Step 7 diagnostics are computed from the winsorized input samples plus fitted .rds objects.\n",
+    "N_Firms is intentionally computed from the input sample rather than fit$data so pooled models retain correct firm counts.\n",
+    "Pareto-k warnings do not fail Step 7; they are recorded as loo_status='PSIS_REVIEW_REQUIRED'.\n",
+    "Step 9 or grouped K-fold must review models flagged PSIS_REVIEW_REQUIRED before relying on PSIS-LOO.\n"
   ),
-  input_winsor_root, phase_root, chains, iter, warmup, adapt_delta, max_treedepth, seed,
+  input_winsor_root, phase_root, ifelse(backfill_diagnostics_only, "TRUE", "FALSE"),
+  chains, iter, warmup, adapt_delta, max_treedepth, seed,
   prior_set_id, likelihood_family, model_structure
 )
 notes_file <- if (run_varying_slope_models) {
@@ -520,6 +658,9 @@ if (run_varying_slope_models) {
 manifest_notes <- character()
 if (prior_pred_override_used) {
   manifest_notes <- c(manifest_notes, "prior predictive check FAIL bypassed")
+}
+if (backfill_diagnostics_only) {
+  manifest_notes <- c(manifest_notes, "diagnostics backfill only; reused existing fit .rds objects without refitting")
 }
 is_deviant_config <- !identical(prior_set_id, "scale_aware_student_baseline_v1") || 
                      !identical(likelihood_family, "student") || 

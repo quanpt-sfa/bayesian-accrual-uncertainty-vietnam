@@ -15,7 +15,8 @@ diag_df <- read.csv(diag_path, stringsAsFactors = FALSE)
 required_columns <- c(
   "Model_ID", "Target_Space", "Sample_Group", "Heterogeneity_Variant",
   "Fit_Status", "N_Obs", "N_Firms", "Rhat_Max", "Divergences",
-  "treedepth_warnings", "pareto_k_above_07", "loo_status"
+  "treedepth_warnings", "pareto_k_above_07", "elpd_loo",
+  "loo_status", "loo_warning_reason"
 )
 missing_columns <- setdiff(required_columns, names(diag_df))
 if (length(missing_columns) > 0) {
@@ -30,41 +31,60 @@ expected_keys <- unique(key_for(formulas_df))
 actual_keys <- unique(key_for(diag_df))
 missing_keys <- setdiff(expected_keys, actual_keys)
 unexpected_keys <- setdiff(actual_keys, expected_keys)
+duplicate_diag_keys <- actual_keys[duplicated(actual_keys)]
 
 bad_status <- unique(diag_df$Fit_Status[diag_df$Fit_Status != "SUCCESS"])
 bad_loo <- sort(unique(diag_df$loo_status[!diag_df$loo_status %in% c("PSIS_OK", "PSIS_REVIEW_REQUIRED", "LOO_FAILED")]))
 bad_pareto_flags <- diag_df$pareto_k_above_07 > 0 & diag_df$loo_status != "PSIS_REVIEW_REQUIRED"
 bad_pareto_flags[is.na(bad_pareto_flags)] <- FALSE
+pooled_rows <- grepl("^Pooled", diag_df$Heterogeneity_Variant)
+bad_pooled_firms <- pooled_rows & (is.na(diag_df$N_Firms) | diag_df$N_Firms <= 0)
+bad_pooled_firms[is.na(bad_pooled_firms)] <- FALSE
+good_zero_pareto_loo <- diag_df$Fit_Status == "SUCCESS" & !is.na(diag_df$elpd_loo) & !is.na(diag_df$pareto_k_above_07) & diag_df$pareto_k_above_07 == 0
+bad_zero_pareto_flags <- good_zero_pareto_loo & diag_df$loo_status != "PSIS_OK"
+bad_zero_pareto_flags[is.na(bad_zero_pareto_flags)] <- FALSE
+bad_success_rhat <- diag_df$Fit_Status == "SUCCESS" & (is.na(diag_df$Rhat_Max) | diag_df$Rhat_Max > 1.01)
+bad_success_rhat[is.na(bad_success_rhat)] <- FALSE
 
 checks <- c(
   sprintf("Expected rows: %d", length(expected_keys)),
+  sprintf("Expected formula rows: %d", nrow(formulas_df)),
   sprintf("Actual rows: %d", nrow(diag_df)),
   sprintf("Missing expected rows: %d", length(missing_keys)),
   sprintf("Unexpected rows: %d", length(unexpected_keys)),
+  sprintf("Duplicate diagnostics keys: %d", length(duplicate_diag_keys)),
   sprintf("Non-success Fit_Status rows: %d", sum(diag_df$Fit_Status != "SUCCESS", na.rm = TRUE)),
   sprintf("Rows with N_Obs <= 0: %d", sum(is.na(diag_df$N_Obs) | diag_df$N_Obs <= 0)),
   sprintf("Rows with N_Firms <= 0: %d", sum(is.na(diag_df$N_Firms) | diag_df$N_Firms <= 0)),
+  sprintf("Pooled rows with N_Firms <= 0: %d", sum(bad_pooled_firms)),
   sprintf("Rows with Rhat_Max > 1.01: %d", sum(is.na(diag_df$Rhat_Max) | diag_df$Rhat_Max > 1.01)),
   sprintf("Rows with Divergences != 0: %d", sum(is.na(diag_df$Divergences) | diag_df$Divergences != 0)),
   sprintf("Rows with treedepth_warnings != 0: %d", sum(is.na(diag_df$treedepth_warnings) | diag_df$treedepth_warnings != 0)),
   sprintf("Rows with invalid loo_status: %d", length(bad_loo)),
-  sprintf("Rows with pareto_k_above_07 > 0 but not PSIS_REVIEW_REQUIRED: %d", sum(bad_pareto_flags))
+  sprintf("Rows with pareto_k_above_07 > 0 but not PSIS_REVIEW_REQUIRED: %d", sum(bad_pareto_flags)),
+  sprintf("Rows with pareto_k_above_07 == 0 and successful LOO but not PSIS_OK: %d", sum(bad_zero_pareto_flags)),
+  sprintf("Successful fits with Rhat_Max > 1.01 or missing: %d", sum(bad_success_rhat))
 )
 
 dir.create(dirname(log_path), recursive = TRUE, showWarnings = FALSE)
 writeLines(checks, con = log_path)
 
 failures <- character()
+if (nrow(diag_df) != nrow(formulas_df)) failures <- c(failures, sprintf("Diagnostics row count (%d) does not match formulas row count (%d).", nrow(diag_df), nrow(formulas_df)))
 if (length(missing_keys) > 0) failures <- c(failures, paste("Missing expected diagnostics rows:", paste(missing_keys, collapse = "; ")))
 if (length(unexpected_keys) > 0) failures <- c(failures, paste("Unexpected diagnostics rows:", paste(unexpected_keys, collapse = "; ")))
+if (length(duplicate_diag_keys) > 0) failures <- c(failures, paste("Duplicate diagnostics keys:", paste(duplicate_diag_keys, collapse = "; ")))
 if (length(bad_status) > 0) failures <- c(failures, paste("Unexpected Fit_Status values:", paste(bad_status, collapse = ", ")))
 if (any(is.na(diag_df$N_Obs) | diag_df$N_Obs <= 0)) failures <- c(failures, "Some Step 7 rows have N_Obs <= 0 or missing.")
 if (any(is.na(diag_df$N_Firms) | diag_df$N_Firms <= 0)) failures <- c(failures, "Some Step 7 rows have N_Firms <= 0 or missing.")
+if (any(bad_pooled_firms)) failures <- c(failures, "Some pooled Step 7 rows still have N_Firms <= 0 or missing.")
 if (any(is.na(diag_df$Rhat_Max) | diag_df$Rhat_Max > 1.01)) failures <- c(failures, "Some Step 7 rows have Rhat_Max > 1.01 or missing.")
 if (any(is.na(diag_df$Divergences) | diag_df$Divergences != 0)) failures <- c(failures, "Some Step 7 rows have non-zero or missing Divergences.")
 if (any(is.na(diag_df$treedepth_warnings) | diag_df$treedepth_warnings != 0)) failures <- c(failures, "Some Step 7 rows have non-zero or missing treedepth_warnings.")
 if (length(bad_loo) > 0) failures <- c(failures, paste("Invalid loo_status values:", paste(bad_loo, collapse = ", ")))
 if (any(bad_pareto_flags)) failures <- c(failures, "Models with pareto_k_above_07 > 0 were not flagged as PSIS_REVIEW_REQUIRED.")
+if (any(bad_zero_pareto_flags)) failures <- c(failures, "Models with pareto_k_above_07 == 0 and successful LOO were not flagged as PSIS_OK.")
+if (any(bad_success_rhat)) failures <- c(failures, "Some successful Step 7 rows have Rhat_Max > 1.01 or missing.")
 
 if (length(failures) > 0) {
   stop(paste(failures, collapse = "\n"))
