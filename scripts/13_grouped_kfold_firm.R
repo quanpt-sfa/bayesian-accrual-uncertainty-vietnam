@@ -390,21 +390,69 @@ main <- function() {
 
   optimize_stacking_from_lpd <- function(lpd_matrix) {
     lpd_matrix <- as.matrix(lpd_matrix)
-    if (ncol(lpd_matrix) == 1) return(1)
-    objective <- function(theta) {
-      w <- softmax(theta)
-      log_w <- log(pmax(w, .Machine$double.eps))
-      total <- 0
-      for (i in seq_len(nrow(lpd_matrix))) {
-        vals <- log_w + lpd_matrix[i, ]
-        m <- max(vals)
-        total <- total + m + log(sum(exp(vals - m)))
-      }
-      -total
+    if (is.null(colnames(lpd_matrix))) {
+      colnames(lpd_matrix) <- paste0("model_", seq_len(ncol(lpd_matrix)))
     }
-    fit <- optim(rep(0, ncol(lpd_matrix) - 1), objective, method = "BFGS",
-                 control = list(maxit = 2000, reltol = 1e-10))
-    softmax(fit$par)
+
+    if (ncol(lpd_matrix) == 1) {
+      out <- 1
+      names(out) <- colnames(lpd_matrix)
+      return(out)
+    }
+
+    log_sum_exp <- function(vals) {
+      m <- max(vals)
+      m + log(sum(exp(vals - m)))
+    }
+
+    mixture_objective_value <- function(w) {
+      log_w <- log(pmax(w, .Machine$double.eps))
+      adjusted <- sweep(lpd_matrix, 2, log_w, "+")
+      sum(apply(adjusted, 1, log_sum_exp))
+    }
+
+    objective <- function(theta) {
+      -mixture_objective_value(softmax(theta))
+    }
+
+    singleton_elpd <- colSums(lpd_matrix)
+    best_singleton <- which.max(singleton_elpd)
+
+    starts <- list(rep(0, ncol(lpd_matrix) - 1))
+    for (j in seq_len(ncol(lpd_matrix))) {
+      z <- rep(-8, ncol(lpd_matrix))
+      z[j] <- 8
+      starts[[length(starts) + 1]] <- z[-ncol(lpd_matrix)]
+    }
+
+    fits <- lapply(starts, function(st) {
+      tryCatch(
+        optim(st, objective, method = "BFGS", control = list(maxit = 5000, reltol = 1e-12)),
+        error = function(e) NULL
+      )
+    })
+    fits <- Filter(Negate(is.null), fits)
+
+    singleton_w <- rep(0, ncol(lpd_matrix))
+    singleton_w[best_singleton] <- 1
+    names(singleton_w) <- colnames(lpd_matrix)
+
+    if (length(fits) == 0) {
+      warning("Stacking optimizer failed for all starts; falling back to best singleton elpd model.")
+      return(singleton_w)
+    }
+
+    vals <- vapply(fits, function(f) -f$value, numeric(1))
+    best_fit <- fits[[which.max(vals)]]
+    w <- softmax(best_fit$par)
+    names(w) <- colnames(lpd_matrix)
+
+    if (mixture_objective_value(w) + 1e-6 < mixture_objective_value(singleton_w)) {
+      warning("Stacking optimizer returned a solution worse than the best singleton; falling back to best singleton elpd model.")
+      return(singleton_w)
+    }
+
+    w
   }
 
   make_fold_assignment <- function(df_ep, df_rt) {
@@ -1087,37 +1135,101 @@ main <- function() {
   write.csv(model_scores, file.path(tables_dir, "table_winsor_kfold_model_scores.csv"), row.names = FALSE)
 
   build_kfold_weights <- function(target_space) {
-    included <- model_scores %>% filter(Target_Space == target_space, Sample_Group == "main_common", included_in_stack == TRUE) %>% arrange(Model_ID, Heterogeneity_Variant)
+    included <- model_scores %>%
+      filter(Target_Space == target_space, Sample_Group == "main_common", included_in_stack == TRUE) %>%
+      arrange(Model_ID, Heterogeneity_Variant)
+
     if (nrow(included) == 0 || nrow(obs_scores) == 0) return(data.frame())
+
     score_list <- list()
-    model_keys <- character()
     expected_n <- if (partial_run) {
       obs_scores %>% filter(Target_Space == target_space) %>% distinct(Obs_ID) %>% nrow()
     } else {
       ifelse(target_space == "ex_post", nrow(df_ep), nrow(df_rt))
     }
+
     for (i in seq_len(nrow(included))) {
       row <- included[i, ]
       key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_kfold")
       one <- obs_scores %>%
-        filter(Target_Space == target_space, Sample_Group == row$Sample_Group, Model_ID == row$Model_ID, Heterogeneity_Variant == row$Heterogeneity_Variant) %>%
+        filter(
+          Target_Space == target_space,
+          Sample_Group == row$Sample_Group,
+          Model_ID == row$Model_ID,
+          Heterogeneity_Variant == row$Heterogeneity_Variant
+        ) %>%
         arrange(Obs_ID)
+
       if (nrow(one) != expected_n) next
       score_list[[key]] <- one$lpd_obs
-      model_keys <- c(model_keys, key)
     }
+
     if (length(score_list) == 0) return(data.frame())
+
     lpd_matrix <- do.call(cbind, score_list)
+    colnames(lpd_matrix) <- names(score_list)
+
     weights <- optimize_stacking_from_lpd(lpd_matrix)
-    if (abs(sum(weights) - 1) > 1e-5) stop("[BLOCKER] Exact K-fold stacking weights do not sum to 1 for ", target_space)
-    meta <- included[match(sub("_kfold$", "", model_keys), model_key_sampled(included$Model_ID, included$Target_Space, included$Sample_Group, included$Heterogeneity_Variant)), ]
+    if (is.null(names(weights))) names(weights) <- colnames(lpd_matrix)
+    weights <- weights[colnames(lpd_matrix)]
+
+    if (any(is.na(weights))) {
+      stop("[BLOCKER] Exact K-fold stacking weights contain NA after aligning by model key for ", target_space)
+    }
+    if (abs(sum(weights) - 1) > 1e-5) {
+      stop("[BLOCKER] Exact K-fold stacking weights do not sum to 1 for ", target_space)
+    }
+
+    # model_key_sampled() is scalar in 00_helpers.R; vectorize it explicitly.
+    included_keys <- mapply(
+      model_key_sampled,
+      included$Model_ID,
+      included$Target_Space,
+      included$Sample_Group,
+      included$Heterogeneity_Variant,
+      MoreArgs = list(suffix = ""),
+      USE.NAMES = FALSE
+    )
+
+    stripped_weight_keys <- sub("_kfold$", "", names(weights))
+    meta_idx <- match(stripped_weight_keys, included_keys)
+    if (any(is.na(meta_idx))) {
+      stop("[BLOCKER] Could not align exact K-fold weights to model metadata for ", target_space,
+           ". Missing keys: ", paste(stripped_weight_keys[is.na(meta_idx)], collapse = ", "))
+    }
+
+    singleton_elpd <- colSums(lpd_matrix)
+    best_elpd_key <- names(singleton_elpd)[which.max(singleton_elpd)]
+    top_weight_key <- names(weights)[which.max(weights)]
+    top_weight_not_best_singleton <- max(weights) > 0.999 && !identical(top_weight_key, best_elpd_key)
+
+    if (top_weight_not_best_singleton) {
+      warning(
+        "Top exact K-fold weight is approximately 1 but is not assigned to the best singleton elpd model for ",
+        target_space, ". top_weight_key=", top_weight_key,
+        "; best_elpd_key=", best_elpd_key,
+        ". This is a sanity warning; check optimizer diagnostics before interpretation."
+      )
+    }
+
+    meta <- included[meta_idx, ]
+
     meta %>%
-      mutate(Weight_KFold = weights) %>%
+      mutate(
+        Model_Key_KFold = names(weights),
+        Weight_KFold = as.numeric(weights),
+        Singleton_ELPD = as.numeric(singleton_elpd[names(weights)]),
+        Best_Singleton_ELPD_Key = best_elpd_key,
+        Top_Weight_Key = top_weight_key,
+        Top_Weight_Not_Best_Singleton = top_weight_not_best_singleton
+      ) %>%
       arrange(desc(Weight_KFold)) %>%
       mutate(Rank_KFold = row_number()) %>%
       mutate(M10_Included = FALSE) %>%
-      select(Target_Space, Sample_Group, M10_Included, Model_ID, Model_Name, Heterogeneity_Variant, Weight_KFold, Rank_KFold,
-             elpd_kfold, mean_lpd_obs, RMSE, MAE, reliability_flag)
+      select(Target_Space, Sample_Group, M10_Included, Model_ID, Model_Name, Heterogeneity_Variant,
+             Model_Key_KFold, Weight_KFold, Rank_KFold, elpd_kfold, Singleton_ELPD,
+             mean_lpd_obs, RMSE, MAE, reliability_flag,
+             Best_Singleton_ELPD_Key, Top_Weight_Key, Top_Weight_Not_Best_Singleton)
   }
 
   kfold_weights_ep <- build_kfold_weights("ex_post")
@@ -1393,3 +1505,4 @@ result <- tryCatch(
     stop(e)
   }
 )
+

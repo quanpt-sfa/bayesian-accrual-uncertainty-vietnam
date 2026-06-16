@@ -59,10 +59,87 @@ add_metadata <- function(df) {
     )
 }
 
+empty_validation_results <- function() {
+  data.frame(
+    Space = character(),
+    Outcome = character(),
+    Predictor = character(),
+    Weighted = logical(),
+    Weight_Var = character(),
+    Circularity_Risk = character(),
+    Coefficient = numeric(),
+    Std_Error = numeric(),
+    t_value = numeric(),
+    p_value = numeric(),
+    R2 = numeric(),
+    Adj_R2 = numeric(),
+    N_Obs = integer(),
+    stringsAsFactors = FALSE
+  )
+}
+
+cluster_for_fit <- function(fit, data) {
+  mf <- model.frame(fit)
+  idx <- suppressWarnings(as.integer(rownames(mf)))
+  if (length(idx) == nrow(mf) && all(!is.na(idx)) && all(idx >= 1) && all(idx <= nrow(data))) {
+    return(data$company[idx])
+  }
+  rep(NA_character_, nrow(mf))
+}
+
+safe_coeftest <- function(fit, data) {
+  cl <- cluster_for_fit(fit, data)
+  if (length(cl) == nobs(fit) && any(!is.na(cl)) && dplyr::n_distinct(cl, na.rm = TRUE) >= 2) {
+    out <- tryCatch(
+      lmtest::coeftest(fit, vcov. = sandwich::vcovCL(fit, cluster = cl)),
+      error = function(e) NULL
+    )
+    if (!is.null(out)) return(out)
+  }
+  summary(fit)$coefficients
+}
+
+safe_weight <- function(x) {
+  w <- 1 / pmax(x^2, .Machine$double.eps)
+  w[!is.finite(w) | w <= 0] <- NA_real_
+  w
+}
+
+validation_debug_rows <- list()
+add_validation_debug <- function(space, suffix, df_merged, candidate_predictors, predictors, note) {
+  outcome_vars <- c("future_CFO", "future_Earnings", "future_ROA", "current_Earnings")
+  controls <- c("Size", "ROA_curr", "revenue_growth", "industry", "year", "company")
+  validation_debug_rows[[length(validation_debug_rows) + 1]] <<- data.frame(
+    Space = space,
+    Suffix = suffix,
+    N_Merged = nrow(df_merged),
+    N_Companies = if ("company" %in% names(df_merged)) dplyr::n_distinct(df_merged$company) else NA_integer_,
+    Candidate_Predictors = paste(candidate_predictors, collapse = ";"),
+    Present_Predictors = paste(predictors, collapse = ";"),
+    Missing_Predictors = paste(setdiff(candidate_predictors, names(df_merged)), collapse = ";"),
+    Missing_Controls = paste(setdiff(controls, names(df_merged)), collapse = ";"),
+    Outcome_Nonmissing = paste(
+      vapply(intersect(outcome_vars, names(df_merged)), function(v) sum(!is.na(df_merged[[v]])), integer(1)),
+      names(vapply(intersect(outcome_vars, names(df_merged)), function(v) sum(!is.na(df_merged[[v]])), integer(1))),
+      sep = ":",
+      collapse = ";"
+    ),
+    Note = note,
+    stringsAsFactors = FALSE
+  )
+}
+
+
 run_validation <- function(space_name, sample_df, suffix) {
   df_merged <- sample_df %>%
     select(company, year, industry, Size, ROA_curr, revenue_growth, A_lag) %>%
-    inner_join(master_df, by = c("company", "year")) %>%
+    # Drop columns already taken from the sample before joining master_df.
+    # Otherwise dplyr creates Size.x/Size.y, ROA_curr.x/ROA_curr.y, etc.,
+    # while the validation formulas still refer to Size, ROA_curr, revenue_growth.
+    inner_join(
+      master_df %>% select(-any_of(c("industry", "Size", "ROA_curr", "revenue_growth", "A_lag"))),
+      by = c("company", "year")
+    ) %>%
     inner_join(df_raw_leads, by = c("company", "year")) %>%
     mutate(
       current_Earnings = NI / A_lag,
@@ -74,7 +151,7 @@ run_validation <- function(space_name, sample_df, suffix) {
       abs_DA_PerfModJones_OLS_winsor = abs(DA_PerfModJones_OLS_winsor)
     )
 
-  predictors <- c(
+  candidate_predictors <- c(
     paste0("Abs_DA_z_estimation_stacked_", suffix, "_winsor"),
     paste0("Abs_DA_z_predictive_stacked_", suffix, "_winsor"),
     paste0("DA_tail_flag_95_", suffix, "_winsor"),
@@ -83,7 +160,10 @@ run_validation <- function(space_name, sample_df, suffix) {
     "abs_DA_ModJones_OLS_winsor",
     "abs_DA_PerfModJones_OLS_winsor"
   )
-  predictors <- predictors[predictors %in% names(df_merged)]
+  predictors <- candidate_predictors[candidate_predictors %in% names(df_merged)]
+  if (length(predictors) == 0) {
+    add_validation_debug(space_name, suffix, df_merged, candidate_predictors, predictors, "No candidate predictors found after joins.")
+  }
   outcomes <- c("future_CFO", "future_Earnings", "future_ROA", "future_Earnings_persistence")
 
   results <- list()
@@ -103,7 +183,7 @@ run_validation <- function(space_name, sample_df, suffix) {
 
       fit_unweighted <- tryCatch(lm(as.formula(form_str), data = df_merged), error = function(e) NULL)
       if (!is.null(fit_unweighted)) {
-        coef_m <- tryCatch(lmtest::coeftest(fit_unweighted, vcov. = sandwich::vcovCL(fit_unweighted, cluster = ~company)), error = function(e) summary(fit_unweighted)$coefficients)
+        coef_m <- safe_coeftest(fit_unweighted, df_merged)
         term_name <- pred
         if (outcome == "future_Earnings_persistence") {
           idx <- grep(paste0("current_Earnings.*", pred, "|", pred, ".*current_Earnings"), rownames(coef_m))
@@ -136,10 +216,10 @@ run_validation <- function(space_name, sample_df, suffix) {
           paste0("NDA_sd_predict_stacked_", suffix, "_winsor")
         }
         if (weight_col %in% names(df_merged)) {
-          df_merged$reg_weight <- 1 / (df_merged[[weight_col]]^2)
+          df_merged$reg_weight <- safe_weight(df_merged[[weight_col]])
           fit_weighted <- tryCatch(lm(as.formula(form_str), data = df_merged, weights = reg_weight), error = function(e) NULL)
           if (!is.null(fit_weighted)) {
-            coef_m <- tryCatch(lmtest::coeftest(fit_weighted, vcov. = sandwich::vcovCL(fit_weighted, cluster = ~company)), error = function(e) summary(fit_weighted)$coefficients)
+            coef_m <- safe_coeftest(fit_weighted, df_merged)
             term_name <- pred
             if (outcome == "future_Earnings_persistence") {
               idx <- grep(paste0("current_Earnings.*", pred, "|", pred, ".*current_Earnings"), rownames(coef_m))
@@ -169,7 +249,10 @@ run_validation <- function(space_name, sample_df, suffix) {
     }
   }
 
-  if (length(results) == 0) return(data.frame())
+  if (length(results) == 0) {
+    add_validation_debug(space_name, suffix, df_merged, candidate_predictors, predictors, "No regression rows were produced. Check missing controls, all-NA outcomes, singular fits, or term-name mismatch.")
+    return(empty_validation_results())
+  }
   do.call(rbind, results)
 }
 
@@ -178,6 +261,19 @@ validation_results <- bind_rows(
   run_validation("real_time", df_rt_sample, "rt")
 ) %>%
   add_metadata()
+
+if (length(validation_debug_rows) > 0) {
+  write.csv(bind_rows(validation_debug_rows),
+            file.path(validation_root, "table_validation_debug_scaleaware_student.csv"),
+            row.names = FALSE)
+}
+
+if (nrow(validation_results) == 0) {
+  stop("[BLOCKER] Phase 6b validation produced zero regression rows. ",
+       "This usually means predictor/control names changed after joins, outcomes are all missing, ",
+       "or all validation fits failed. See: ",
+       file.path(validation_root, "table_validation_debug_scaleaware_student.csv"))
+}
 
 unweighted_df <- validation_results %>% filter(Weighted == FALSE)
 weighted_df <- validation_results %>% filter(Weighted == TRUE)
