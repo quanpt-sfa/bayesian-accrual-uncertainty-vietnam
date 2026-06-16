@@ -14,7 +14,7 @@ ensure_analysis_dirs()
 
 script_start_time <- Sys.time()
 script_name <- "scripts/13_grouped_kfold_firm.R"
-script_version <- "2026-06-13-cache-safe-v1"
+script_version <- "2026-06-15-stratified-sparse-industry-v2"
 
 set.seed(20260613)
 options(mc.cores = 1)
@@ -44,7 +44,12 @@ run_id <- gsub("[^A-Za-z0-9_.-]", "_", run_id)
 preflight_only <- env_flag("ACCRUAL_KFOLD_FIRM_PREFLIGHT_ONLY")
 overwrite_run <- env_flag("ACCRUAL_KFOLD_FIRM_OVERWRITE")
 force_resume <- env_flag("ACCRUAL_KFOLD_FIRM_FORCE_RESUME")
-kfold_stratified_groups <- env_flag("ACCRUAL_KFOLD_STRATIFIED_GROUPS")
+# Stratified grouped K-fold. Default TRUE: firms are dealt out fold by fold WITHIN
+# each industry (round-robin), so every industry with at least K firms appears in
+# every fold and therefore in every training fold. This is the job of this script:
+# build correct folds. It does NOT paper over data problems such as an industry
+# that contains fewer than K firms; that is handled by a hard data check below.
+kfold_stratified_groups <- env_flag("ACCRUAL_KFOLD_STRATIFIED_GROUPS", "TRUE")
 kfold_repeats <- as.integer(Sys.getenv("ACCRUAL_KFOLD_REPEATS", "1"))
 if (is.na(kfold_repeats) || kfold_repeats < 1) stop("[BLOCKER] ACCRUAL_KFOLD_REPEATS must be an integer >= 1.")
 if (kfold_repeats > 1) {
@@ -155,6 +160,7 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Target_Space_Filter = paste(target_space_filter, collapse = ","),
     Model_ID_Filter = paste(model_id_filter, collapse = ","),
     KFold_Target_Mode = kfold_target_mode,
+    Stratified_Grouped_KFold = kfold_stratified_groups,
     Prior_Set_ID = prior_set_id,
     Likelihood_Family = likelihood_family,
     Model_Structure = model_structure,
@@ -249,6 +255,7 @@ write_output_manifest <- function(final_decision = NA_character_) {
   outputs <- c(
     fold_assignment = file.path(tables_dir, "table_winsor_firm_fold_assignment.csv"),
     fold_balance = file.path(tables_dir, "table_winsor_kfold_balance.csv"),
+    industry_fold_coverage = file.path(tables_dir, "table_winsor_kfold_industry_fold_coverage.csv"),
     model_fold_manifest = file.path(tables_dir, "table_winsor_kfold_model_fold_manifest.csv"),
     refit_diagnostics = file.path(tables_dir, "table_winsor_kfold_refit_diagnostics.csv"),
     standardization_audit = file.path(tables_dir, "table_winsor_kfold_train_standardization_audit.csv"),
@@ -422,13 +429,22 @@ main <- function() {
     ordered <- firm_summary %>%
       arrange(company) %>%
       mutate(Random_Order = runif(n()))
-    if (kfold_stratified_groups) {
-      ordered <- ordered %>% arrange(Dominant_Industry, desc(N_Obs), Random_Order)
+
+    if (kfold_stratified_groups && !all(is.na(ordered$Dominant_Industry))) {
+      # True round-robin WITHIN each industry: shuffle firms of an industry, then
+      # deal them fold 1,2,...,K,1,2,... so each industry with >= K firms lands in
+      # every fold (and thus every training fold).
+      assigned <- ordered %>%
+        group_by(Dominant_Industry) %>%
+        arrange(Random_Order, .by_group = TRUE) %>%
+        mutate(Fold_ID = ((row_number() - 1) %% K) + 1) %>%
+        ungroup()
     } else {
-      ordered <- ordered %>% arrange(Random_Order)
+      assigned <- ordered %>%
+        arrange(Random_Order) %>%
+        mutate(Fold_ID = rep(seq_len(K), length.out = n()))
     }
-    ordered %>%
-      mutate(Fold_ID = rep(seq_len(K), length.out = n())) %>%
+    assigned %>%
       arrange(company) %>%
       select(company, Fold_ID, N_Obs, Min_Year, Max_Year, Dominant_Industry)
   }
@@ -436,6 +452,34 @@ main <- function() {
   fold_assignment <- make_fold_assignment(df_ep, df_rt)
   if (anyDuplicated(fold_assignment$company) > 0) stop("[BLOCKER] Duplicate firm fold assignment.")
   write.csv(fold_assignment, file.path(tables_dir, "table_winsor_firm_fold_assignment.csv"), row.names = FALSE)
+
+  # Industry-by-fold coverage report (diagnostic for the manuscript).
+  firms_per_industry <- fold_assignment %>%
+    filter(!is.na(Dominant_Industry)) %>%
+    distinct(company, Dominant_Industry) %>%
+    count(Dominant_Industry, name = "N_Firms")
+  folds_covered <- fold_assignment %>%
+    filter(!is.na(Dominant_Industry)) %>%
+    distinct(Dominant_Industry, Fold_ID) %>%
+    count(Dominant_Industry, name = "N_Folds_Present")
+  industry_fold_coverage <- firms_per_industry %>%
+    left_join(folds_covered, by = "Dominant_Industry") %>%
+    mutate(Present_In_All_Folds = N_Folds_Present == K) %>%
+    arrange(N_Firms)
+  write.csv(industry_fold_coverage, file.path(tables_dir, "table_winsor_kfold_industry_fold_coverage.csv"), row.names = FALSE)
+
+  # DATA CHECK (not a fix): grouped-by-firm K-fold cannot place an industry in every
+  # training fold if that industry has fewer than K firms. This is a data-coverage
+  # problem to resolve upstream (drop/merge the sparse industry, or lower K), not
+  # something this fold builder should silently work around. Stop loudly.
+  sparse_industries <- firms_per_industry %>% filter(N_Firms < K)
+  if (nrow(sparse_industries) > 0) {
+    msg <- paste(sprintf("%s (%d firms)", sparse_industries$Dominant_Industry, sparse_industries$N_Firms),
+                 collapse = "; ")
+    stop("[BLOCKER] Industries with fewer than K=", K, " firms cannot appear in every training fold: ",
+         msg, ". Resolve this at the data level (drop or merge the sparse industry, or lower K). ",
+         "See table_winsor_kfold_industry_fold_coverage.csv.")
+  }
 
   attach_folds <- function(df, target_space) {
     out <- df %>% left_join(fold_assignment %>% select(company, Fold_ID), by = "company")
@@ -688,11 +732,19 @@ main <- function() {
 
     if (file.exists(score_cache_path)) {
       cached <- tryCatch(readRDS(score_cache_path), error = function(e) NULL)
-      if (!is.null(cached) && cache_meta_matches(cached$cache_meta, expected_meta)) {
-        heartbeat(task$Target_Space, task$Model_ID, task$Heterogeneity_Variant, fold_id, "SKIPPED_CACHE_VALID", "cache=HIT")
+      cached_failed <- !is.null(cached) && !is.null(cached$fold_diag) &&
+        isFALSE(as.logical(cached$fold_diag$Completed))
+      # On resume, reuse cached COMPLETED folds (fast resume) but RE-RUN cached
+      # FAILED folds, since a previous failure may have been transient or caused by
+      # an issue fixed since. Completed cache is only reused when metadata matches.
+      reuse_cache <- !is.null(cached) && cache_meta_matches(cached$cache_meta, expected_meta) &&
+        !(force_resume && cached_failed)
+      if (reuse_cache) {
+        status_label <- "SKIPPED_CACHE_VALID"
+        heartbeat(task$Target_Space, task$Model_ID, task$Heterogeneity_Variant, fold_id, status_label, "cache=HIT")
         d <- cached$fold_diag
         update_manifest_row(model_key, list(
-          Status = "SKIPPED_CACHE_VALID",
+          Status = status_label,
           Started_At = d$Started_At,
           Ended_At = d$Ended_At,
           Runtime_Seconds = d$Runtime_Seconds,
@@ -708,7 +760,12 @@ main <- function() {
         ))
         return(cached)
       }
-      heartbeat(task$Target_Space, task$Model_ID, task$Heterogeneity_Variant, fold_id, "CACHE_INVALID_METADATA_MISMATCH", "cache=MISS")
+      if (force_resume && cached_failed) {
+        heartbeat(task$Target_Space, task$Model_ID, task$Heterogeneity_Variant, fold_id, "RETRY_PREVIOUSLY_FAILED", "cache=STALE_FAILED")
+        if (file.exists(fit_path)) tryCatch(unlink(fit_path), error = function(e) NULL)
+      } else {
+        heartbeat(task$Target_Space, task$Model_ID, task$Heterogeneity_Variant, fold_id, "CACHE_INVALID_METADATA_MISMATCH", "cache=MISS")
+      }
     }
 
     task_start <- Sys.time()
@@ -1277,6 +1334,7 @@ main <- function() {
     paste("Config_Tag:", config_tag),
     paste("Kfold_Run_Root:", kfold_run_root),
     sprintf("Sampling settings: chains=%d iter=%d warmup=%d adapt_delta=%.2f max_treedepth=%d seed=%d", chains, iter, warmup, adapt_delta, max_treedepth, seed),
+    sprintf("Stratified_Grouped_KFold: %s (per-industry round-robin; every industry with >= K firms appears in every fold).", kfold_stratified_groups),
     sprintf("Ex-post observations=%d firms=%d.", nrow(df_ep), length(unique(df_ep$company))),
     sprintf("No-look-ahead observations=%d firms=%d.", nrow(df_rt), length(unique(df_rt$company))),
     paste("Ex-post model IDs:", paste(ex_post_ids, collapse = ", ")),
