@@ -30,4 +30,6 @@ Active scripts use numeric prefixes only. No letter suffixes are used in script 
 
 Sensitivity phases 14-20 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `ACCRUAL_DRY_RUN=FALSE` and the relevant phase is launched intentionally.
 
+Optional artifact-level sanity checks live under `tests/`. Use `tests/test_kfold_weights_sanity.R` to inspect Step 13 exact grouped K-fold weights for a completed run. Override the default artifact root with `ACCRUAL_KFOLD_CHECK_ROOT` when needed.
+
 The machine-readable pipeline index is written to `out/manifests/method_design/pipeline_index.csv`.
