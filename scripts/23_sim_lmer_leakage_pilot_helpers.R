@@ -117,14 +117,16 @@ score_fold <- function(train, test, fold_type = c("row", "group")) {
 score_cv <- function(df, fold_type = c("row", "group"), K = 5, seed = 1) {
   fold_type <- match.arg(fold_type)
   folds <- if (fold_type == "row") make_row_folds(df, K, seed) else make_firm_folds(df, K, seed)
-  sc <- do.call(rbind, lapply(seq_len(K), function(k) score_fold(df[folds != k, ], df[folds == k, ], fold_type)))
+  fold_scores <- lapply(seq_len(K), function(k) score_fold(df[folds != k, ], df[folds == k, ], fold_type))
+  singular_folds <- sum(vapply(fold_scores, function(z) isTRUE(z$singular_firmre[1]), logical(1)))
+  sc <- do.call(rbind, fold_scores)
   w <- stacking_weight_2model(sc$lpd_pooled, sc$lpd_firmre)
   list(
     elpd_pooled = sum(sc$lpd_pooled),
     elpd_firmre = sum(sc$lpd_firmre),
     weight_pooled = unname(w["pooled"]),
     weight_firmre = unname(w["firmre"]),
-    singular_folds = sum(sc$singular_firmre),
+    singular_folds = singular_folds,
     n_obs = nrow(sc)
   )
 }
