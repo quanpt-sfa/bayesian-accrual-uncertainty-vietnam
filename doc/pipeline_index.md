@@ -27,9 +27,18 @@ Active scripts use numeric prefixes only. No letter suffixes are used in script 
 | 20 | `20_sensitivity_report.R` | Sensitivity report |
 | 21 | `21_validation_on_scaleaware_student_DA.R` | Baseline validation |
 | 22 | `22_reset_and_rerun_after_cogs_inv_fix.R` | Reset/orchestrator |
+| 23 | `23_sim_lmer_leakage_pilot_helpers.R` | Simulation helper functions for leakage pilot scripts |
+| 24 | `24_sim_lmer_leakage_pilot_run.R` | LMER leakage pilot simulation run |
+| 25 | `25_sim_lmer_leakage_pilot_report.R` | LMER leakage pilot simulation report |
+| 26 | `26_sim_brms_leakage_confirmation.R` | BRMS leakage confirmation simulation |
+| 27 | `27_sim_brms_parameter_recovery.R` | BRMS parameter recovery simulation |
+| 28 | `28_row_level_exact_kfold.R` | Reviewer-final exact row-level K-fold method-matching check |
+| 29 | `29_psis_reliability_gate.R` | Reviewer-final PSIS reliability gate |
 
 Sensitivity phases 14-20 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `ACCRUAL_DRY_RUN=FALSE` and the relevant phase is launched intentionally.
 
 Optional artifact-level sanity checks live under `tests/`. Use `tests/test_kfold_weights_sanity.R` to inspect Step 13 exact grouped K-fold weights for a completed run. Override the default artifact root with `ACCRUAL_KFOLD_CHECK_ROOT` when needed.
+
+Scripts 23-27 support the RQ3 leakage-mechanism checks; script 23 is a helper and is not run directly by `run.R`. Scripts 28-29 address reviewer method-matching and reliability concerns: script 28 compares exact row-level K-fold weights against Step 13 firm-grouped K-fold weights, while script 29 centralizes Pareto-k reliability evidence for PSIS-LOO and optional simulation diagnostics.
 
 The machine-readable pipeline index is written to `out/manifests/method_design/pipeline_index.csv`.

@@ -63,6 +63,52 @@ The sensitivity sequence is:
 6. `19` scenario validation
 7. `20` sensitivity report
 
+## Simulation / leakage mechanism checks
+
+Scripts `23`-`27` support the RQ3 leakage-mechanism audit. Script `23` is a helper module; run scripts `24`-`27` directly or through the simulation mode:
+
+```powershell
+Rscript run.R simulation
+```
+
+The BRMS simulation stages `26` and `27` are computationally heavy and are skipped unless `ACCRUAL_RUN_HEAVY=TRUE`.
+
+## Reviewer-final method-matching checks
+
+Scripts `28` and `29` are reviewer-final checks for method matching and PSIS reliability.
+
+Script `28` builds an exact row-level K-fold version of the winsorized stack under `out/interim/winsor/row_exact_kfold/`. It does not overwrite Step `13` firm-grouped K-fold outputs.
+
+Use preflight first to inspect fold assignment and planned tasks without fitting BRMS models:
+
+```powershell
+$env:ACCRUAL_ROW_KFOLD_PREFLIGHT_ONLY = "TRUE"
+Rscript scripts/28_row_level_exact_kfold.R
+Remove-Item Env:\ACCRUAL_ROW_KFOLD_PREFLIGHT_ONLY
+```
+
+Run the full method-matching branch only when heavy refits are intended:
+
+```powershell
+$env:ACCRUAL_DRY_RUN = "FALSE"
+$env:ACCRUAL_RUN_HEAVY = "TRUE"
+Rscript run.R method_matching
+```
+
+Script `29` is light and writes the PSIS reliability gate under `out/interim/winsor/psis_reliability_gate/`:
+
+```powershell
+Rscript scripts/29_psis_reliability_gate.R
+```
+
+`Rscript run.R full` continues to mean baseline plus sensitivity. Add reviewer-final checks to `full` only when explicitly requested:
+
+```powershell
+$env:ACCRUAL_RUN_REVIEWER_FINAL = "TRUE"
+$env:ACCRUAL_RUN_HEAVY = "TRUE"
+Rscript run.R full
+```
+
 ## Outputs
 
 - Intermediate artifacts are written under `out/interim/baseline` and `out/interim/winsor`.
@@ -109,4 +155,4 @@ Rscript run.R full
 
 ## Computational requirements
 
-The light setup, sample-building, and manifest scripts are inexpensive. The `07`, `13`, and `15` stages can be computationally expensive because they trigger Bayesian fitting or grouped K-fold refits. The repository entrypoint skips those stages unless `ACCRUAL_RUN_HEAVY=TRUE`.
+The light setup, sample-building, and manifest scripts are inexpensive. The `07`, `13`, `15`, `26`, `27`, and `28` stages can be computationally expensive because they trigger Bayesian fitting, simulation fitting, or exact K-fold refits. The repository entrypoint skips those stages unless `ACCRUAL_RUN_HEAVY=TRUE`.

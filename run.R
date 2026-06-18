@@ -6,8 +6,8 @@ flag_from_env <- function(name, default = FALSE) {
 }
 
 selection <- if (length(args) == 0) "full" else tolower(args[[1]])
-if (!selection %in% c("baseline", "sensitivity", "full")) {
-  stop("Usage: Rscript run.R [baseline|sensitivity|full]")
+if (!selection %in% c("baseline", "sensitivity", "simulation", "method_matching", "reviewer_final", "full")) {
+  stop("Usage: Rscript run.R [baseline|sensitivity|simulation|method_matching|reviewer_final|full]")
 }
 
 baseline_scripts <- c(
@@ -37,29 +37,53 @@ sensitivity_scripts <- c(
   "scripts/20_sensitivity_report.R"
 )
 
+simulation_scripts <- c(
+  "scripts/24_sim_lmer_leakage_pilot_run.R",
+  "scripts/25_sim_lmer_leakage_pilot_report.R",
+  "scripts/26_sim_brms_leakage_confirmation.R",
+  "scripts/27_sim_brms_parameter_recovery.R"
+)
+
+method_matching_scripts <- c(
+  "scripts/28_row_level_exact_kfold.R",
+  "scripts/29_psis_reliability_gate.R"
+)
+
+reviewer_final_scripts <- method_matching_scripts
+
 heavy_scripts <- c(
   "scripts/07_fit_brms_named_models.R",
   "scripts/13_grouped_kfold_firm.R",
-  "scripts/15_sensitivity_refit_prior_scenarios.R"
+  "scripts/15_sensitivity_refit_prior_scenarios.R",
+  "scripts/26_sim_brms_leakage_confirmation.R",
+  "scripts/27_sim_brms_parameter_recovery.R",
+  "scripts/28_row_level_exact_kfold.R"
 )
+
+run_reviewer_final <- flag_from_env("ACCRUAL_RUN_REVIEWER_FINAL", FALSE)
 
 selected_scripts <- switch(
   selection,
   baseline = baseline_scripts,
   sensitivity = sensitivity_scripts,
-  full = c(baseline_scripts, sensitivity_scripts)
+  simulation = simulation_scripts,
+  method_matching = method_matching_scripts,
+  reviewer_final = reviewer_final_scripts,
+  full = c(baseline_scripts, sensitivity_scripts, if (run_reviewer_final) reviewer_final_scripts else character())
 )
 
 run_heavy <- flag_from_env("ACCRUAL_RUN_HEAVY", FALSE)
 dry_run <- flag_from_env("ACCRUAL_DRY_RUN", TRUE)
 Sys.setenv(ACCRUAL_RUN_HEAVY = if (run_heavy) "TRUE" else "FALSE")
 Sys.setenv(ACCRUAL_DRY_RUN = if (dry_run) "TRUE" else "FALSE")
+Sys.setenv(ACCRUAL_RUN_REVIEWER_FINAL = if (run_reviewer_final) "TRUE" else "FALSE")
 
 print_header <- function() {
   cat("Bayesian Accrual Uncertainty Vietnam\n")
   cat("Selection :", selection, "\n")
   cat("Dry run   :", dry_run, "\n")
   cat("Run heavy :", run_heavy, "\n")
+  cat("Reviewer-final in full :", run_reviewer_final, "\n")
   cat("Data path :", Sys.getenv("ACCRUAL_DATA_PATH", "data/raw/data.xlsx"), "\n\n")
 }
 
@@ -68,6 +92,17 @@ print_manual_heavy_commands <- function() {
   cat("  Rscript scripts/07_fit_brms_named_models.R\n")
   cat("  Rscript scripts/13_grouped_kfold_firm.R\n")
   cat("  Rscript scripts/15_sensitivity_refit_prior_scenarios.R\n")
+  cat("  Rscript scripts/26_sim_brms_leakage_confirmation.R\n")
+  cat("  Rscript scripts/27_sim_brms_parameter_recovery.R\n")
+  cat("  Rscript scripts/28_row_level_exact_kfold.R\n")
+  cat("Simulation / leakage mechanism checks:\n")
+  cat("  Rscript run.R simulation\n")
+  cat("Reviewer-final method-matching checks:\n")
+  cat("  $env:ACCRUAL_ROW_KFOLD_PREFLIGHT_ONLY='TRUE'; Rscript scripts/28_row_level_exact_kfold.R\n")
+  cat("  $env:ACCRUAL_RUN_HEAVY='TRUE'; Rscript run.R method_matching\n")
+  cat("  Rscript scripts/29_psis_reliability_gate.R\n")
+  cat("Optional Chapter 3 methods reporting tables:\n")
+  cat("  Rscript -e \"source('scripts/22_chapter3_methods_tables.R')\"\n")
   cat("PowerShell example:\n")
   cat("  $env:ACCRUAL_DRY_RUN='FALSE'; $env:ACCRUAL_RUN_HEAVY='TRUE'; Rscript run.R full\n\n")
 }

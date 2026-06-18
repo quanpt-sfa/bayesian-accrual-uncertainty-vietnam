@@ -11,6 +11,9 @@ out/**
 
 # Legacy generated outputs
 /outputs/
+/reports/
+
+/scripts/temp/
 
 # Generated R artifacts
 *.rds
