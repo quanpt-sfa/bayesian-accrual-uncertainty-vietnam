@@ -12,7 +12,7 @@ source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 
 script_name <- "scripts/29_psis_reliability_gate.R"
-script_version <- "2026-06-18-psis-reliability-gate-v2-schema-complete"
+script_version <- "2026-06-18-psis-reliability-gate-v3-simulation-maxk-indicators"
 script_start_time <- Sys.time()
 format_time <- function(x) format(x, "%Y-%m-%d %H:%M:%S %Z")
 
@@ -48,6 +48,14 @@ get_scalar <- function(row, candidates, default = NA) {
 
 num_or_na <- function(x) suppressWarnings(as.numeric(x))
 int_or_na <- function(x) suppressWarnings(as.integer(x))
+logical_or_na <- function(x) {
+  if (length(x) == 0 || is.na(x)) return(NA)
+  if (is.logical(x)) return(x[1])
+  xx <- toupper(trimws(as.character(x[1])))
+  if (xx %in% c("TRUE", "T", "1", "YES", "Y")) return(TRUE)
+  if (xx %in% c("FALSE", "F", "0", "NO", "N")) return(FALSE)
+  NA
+}
 
 loo_comp <- safe_read_csv(paths[["loo_comparison"]])
 diag <- safe_read_csv(paths[["brms_diagnostics"]])
@@ -172,12 +180,15 @@ if (nrow(loo_comp) > 0) {
       share_k_gt_0_7 = ifelse(is.na(n_obs) || n_obs == 0 || is.na(n_k_gt_07), NA_real_, n_k_gt_07 / n_obs),
       n_k_gt_1_0 = n_k_gt_10,
       share_k_gt_1_0 = ifelse(is.na(n_obs) || n_obs == 0 || is.na(n_k_gt_10), NA_real_, n_k_gt_10 / n_obs),
+      max_k_gt_0_7_indicator = ifelse(is.na(max_k), NA, max_k > 0.7),
+      max_k_gt_1_0_indicator = ifelse(is.na(max_k), NA, max_k > 1.0),
       moment_match_applied = get_scalar(row, c("moment_match_applied", "Moment_Match_Applied"), NA),
       corrected_k_above_07 = corrected,
       psis_reliability_status = status,
       action = action_from_status(status, pareto_available),
       reviewer_relevance = "R2_Pareto_k_gate",
       pareto_source = ifelse(is.na(cs$source), "table_or_missing", cs$source),
+      pareto_count_semantics = "observation_level_counts_from_loo_cache_or_empirical_table",
       stringsAsFactors = FALSE
     )
   }))
@@ -193,9 +204,13 @@ if (nrow(sim) > 0) {
       max_k <- num_or_na(row[[max_col]][1])
       pareto_available <- !is.na(max_k)
       n_obs <- num_or_na(get_scalar(row, c("n_obs", "N_Obs"), NA_real_))
-      n_gt_07 <- ifelse(!is.na(max_k), as.integer(max_k > 0.7), NA_integer_)
-      n_gt_10 <- ifelse(!is.na(max_k), as.integer(max_k > 1.0), NA_integer_)
-      status <- status_from_psis(max_k, n_gt_07, n_gt_10, NA_integer_, pareto_available)
+      status <- status_from_psis(
+        max_k = max_k,
+        n_gt_07 = NA_integer_,
+        n_gt_10 = NA_integer_,
+        corrected_k_above_07 = NA_integer_,
+        pareto_available = pareto_available
+      )
       data.frame(
         source_script = "scripts/26_sim_brms_leakage_confirmation.R",
         source_context = "brms_simulation",
@@ -206,16 +221,19 @@ if (nrow(sim) > 0) {
         heterogeneity_variant = kind,
         n_obs = n_obs,
         max_pareto_k = max_k,
-        n_k_gt_0_7 = n_gt_07,
-        share_k_gt_0_7 = ifelse(is.na(n_obs) || n_obs == 0 || is.na(n_gt_07), NA_real_, n_gt_07 / n_obs),
-        n_k_gt_1_0 = n_gt_10,
-        share_k_gt_1_0 = ifelse(is.na(n_obs) || n_obs == 0 || is.na(n_gt_10), NA_real_, n_gt_10 / n_obs),
+        n_k_gt_0_7 = NA_integer_,
+        share_k_gt_0_7 = NA_real_,
+        n_k_gt_1_0 = NA_integer_,
+        share_k_gt_1_0 = NA_real_,
+        max_k_gt_0_7_indicator = ifelse(is.na(max_k), NA, max_k > 0.7),
+        max_k_gt_1_0_indicator = ifelse(is.na(max_k), NA, max_k > 1.0),
         moment_match_applied = NA,
         corrected_k_above_07 = NA_integer_,
         psis_reliability_status = status,
         action = action_from_status(status, pareto_available),
         reviewer_relevance = "R2_Pareto_k_gate",
-        pareto_source = "simulation_table",
+        pareto_source = "simulation_table_max_k_only",
+        pareto_count_semantics = "max_k_only_counts_and_shares_not_available_from_script_26",
         stringsAsFactors = FALSE
       )
     }))
@@ -234,7 +252,9 @@ summary_gate <- gate %>%
     n_review = sum(psis_reliability_status == "REVIEW", na.rm = TRUE),
     n_fail = sum(psis_reliability_status == "FAIL", na.rm = TRUE),
     max_pareto_k_overall = suppressWarnings(max(max_pareto_k, na.rm = TRUE)),
-    total_high_k_obs = sum(n_k_gt_0_7, na.rm = TRUE),
+    total_high_k_obs = ifelse(all(is.na(n_k_gt_0_7)), NA_real_, sum(n_k_gt_0_7, na.rm = TRUE)),
+    n_models_max_k_gt_0_7 = sum(max_k_gt_0_7_indicator, na.rm = TRUE),
+    n_models_max_k_gt_1_0 = sum(max_k_gt_1_0_indicator, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   mutate(max_pareto_k_overall = ifelse(is.infinite(max_pareto_k_overall), NA_real_, max_pareto_k_overall)) %>%
@@ -254,6 +274,7 @@ run_manifest <- data.frame(
   N_FAIL = sum(gate$psis_reliability_status == "FAIL", na.rm = TRUE),
   N_REVIEW = sum(gate$psis_reliability_status == "REVIEW", na.rm = TRUE),
   N_PASS = sum(gate$psis_reliability_status == "PASS", na.rm = TRUE),
+  Simulation_Count_Semantics = "script_26_provides_max_pareto_k_only; simulation high-k counts and shares are NA",
   stringsAsFactors = FALSE
 )
 
@@ -277,7 +298,9 @@ note <- c(
   "FAIL rows are excluded from primary PSIS inference when exact-refit alternatives are available.",
   "",
   "Exact row-level K-fold provides the method-matched validation-unit comparison when PSIS is unreliable or when the primary RQ1 comparison requires exact-vs-exact refits.",
-  "High Pareto-k in Firm-RE models is reported as part of the structured-CV diagnostic, not hidden."
+  "High Pareto-k in Firm-RE models is reported as part of the structured-CV diagnostic, not hidden.",
+  "",
+  "Simulation rows from script 26 provide max Pareto-k only. Therefore observation-level high-k counts and shares are intentionally reported as NA for simulation rows; model-level max-k indicators are reported instead."
 )
 writeLines(note, file.path(tables_dir, "psis_reliability_reviewer_note.md"))
 writeLines(note, file.path(logs_dir, "psis_reliability_reviewer_note.md"))
