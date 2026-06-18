@@ -34,7 +34,7 @@ ensure_sim_dirs <- function(root = output_root) {
 }
 
 simulate_accrual_panel <- function(n_firms = 200, T = 7, sigma_firm = 0.10,
-                                   sigma_eps = 0.08, n_industries = 10, seed = 1) {
+                                   sigma_eps = 0.08, n_industries = 10, seed = accrual_seed("simulation")) {
   set.seed(seed)
   firms <- sprintf("F%04d", seq_len(n_firms))
   years <- seq_len(T)
@@ -60,12 +60,12 @@ simulate_accrual_panel <- function(n_firms = 200, T = 7, sigma_firm = 0.10,
   df
 }
 
-make_row_folds <- function(df, K = 5, seed = 1) {
+make_row_folds <- function(df, K = 5, seed = accrual_seed("simulation")) {
   set.seed(seed)
   sample(rep(seq_len(K), length.out = nrow(df)))
 }
 
-make_firm_folds <- function(df, K = 5, seed = 1) {
+make_firm_folds <- function(df, K = 5, seed = accrual_seed("simulation")) {
   info <- unique(df[, c("company", "industry")])
   info$company <- as.character(info$company); info$industry <- as.character(info$industry)
   set.seed(seed); info$u <- stats::runif(nrow(info))
@@ -133,7 +133,8 @@ score_cv <- function(df, fold_type = c("row", "group"), K = 5, seed = 1) {
 
 run_one_replication <- function(T, sigma_firm, rep_id, K = 5, n_firms = 200,
                                 n_industries = 10, sigma_eps = 0.08) {
-  seed <- 100000 + as.integer(rep_id) + as.integer(T) * 1000 + round(sigma_firm * 10000)
+  base_seed <- accrual_seed("simulation")
+  seed <- base_seed + 100000 + as.integer(rep_id) + as.integer(T) * 1000 + round(sigma_firm * 10000)
   df <- simulate_accrual_panel(n_firms, T, sigma_firm, sigma_eps, n_industries, seed)
   row <- score_cv(df, "row", K, seed + 11)
   grp <- score_cv(df, "group", K, seed + 29)

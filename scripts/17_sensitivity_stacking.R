@@ -103,7 +103,7 @@ for (sidx in seq_len(nrow(scenarios))) {
     family = scenarios$Likelihood_Family[sidx],
     model_structure = scenarios$Model_Structure[sidx],
     model_list = model_list,
-    seed = as.integer(env_value("ACCRUAL_SENS_SEED", "20260614")),
+    seed = accrual_seed("sensitivity"),
     sampling_config = sprintf("validation_engine=%s; moment_match=%s; dry_run=%s", validation_engine, moment_match, dry_run),
     status = if (dry_run) "DRY_RUN_PLANNED" else "STARTED",
     notes = "Stacking weights are computed from scenario posterior fits only.",

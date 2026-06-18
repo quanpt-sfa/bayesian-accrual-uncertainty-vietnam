@@ -12,7 +12,7 @@ ensure_analysis_dirs()
 write_method_design_files()
 write_prior_registry()
 
-set.seed(42)
+set.seed(accrual_seed("baseline"))
 options(mc.cores = 1)
 
 mode <- prior_predictive_mode
@@ -54,7 +54,7 @@ if (nrow(representative_rows) == 0) {
 chains <- 2
 iter <- prior_pred_n_draws
 warmup <- min(500L, floor(iter / 2))
-seed <- 42
+seed <- accrual_seed("baseline")
 
 summarize_quantiles <- function(x) {
   qs <- quantile(x, probs = c(0.01, 0.50, 0.99), na.rm = TRUE, names = FALSE, type = 7)

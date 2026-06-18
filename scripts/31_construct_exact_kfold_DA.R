@@ -26,8 +26,7 @@ validate_final_analysis_config("Exact K-fold uncertainty-adjusted DA", final_mod
 script_name <- "scripts/31_construct_exact_kfold_DA.R"
 script_version <- "2026-06-19-v2-provenance-inclusion-gate"
 script_start_time <- Sys.time()
-mixture_seed <- as.integer(Sys.getenv("ACCRUAL_EXACT_KFOLD_DA_SEED", "42"))
-if (is.na(mixture_seed)) stop("[BLOCKER] ACCRUAL_EXACT_KFOLD_DA_SEED must be an integer.")
+mixture_seed <- accrual_seed("baseline")
 mixture_draws <- stacking_mixture_draws
 
 tables_dir <- file.path(output_root, "tables")

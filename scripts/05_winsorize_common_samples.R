@@ -7,7 +7,7 @@
 source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 
-set.seed(42)
+set.seed(accrual_seed("baseline"))
 
 sample_specs <- data.frame(
   Sample = c(

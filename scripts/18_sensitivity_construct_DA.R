@@ -15,7 +15,7 @@ validate_final_analysis_config("sensitivity DA construction", final_mode = TRUE)
 dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
 S <- as.integer(env_value("ACCRUAL_STACKING_MIXTURE_DRAWS", as.character(stacking_mixture_draws)))
 if (is.na(S) || S <= 0) S <- stacking_mixture_draws
-set.seed(as.integer(env_value("ACCRUAL_SENS_SEED", "20260614")))
+set.seed(accrual_seed("sensitivity"))
 
 scenarios <- selected_sensitivity_scenarios()
 weights_path <- file.path(sensitivity_root(), "tables", "sensitivity_stacking_weights_by_scenario.csv")
@@ -167,7 +167,7 @@ for (scenario in scenarios$Scenario) {
     family = "student",
     model_structure = "pooled_random_intercept",
     model_list = unique(sc_weights$model_id),
-    seed = as.integer(env_value("ACCRUAL_SENS_SEED", "20260614")),
+    seed = accrual_seed("sensitivity"),
     sampling_config = sprintf("stacking_mixture_draws=%d; dry_run=%s", S, dry_run),
     status = if (dry_run) "DRY_RUN_PLANNED" else "STARTED",
     notes = "DA is recomputed from scenario stacking weights and posterior predictive draws.",

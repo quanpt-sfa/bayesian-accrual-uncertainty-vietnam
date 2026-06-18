@@ -122,18 +122,47 @@ main_model_ids_for_space <- function(target_space) {
 primary_model_ids_for_space <- function(target_space) main_model_ids_for_space(target_space)
 exact_kfold_model_ids_for_space <- function(target_space) main_model_ids_for_space(target_space)
 
+accrual_base_seed <- function() {
+  env_int("ACCRUAL_SEED", 42L, min = 0L)
+}
+
 accrual_seed <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "simulation"), default = NULL) {
   kind <- match.arg(kind)
-  spec <- switch(
+  base <- accrual_base_seed()
+  legacy_env <- switch(
     kind,
-    baseline = list(env = "ACCRUAL_BASELINE_SEED", default = 42L),
-    grouped_kfold = list(env = "ACCRUAL_KFOLD_FIRM_SEED", default = 20260613L),
-    row_kfold = list(env = "ACCRUAL_ROW_KFOLD_SEED", default = 42L),
-    sensitivity = list(env = "ACCRUAL_SENS_SEED", default = 20260614L),
-    simulation = list(env = "ACCRUAL_SIM_SEED", default = 42L)
+    baseline = "ACCRUAL_BASELINE_SEED",
+    grouped_kfold = "ACCRUAL_KFOLD_FIRM_SEED",
+    row_kfold = "ACCRUAL_ROW_KFOLD_SEED",
+    sensitivity = "ACCRUAL_SENS_SEED",
+    simulation = "ACCRUAL_SIM_SEED"
   )
-  default_value <- if (is.null(default)) spec$default else default
-  env_int(c(spec$env, "ACCRUAL_SEED"), default_value)
+  if (!is.null(default)) {
+    default_value <- suppressWarnings(as.integer(default))
+    if (is.na(default_value)) {
+      stop("[BLOCKER] Invalid deprecated default override for accrual_seed(", kind, "): ", default)
+    }
+    if (!identical(default_value, base)) {
+      stop("[BLOCKER] Deprecated default override for accrual_seed(", kind, ")=", default_value,
+           " differs from canonical ACCRUAL_SEED=", base, ".")
+    }
+  }
+
+  legacy_raw <- Sys.getenv(legacy_env, unset = "")
+  if (nzchar(legacy_raw)) {
+    legacy_value <- suppressWarnings(as.integer(legacy_raw))
+    if (is.na(legacy_value)) {
+      stop("[BLOCKER] Invalid integer seed in deprecated ", legacy_env, ": ", legacy_raw)
+    }
+    if (!identical(legacy_value, base)) {
+      stop("[BLOCKER] Branch-specific seed ", legacy_env, "=", legacy_value,
+           " differs from canonical ACCRUAL_SEED=", base,
+           ". Use one common seed to avoid branch-specific tuning/cherry-picking risk.")
+    }
+    warning("[WARNING] ", legacy_env, " is deprecated. Use ACCRUAL_SEED only.", call. = FALSE)
+  }
+
+  base
 }
 
 accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "baseline_remediation"),
@@ -209,6 +238,7 @@ accrual_kfold_config <- function(kind = c("grouped_firm", "row"), run_mode = "FU
 
 write_execution_config_registry <- function(path = file.path(method_design_root, "execution_config_registry.csv")) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  seed_note <- "All branches use canonical ACCRUAL_SEED; branch-specific seed env vars are deprecated and blocked if different."
   row <- function(scope, parameter, value, env_names, notes = "") {
     data.frame(
       Scope = scope,
@@ -231,10 +261,11 @@ write_execution_config_registry <- function(path = file.path(method_design_root,
   }
   registry <- do.call(rbind, c(
     list(
-      row("baseline", "seed", accrual_seed("baseline"), c("ACCRUAL_BASELINE_SEED", "ACCRUAL_SEED")),
-      row("grouped_kfold", "seed", accrual_seed("grouped_kfold"), c("ACCRUAL_KFOLD_FIRM_SEED", "ACCRUAL_SEED")),
-      row("row_kfold", "seed", accrual_seed("row_kfold"), c("ACCRUAL_ROW_KFOLD_SEED", "ACCRUAL_SEED")),
-      row("sensitivity", "seed", accrual_seed("sensitivity"), c("ACCRUAL_SENS_SEED", "ACCRUAL_SEED")),
+      row("baseline", "seed", accrual_seed("baseline"), c("ACCRUAL_SEED", "ACCRUAL_BASELINE_SEED"), seed_note),
+      row("grouped_kfold", "seed", accrual_seed("grouped_kfold"), c("ACCRUAL_SEED", "ACCRUAL_KFOLD_FIRM_SEED"), seed_note),
+      row("row_kfold", "seed", accrual_seed("row_kfold"), c("ACCRUAL_SEED", "ACCRUAL_ROW_KFOLD_SEED"), seed_note),
+      row("sensitivity", "seed", accrual_seed("sensitivity"), c("ACCRUAL_SEED", "ACCRUAL_SENS_SEED"), seed_note),
+      row("simulation", "seed", accrual_seed("simulation"), c("ACCRUAL_SEED", "ACCRUAL_SIM_SEED"), seed_note),
       row("grouped_kfold", "K", accrual_kfold_config("grouped_firm")$K, "ACCRUAL_KFOLD_FIRM_K"),
       row("row_kfold", "K", accrual_kfold_config("row")$K, "ACCRUAL_ROW_KFOLD_K"),
       row("model_space", "ex_post_primary_models", main_model_ids_for_space("ex_post"), "", "M08/M10 secondary; M11/M12 excluded."),
@@ -748,7 +779,7 @@ write_pipeline_index <- function() {
     "",
     "Sampler protocol: full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations; exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons; FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The baseline 4000/1000 setting is intentional, while 3000/1000 is the primary validation-refit protocol. Manifests should record actual sampler settings.",
     "",
-    "Execution configuration is centralized in `scripts/00_helpers.R`: `accrual_seed()` supplies seeds, `accrual_sampler_config()` supplies sampler settings, `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings, and `main_model_ids_for_space()` supplies primary model IDs. Existing env vars remain supported, including `ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_KFOLD_FIRM_K`, `ACCRUAL_ROW_KFOLD_K`, and `ACCRUAL_SENS_*`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
+    "Execution configuration is centralized in `scripts/00_helpers.R`: `accrual_base_seed()` and `accrual_seed()` enforce one canonical seed (`ACCRUAL_SEED`, default 42) across baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_sampler_config()` supplies sampler settings; `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings; and `main_model_ids_for_space()` supplies primary model IDs. Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
     "",
     "Primary model helpers return M01-M07 for ex-post and M01, M02, M03, M07, M09 for real-time/no-lookahead. M08/M10 remain secondary/robustness unless explicitly included through documented secondary flows, and M11/M12 remain excluded from active primary helpers.",
     "",

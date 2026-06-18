@@ -230,7 +230,8 @@ run_one_brms_replication <- function(T, sigma_firm, rep_id, K, n_firms, n_indust
                                      sigma_eps, dgp_family, dgp_nu, prior_mode,
                                      chains, iter, warmup, cores, adapt_delta,
                                      max_treedepth) {
-  seed <- 900000 + as.integer(rep_id) + as.integer(T) * 1000 + round(sigma_firm * 10000)
+  base_seed <- accrual_seed("simulation")
+  seed <- base_seed + 900000 + as.integer(rep_id) + as.integer(T) * 1000 + round(sigma_firm * 10000)
   df <- simulate_accrual_panel_bridge(
     n_firms = n_firms,
     T = T,

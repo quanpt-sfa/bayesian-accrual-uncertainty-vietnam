@@ -220,7 +220,8 @@ extract_diagnostics <- function(fit, T, sigma_firm, rep_id, n_firms, n_obs,
 run_one_recovery_replication <- function(T, sigma_firm, rep_id, n_firms, n_industries,
                                          sigma_eps, nu, chains, iter, warmup, cores,
                                          adapt_delta, max_treedepth, sd_zero_eps) {
-  seed <- 700000 + as.integer(rep_id) + as.integer(T) * 1000 + round(sigma_firm * 10000)
+  base_seed <- accrual_seed("simulation")
+  seed <- base_seed + 700000 + as.integer(rep_id) + as.integer(T) * 1000 + round(sigma_firm * 10000)
   df <- simulate_accrual_panel_student_truth(n_firms, T, sigma_firm, sigma_eps, nu, n_industries, seed)
   fit <- fit_recovery_model(df, chains, iter, warmup, cores, seed + 31, adapt_delta, max_treedepth)
   truth <- attr(df, "truth")

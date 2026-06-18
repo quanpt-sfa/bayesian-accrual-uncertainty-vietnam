@@ -12,7 +12,7 @@ validate_final_analysis_config("Phase 5b baseline uncertainty-adjusted DA", fina
 script_name <- "scripts/10_construct_uncertainty_adjusted_DA.R"
 script_version <- "2026-06-19-v1-secondary-psis-loo-da-manifest"
 script_start_time <- Sys.time()
-set.seed(42)
+set.seed(accrual_seed("baseline"))
 
 ep_weights_path <- file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv")
 rt_weights_path <- file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv")
@@ -58,7 +58,7 @@ compute_stacked_accruals <- function(df_sample, weights_df, space_name, S = stac
     arrange(desc(Weight))
   if (nrow(active_weights) == 0) stop("[BLOCKER] No active stacking weights for ", space_name)
 
-  set.seed(42)
+  set.seed(accrual_seed("baseline"))
   sampled_model_indices <- sample(seq_len(nrow(active_weights)), size = S, replace = TRUE, prob = active_weights$Weight)
   stacked_epred <- matrix(NA_real_, nrow = S, ncol = N)
   stacked_predict <- matrix(NA_real_, nrow = S, ncol = N)

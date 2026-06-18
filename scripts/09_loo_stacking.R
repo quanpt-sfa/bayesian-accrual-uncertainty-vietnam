@@ -13,7 +13,7 @@ write_prior_registry()
 validate_final_analysis_config("Phase 4c baseline LOO stacking", final_mode = TRUE)
 
 options(mc.cores = 1)
-set.seed(42)
+set.seed(accrual_seed("baseline"))
 
 compare_original_weights <- toupper(Sys.getenv("ACCRUAL_COMPARE_ORIGINAL_WEIGHTS", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
 
@@ -76,7 +76,7 @@ iter <- 4000
 warmup <- 1000
 adapt_delta <- 0.95
 max_treedepth <- 12
-seed <- 42
+seed <- accrual_seed("baseline")
 
 eligible_joined <- eligible_models %>%
   left_join(

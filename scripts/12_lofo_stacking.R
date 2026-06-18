@@ -11,7 +11,7 @@ library(loo)
 source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 
-set.seed(42)
+set.seed(accrual_seed("baseline"))
 options(mc.cores = 1)
 
 lofo_root <- file.path(winsor_root, "lofo")
