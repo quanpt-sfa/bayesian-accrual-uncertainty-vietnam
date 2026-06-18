@@ -18,7 +18,7 @@ run_heavy <- flag_from_env("ACCRUAL_RUN_HEAVY", FALSE)
 allow_suppressed_tail_flags <- flag_from_env("ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS", FALSE)
 output_root <- Sys.getenv("ACCRUAL_OUTPUT_ROOT", file.path("out", "interim", "winsor"))
 tables_root <- file.path(output_root, "tables")
-accruals_root <- Sys.getenv("ACCRUAL_ACCRUALS_ROOT", file.path(output_root, "accruals"))
+accruals_root <- Sys.getenv("ACCRUAL_ACCRUALS_ROOT", "accruals")
 
 Sys.setenv(ACCRUAL_RUN_HEAVY = if (run_heavy) "TRUE" else "FALSE")
 Sys.setenv(ACCRUAL_DRY_RUN = if (dry_run) "TRUE" else "FALSE")

@@ -6,8 +6,9 @@
 2. Run `Rscript run.R --dry-run` to inspect the main Chapter 3 plan.
 3. Run `Rscript run.R` for the main Chapter 3 pipeline, and set `ACCRUAL_RUN_HEAVY=TRUE` when you are ready to fit models and produce full baseline outputs.
 4. Script `10` constructs PSIS/LOO DA as secondary. Script `31` constructs primary exact-KFoldW DA from completed grouped and row exact K-fold pins, and script `32` audits finite DA outputs before RQ2/export.
-5. Scripts `13` and `28` write `LATEST_COMPLETED_RUN.txt` only after primary-eligible completed exact refit runs. Downstream primary DA construction uses those pins or explicit `ACCRUAL_GROUPED_KFOLD_RUN_ROOT` / `ACCRUAL_ROW_KFOLD_RUN_ROOT` values.
-6. Final baseline DA outputs are written to `accruals/baseline`; exact-KFold DA provenance outputs are written under `out/interim/winsor/tables`.
+5. `ACCRUAL_ACCRUALS_ROOT` defaults to `accruals`, so the baseline DA dependency is `accruals/baseline/final_uncertainty_adjusted_accruals_winsor.csv` unless overridden.
+6. Scripts `13` and `28` write `LATEST_COMPLETED_RUN.txt` only after primary-eligible completed exact refit runs. Script `28` may update the pin for either a full unfiltered row exact K-fold or an explicit full primary no-lookahead run covering `real_time` models M01, M02, M03, M07, M09 and all K=5 folds.
+7. Final baseline DA outputs are written to `accruals/baseline`; exact-KFold DA provenance outputs are written under `out/interim/winsor/tables`.
 
 ## Sensitivity analysis
 

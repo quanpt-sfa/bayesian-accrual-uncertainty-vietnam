@@ -817,7 +817,9 @@ primary_inference_allowed <<- identical(run_mode, "FULL_MODE") &&
   nrow(weights_rt) > 0
 completed_run_pin_eligible <<- !preflight_only &&
   identical(run_mode, "FULL_MODE") &&
-  !partial_run &&
+  K == 5L &&
+  seed == 42L &&
+  (full_unfiltered_primary_run || explicit_full_primary_filters) &&
   all_planned_tasks_completed &&
   row_weight_files_available &&
   nrow(model_scores) > 0 &&
