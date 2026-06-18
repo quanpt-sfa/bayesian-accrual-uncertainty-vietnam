@@ -5,126 +5,152 @@ flag_from_env <- function(name, default = FALSE) {
   toupper(raw) %in% c("TRUE", "1", "YES", "Y")
 }
 
-selection <- if (length(args) == 0) "full" else tolower(args[[1]])
-if (!selection %in% c("baseline", "sensitivity", "simulation", "method_matching", "reviewer_final", "full")) {
-  stop("Usage: Rscript run.R [baseline|sensitivity|simulation|method_matching|reviewer_final|full]")
+dry_run <- "--dry-run" %in% args || flag_from_env("ACCRUAL_DRY_RUN", FALSE)
+args <- args[args != "--dry-run"]
+
+target <- if (length(args) == 0) "main" else tolower(args[[1]])
+valid_targets <- c("main", "robustness", "sensitivity", "simulation", "diagnostics", "all")
+if (!target %in% valid_targets) {
+  stop("Usage: Rscript run.R [main|robustness|sensitivity|simulation|diagnostics|all] [--dry-run]")
 }
-
-baseline_scripts <- c(
-  "scripts/01_setup_and_registry.R",
-  "scripts/02_build_common_sample.R",
-  "scripts/03_audit_cogs_inv_operating_cycle.R",
-  "scripts/04_define_named_models.R",
-  "scripts/05_winsorize_common_samples.R",
-  "scripts/06_prior_predictive_checks.R",
-  "scripts/07_fit_brms_named_models.R",
-  "scripts/08_mcmc_diagnostics.R",
-  "scripts/09_loo_stacking.R",
-  "scripts/10_construct_uncertainty_adjusted_DA.R",
-  "scripts/11_posterior_predictive_checks.R",
-  "scripts/12_lofo_stacking.R",
-  "scripts/13_grouped_kfold_firm.R",
-  "scripts/21_validation_on_scaleaware_student_DA.R"
-)
-
-sensitivity_scripts <- c(
-  "scripts/14_sensitivity_prior_predictive.R",
-  "scripts/15_sensitivity_refit_prior_scenarios.R",
-  "scripts/16_sensitivity_mcmc_diagnostics.R",
-  "scripts/17_sensitivity_stacking.R",
-  "scripts/18_sensitivity_construct_DA.R",
-  "scripts/19_sensitivity_validation.R",
-  "scripts/20_sensitivity_report.R"
-)
-
-simulation_scripts <- c(
-  "scripts/24_sim_lmer_leakage_pilot_run.R",
-  "scripts/25_sim_lmer_leakage_pilot_report.R",
-  "scripts/26_sim_brms_leakage_confirmation.R",
-  "scripts/27_sim_brms_parameter_recovery.R"
-)
-
-method_matching_scripts <- c(
-  "scripts/28_row_level_exact_kfold.R",
-  "scripts/29_psis_reliability_gate.R"
-)
-
-reviewer_final_scripts <- method_matching_scripts
-
-heavy_scripts <- c(
-  "scripts/07_fit_brms_named_models.R",
-  "scripts/13_grouped_kfold_firm.R",
-  "scripts/15_sensitivity_refit_prior_scenarios.R",
-  "scripts/26_sim_brms_leakage_confirmation.R",
-  "scripts/27_sim_brms_parameter_recovery.R",
-  "scripts/28_row_level_exact_kfold.R"
-)
-
-run_reviewer_final <- flag_from_env("ACCRUAL_RUN_REVIEWER_FINAL", FALSE)
-
-selected_scripts <- switch(
-  selection,
-  baseline = baseline_scripts,
-  sensitivity = sensitivity_scripts,
-  simulation = simulation_scripts,
-  method_matching = method_matching_scripts,
-  reviewer_final = reviewer_final_scripts,
-  full = c(baseline_scripts, sensitivity_scripts, if (run_reviewer_final) reviewer_final_scripts else character())
-)
 
 run_heavy <- flag_from_env("ACCRUAL_RUN_HEAVY", FALSE)
-dry_run <- flag_from_env("ACCRUAL_DRY_RUN", TRUE)
+allow_suppressed_tail_flags <- flag_from_env("ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS", FALSE)
+
 Sys.setenv(ACCRUAL_RUN_HEAVY = if (run_heavy) "TRUE" else "FALSE")
 Sys.setenv(ACCRUAL_DRY_RUN = if (dry_run) "TRUE" else "FALSE")
-Sys.setenv(ACCRUAL_RUN_REVIEWER_FINAL = if (run_reviewer_final) "TRUE" else "FALSE")
 
-print_header <- function() {
+step <- function(id, path, role, heavy = FALSE, gate = NULL) {
+  list(id = id, path = path, role = role, heavy = heavy, gate = gate)
+}
+
+main_steps <- list(
+  step("00", "scripts/00_helpers.R", "Setup helpers and shared registries"),
+  step("01", "scripts/01_setup_and_registry.R", "Setup and ten-model registry"),
+  step("02", "scripts/02_build_common_sample.R", "Build common samples"),
+  step("03", "scripts/03_audit_cogs_inv_operating_cycle.R", "Data integrity audit"),
+  step("04", "scripts/04_define_named_models.R", "Define named model formulas"),
+  step("05", "scripts/05_winsorize_common_samples.R", "Winsorize common samples"),
+  step("06", "scripts/06_prior_predictive_checks.R", "Prior predictive gate"),
+  step("07", "scripts/07_fit_brms_named_models.R", "Full-sample baseline brms fits", heavy = TRUE),
+  step("08", "scripts/08_mcmc_diagnostics.R", "MCMC diagnostics for baseline fits"),
+  step("09", "scripts/09_loo_stacking.R", "LOO stacking evidence, secondary to exact K-fold"),
+  step("10", "scripts/10_construct_uncertainty_adjusted_DA.R", "Construct uncertainty-adjusted DA"),
+  step("11", "scripts/11_posterior_predictive_checks.R", "Posterior predictive checks"),
+  step("13", "scripts/13_grouped_kfold_firm.R", "Grouped exact firm K-fold, primary RQ1 evidence", heavy = TRUE),
+  step("28", "scripts/28_row_level_exact_kfold.R", "Row-level exact K-fold, primary RQ1 evidence", heavy = TRUE),
+  step("21", "scripts/21_validation_on_scaleaware_student_DA.R", "Outcome validation"),
+  step("30", "scripts/30_new_firm_predictive_integration_audit.R", "New-firm predictive integration reporting gate", gate = "new_firm_predictive"),
+  step("C3", "scripts/temp/22_chapter3_methods_tables.R", "Chapter 3 manuscript table export")
+)
+
+robustness_steps <- list(
+  step("12", "scripts/12_lofo_stacking.R", "Grouped PSIS-LOFO robustness evidence")
+)
+
+sensitivity_steps <- list(
+  step("14", "scripts/14_sensitivity_prior_predictive.R", "Sensitivity prior predictive gate"),
+  step("15", "scripts/15_sensitivity_refit_prior_scenarios.R", "Sensitivity full refits by prior scenario", heavy = TRUE),
+  step("16", "scripts/16_sensitivity_mcmc_diagnostics.R", "Sensitivity MCMC diagnostics"),
+  step("17", "scripts/17_sensitivity_stacking.R", "Sensitivity stacking"),
+  step("18", "scripts/18_sensitivity_construct_DA.R", "Sensitivity DA reconstruction"),
+  step("19", "scripts/19_sensitivity_validation.R", "Sensitivity validation"),
+  step("20", "scripts/20_sensitivity_report.R", "Sensitivity report")
+)
+
+simulation_steps <- list(
+  step("24", "scripts/24_sim_lmer_leakage_pilot_run.R", "LMER leakage pilot simulation"),
+  step("25", "scripts/25_sim_lmer_leakage_pilot_report.R", "LMER leakage pilot report"),
+  step("26", "scripts/26_sim_brms_leakage_confirmation.R", "BRMS leakage confirmation simulation", heavy = TRUE),
+  step("27", "scripts/27_sim_brms_parameter_recovery.R", "BRMS parameter recovery simulation", heavy = TRUE)
+)
+
+diagnostics_steps <- list(
+  step("29", "scripts/29_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics"),
+  step("30", "scripts/30_new_firm_predictive_integration_audit.R", "New-firm predictive integration diagnostics", gate = "new_firm_predictive")
+)
+
+steps_for_target <- function(x) {
+  switch(
+    x,
+    main = main_steps,
+    robustness = robustness_steps,
+    sensitivity = sensitivity_steps,
+    simulation = simulation_steps,
+    diagnostics = diagnostics_steps,
+    all = c(main_steps, diagnostics_steps, robustness_steps, sensitivity_steps, simulation_steps)
+  )
+}
+
+print_header <- function(steps) {
   cat("Bayesian Accrual Uncertainty Vietnam\n")
-  cat("Selection :", selection, "\n")
+  cat("Target    :", target, "\n")
   cat("Dry run   :", dry_run, "\n")
   cat("Run heavy :", run_heavy, "\n")
-  cat("Reviewer-final in full :", run_reviewer_final, "\n")
-  cat("Data path :", Sys.getenv("ACCRUAL_DATA_PATH", "data/raw/data.xlsx"), "\n\n")
-}
-
-print_manual_heavy_commands <- function() {
-  cat("Heavy steps were skipped. Run them manually when needed:\n")
-  cat("  Rscript scripts/07_fit_brms_named_models.R\n")
-  cat("  Rscript scripts/13_grouped_kfold_firm.R\n")
-  cat("  Rscript scripts/15_sensitivity_refit_prior_scenarios.R\n")
-  cat("  Rscript scripts/26_sim_brms_leakage_confirmation.R\n")
-  cat("  Rscript scripts/27_sim_brms_parameter_recovery.R\n")
-  cat("  Rscript scripts/28_row_level_exact_kfold.R\n")
-  cat("Simulation / leakage mechanism checks:\n")
-  cat("  Rscript run.R simulation\n")
-  cat("Reviewer-final method-matching checks:\n")
-  cat("  $env:ACCRUAL_ROW_KFOLD_PREFLIGHT_ONLY='TRUE'; Rscript scripts/28_row_level_exact_kfold.R\n")
-  cat("  $env:ACCRUAL_RUN_HEAVY='TRUE'; Rscript run.R method_matching\n")
-  cat("  Rscript scripts/29_psis_reliability_gate.R\n")
-  cat("Optional Chapter 3 methods reporting tables:\n")
-  cat("  Rscript -e \"source('scripts/22_chapter3_methods_tables.R')\"\n")
-  cat("PowerShell example:\n")
-  cat("  $env:ACCRUAL_DRY_RUN='FALSE'; $env:ACCRUAL_RUN_HEAVY='TRUE'; Rscript run.R full\n\n")
-}
-
-run_script <- function(path) {
-  if (!file.exists(path)) {
-    stop("Missing script: ", path)
+  cat("Data path :", Sys.getenv("ACCRUAL_DATA_PATH", "data/raw/data.xlsx"), "\n")
+  cat("Plan:\n")
+  for (i in seq_along(steps)) {
+    s <- steps[[i]]
+    flags <- c(if (isTRUE(s$heavy)) "heavy" else character(), if (!is.null(s$gate)) "gate" else character())
+    flag_text <- if (length(flags)) paste0(" [", paste(flags, collapse = ", "), "]") else ""
+    cat(sprintf("  %02d. %s %s - %s%s\n", i, s$id, s$path, s$role, flag_text))
   }
-  if (!run_heavy && path %in% heavy_scripts) {
-    message("[SKIP HEAVY] ", path)
+  cat("\n")
+}
+
+check_new_firm_predictive_gate <- function() {
+  decision_path <- file.path(
+    "out", "interim", "winsor", "new_firm_predictive_audit", "tables",
+    "table_new_firm_predictive_integration_decision.csv"
+  )
+  if (!file.exists(decision_path)) {
+    stop(
+      "[GATE BLOCKER] New-firm predictive integration decision table was not created: ",
+      decision_path,
+      ". Script 30 must write this table before Chapter 3 table export can proceed."
+    )
+  }
+  decision <- tryCatch(read.csv(decision_path, stringsAsFactors = FALSE), error = function(e) NULL)
+  if (is.null(decision) || nrow(decision) == 0 || !"audit_decision" %in% names(decision)) {
+    stop("[GATE BLOCKER] Cannot read audit_decision from: ", decision_path)
+  }
+  audit_decision <- as.character(decision$audit_decision[[1]])
+  message("[GATE] New-firm predictive integration decision: ", audit_decision)
+  if (identical(audit_decision, "PASS_FOR_AVAILABLE_FIRMRE_OUT_OF_FIRM_QUANTITIES") ||
+      identical(audit_decision, "NO_FIRMRE_OUT_OF_FIRM_PRIMARY_QUANTITIES_DETECTED")) {
+    return(invisible(TRUE))
+  }
+  if (identical(audit_decision, "PRIMARY_SUPPRESSION_REQUIRED_FOR_UNVERIFIED_FIRMRE_OUT_OF_FIRM_QUANTITIES")) {
+    msg <- paste0(
+      "[GATE BLOCKER] Firm-RE out-of-firm posterior predictive tail flags require suppression/non-primary treatment. ",
+      "Set ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS=TRUE only if downstream Chapter 3 export/reporting will preserve that suppression."
+    )
+    if (!allow_suppressed_tail_flags) stop(msg)
+    warning(msg, call. = FALSE)
+    return(invisible(TRUE))
+  }
+  stop("[GATE BLOCKER] Unknown new-firm predictive audit decision '", audit_decision, "' in: ", decision_path)
+}
+
+run_step <- function(s) {
+  if (!file.exists(s$path)) stop("Missing script: ", s$path)
+  if (isTRUE(s$heavy) && !run_heavy) {
+    warning("[SKIP HEAVY] ", s$path, " requires ACCRUAL_RUN_HEAVY=TRUE; skipped explicitly.", call. = FALSE)
     return(invisible(FALSE))
   }
-  message("[RUN] ", path)
-  sys.source(path, envir = new.env(parent = globalenv()))
+  message("[RUN] ", s$path)
+  sys.source(s$path, envir = new.env(parent = globalenv()))
+  if (identical(s$gate, "new_firm_predictive")) check_new_firm_predictive_gate()
   invisible(TRUE)
 }
 
-print_header()
-invisible(lapply(selected_scripts, run_script))
+selected_steps <- steps_for_target(target)
+print_header(selected_steps)
 
-if (!run_heavy) {
-  print_manual_heavy_commands()
+if (dry_run) {
+  cat("Dry-run only: no scripts were executed.\n")
+  quit(save = "no", status = 0)
 }
 
+invisible(lapply(selected_steps, run_step))
 cat("Pipeline entrypoint completed.\n")

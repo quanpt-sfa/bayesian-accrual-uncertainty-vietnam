@@ -24,14 +24,16 @@ The pipeline reads `Sheet1` for firm-year observations and `Sheet2` for metadata
 
 1. Install required R packages used by the pipeline scripts, including at least `readxl`, `dplyr`, `brms`, `loo`, `sandwich`, and `lmtest`.
 2. Keep the raw workbook at `data/raw/data.xlsx`, or set `ACCRUAL_DATA_PATH` to another local path.
-3. Run a dry-run orchestration:
-   `Rscript run.R full`
-4. Enable actual heavy computation only when ready:
-   `ACCRUAL_DRY_RUN=FALSE ACCRUAL_RUN_HEAVY=TRUE Rscript run.R full`
+3. Inspect the main Chapter 3 plan without running scripts:
+   `Rscript run.R --dry-run`
+4. Run the main Chapter 3 pipeline:
+   `Rscript run.R`
+5. Enable actual heavy computation only when ready:
+   `ACCRUAL_RUN_HEAVY=TRUE Rscript run.R main`
 
-## Baseline pipeline
+## Main Chapter 3 pipeline
 
-The baseline sequence is:
+`Rscript run.R` selects the `main` target by default. The main sequence is:
 
 1. `01` setup and registry
 2. `02` build common sample
@@ -41,16 +43,28 @@ The baseline sequence is:
 6. `06` prior predictive checks
 7. `07` brms fits
 8. `08` MCMC diagnostics
-9. `09` LOO stacking
+9. `09` LOO stacking, reported as secondary to exact K-fold evidence
 10. `10` DA construction
 11. `11` posterior predictive checks
-12. `12` LOFO stacking
-13. `13` grouped K-fold
+12. `13` grouped exact firm K-fold
+13. `28` row-level exact K-fold
 14. `21` validation on baseline DA
+15. `30` new-firm predictive integration audit as a reporting gate
+16. `scripts/temp/22_chapter3_methods_tables.R` manuscript table export
 
 Step `07` fits the winsorized BRMS configurations and can also backfill diagnostics from the winsorized input samples plus existing fitted `.rds` objects when `ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE`. Its diagnostics table records `N_Obs` and `N_Firms` from the input winsorized sample, not from `fit$data`, so pooled models retain correct firm counts. Pareto-k warnings do not fail Step `07`; they are carried forward as `PSIS_REVIEW_REQUIRED`, and Step `09` or grouped K-fold should review those models before relying on PSIS-LOO.
 
-Full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations. Exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The 4000/1000 baseline setting is intentional, not an error; run manifests should record the actual sampler settings used by each branch.
+Full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations. Exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The 4000/1000 baseline setting is intentional, not an error; run manifests should record the actual sampler settings used by each branch. Heavy steps are skipped only with explicit warnings unless `ACCRUAL_RUN_HEAVY=TRUE`.
+
+The row-vs-grouped exact K-fold comparison is primary RQ1 evidence. LOFO is a robustness branch and PSIS reliability is a secondary diagnostics branch; neither is required by the default main target. The new-firm predictive integration audit gates Firm-RE out-of-firm posterior predictive tail flags before manuscript export.
+
+## Optional targets
+
+- `Rscript run.R robustness`: grouped PSIS-LOFO robustness only.
+- `Rscript run.R sensitivity`: prior sensitivity workflow only.
+- `Rscript run.R simulation`: leakage simulation workflow only.
+- `Rscript run.R diagnostics`: standalone diagnostics, including PSIS reliability and the new-firm predictive integration audit.
+- `Rscript run.R all`: opt-in combined run, ordered as main, diagnostics, robustness, sensitivity, simulation.
 
 ## Sensitivity pipeline
 
@@ -74,9 +88,7 @@ Rscript run.R simulation
 
 The BRMS simulation stages `26` and `27` are computationally heavy and are skipped unless `ACCRUAL_RUN_HEAVY=TRUE`.
 
-## Reviewer-final method-matching checks
-
-Scripts `28` and `29` are reviewer-final checks for method matching and PSIS reliability.
+## Exact K-fold and diagnostics
 
 Script `28` builds an exact row-level K-fold version of the winsorized stack under `out/interim/winsor/row_exact_kfold/`. It does not overwrite Step `13` firm-grouped K-fold outputs.
 
@@ -88,27 +100,13 @@ Rscript scripts/28_row_level_exact_kfold.R
 Remove-Item Env:\ACCRUAL_ROW_KFOLD_PREFLIGHT_ONLY
 ```
 
-Run the full method-matching branch only when heavy refits are intended:
-
-```powershell
-$env:ACCRUAL_DRY_RUN = "FALSE"
-$env:ACCRUAL_RUN_HEAVY = "TRUE"
-Rscript run.R method_matching
-```
-
 Script `29` is light and writes the PSIS reliability gate under `out/interim/winsor/psis_reliability_gate/`:
 
 ```powershell
 Rscript scripts/29_psis_reliability_gate.R
 ```
 
-`Rscript run.R full` continues to mean baseline plus sensitivity. Add reviewer-final checks to `full` only when explicitly requested:
-
-```powershell
-$env:ACCRUAL_RUN_REVIEWER_FINAL = "TRUE"
-$env:ACCRUAL_RUN_HEAVY = "TRUE"
-Rscript run.R full
-```
+Script `30` writes the new-firm predictive integration audit under `out/interim/winsor/new_firm_predictive_audit/`. In the main target, `run.R` reads its decision table before manuscript export. If suppression is required for unverified Firm-RE out-of-firm tail flags, the run stops unless `ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS=TRUE` is set for an explicitly suppressed/non-primary export.
 
 ## Outputs
 
@@ -151,9 +149,9 @@ The heavy Bayesian stages are enabled only when:
 ```powershell
 $env:ACCRUAL_DRY_RUN = "FALSE"
 $env:ACCRUAL_RUN_HEAVY = "TRUE"
-Rscript run.R full
+Rscript run.R main
 ```
 
 ## Computational requirements
 
-The light setup, sample-building, and manifest scripts are inexpensive. The `07`, `13`, `15`, `26`, `27`, and `28` stages can be computationally expensive because they trigger Bayesian fitting, simulation fitting, or exact K-fold refits. The repository entrypoint skips those stages unless `ACCRUAL_RUN_HEAVY=TRUE`. FAST_MODE is for smoke checks only and is not valid for primary RQ1/RQ2 inference.
+The light setup, sample-building, and manifest scripts are inexpensive. The `07`, `13`, `15`, `26`, `27`, and `28` stages can be computationally expensive because they trigger Bayesian fitting, simulation fitting, or exact K-fold refits. The repository entrypoint skips those stages with explicit warnings unless `ACCRUAL_RUN_HEAVY=TRUE`. FAST_MODE is for smoke checks only and is not valid for primary RQ1/RQ2 inference.

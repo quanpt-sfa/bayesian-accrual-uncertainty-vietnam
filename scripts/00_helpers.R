@@ -489,7 +489,7 @@ write_run_manifest <- function(path, scenario, prior_set_id, family, model_struc
 write_pipeline_index <- function() {
   dir.create(method_design_root, recursive = TRUE, showWarnings = FALSE)
   pipeline <- data.frame(
-    Order = sprintf("%02d", 0:22),
+    Order = c(sprintf("%02d", 0:11), "13", "28", "21", "30", "C3", "12", sprintf("%02d", 14:20), sprintf("%02d", 22:27), "29"),
     Script = c(
       "00_helpers.R",
       "01_setup_and_registry.R",
@@ -503,8 +503,12 @@ write_pipeline_index <- function() {
       "09_loo_stacking.R",
       "10_construct_uncertainty_adjusted_DA.R",
       "11_posterior_predictive_checks.R",
-      "12_lofo_stacking.R",
       "13_grouped_kfold_firm.R",
+      "28_row_level_exact_kfold.R",
+      "21_validation_on_scaleaware_student_DA.R",
+      "30_new_firm_predictive_integration_audit.R",
+      "temp/22_chapter3_methods_tables.R",
+      "12_lofo_stacking.R",
       "14_sensitivity_prior_predictive.R",
       "15_sensitivity_refit_prior_scenarios.R",
       "16_sensitivity_mcmc_diagnostics.R",
@@ -512,8 +516,13 @@ write_pipeline_index <- function() {
       "18_sensitivity_construct_DA.R",
       "19_sensitivity_validation.R",
       "20_sensitivity_report.R",
-      "21_validation_on_scaleaware_student_DA.R",
-      "22_reset_and_rerun_after_cogs_inv_fix.R"
+      "22_reset_and_rerun_after_cogs_inv_fix.R",
+      "23_sim_lmer_leakage_pilot_helpers.R",
+      "24_sim_lmer_leakage_pilot_run.R",
+      "25_sim_lmer_leakage_pilot_report.R",
+      "26_sim_brms_leakage_confirmation.R",
+      "27_sim_brms_parameter_recovery.R",
+      "29_psis_reliability_gate.R"
     ),
     Role = c(
       "Shared helpers and registries",
@@ -528,8 +537,12 @@ write_pipeline_index <- function() {
       "Baseline LOO stacking",
       "Baseline uncertainty-adjusted DA",
       "Baseline posterior predictive checks",
-      "Baseline grouped PSIS-LOFO",
       "Baseline exact grouped K-fold",
+      "Main row-level exact K-fold method-matching arm",
+      "Baseline validation",
+      "Main new-firm predictive integration reporting gate",
+      "Chapter 3 manuscript table export",
+      "Optional grouped PSIS-LOFO robustness",
       "Sensitivity prior predictive gate",
       "Sensitivity full refits by prior scenario",
       "Sensitivity MCMC diagnostics gate",
@@ -537,8 +550,13 @@ write_pipeline_index <- function() {
       "Sensitivity DA reconstruction",
       "Sensitivity validation/outcome tests",
       "Sensitivity report",
-      "Baseline validation",
-      "Reset/orchestrator"
+      "Reset/orchestrator",
+      "Simulation helper functions for leakage pilot scripts",
+      "LMER leakage pilot simulation run",
+      "LMER leakage pilot simulation report",
+      "BRMS leakage confirmation simulation",
+      "BRMS parameter recovery simulation",
+      "Optional secondary PSIS reliability diagnostics"
     ),
     Active = TRUE,
     stringsAsFactors = FALSE
@@ -557,6 +575,10 @@ write_pipeline_index <- function() {
     "Sensitivity phases 14-20 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `ACCRUAL_DRY_RUN=FALSE` and the relevant phase is launched intentionally.",
     "",
     "Sampler protocol: full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations; exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons; FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The baseline 4000/1000 setting is intentional, while 3000/1000 is the primary validation-refit protocol. Manifests should record actual sampler settings.",
+    "",
+    "`Rscript run.R` runs the `main` target by default. The main target includes grouped exact firm K-fold (`scripts/13_grouped_kfold_firm.R`) and row-level exact K-fold (`scripts/28_row_level_exact_kfold.R`) as adjacent primary RQ1 evidence steps, then runs validation, the new-firm predictive integration reporting gate, and the corrected Chapter 3 manuscript export path `scripts/temp/22_chapter3_methods_tables.R`.",
+    "",
+    "LOFO (`scripts/12_lofo_stacking.R`) is an opt-in robustness branch, not a default main step. Sensitivity scripts 14-20 and simulation scripts 23-27 are opt-in branches. PSIS reliability (`scripts/29_psis_reliability_gate.R`) is secondary diagnostics, not the primary RQ1 comparison.",
     "",
     paste0("The machine-readable pipeline index is written to `", file.path(method_design_root, "pipeline_index.csv"), "`.")
   )

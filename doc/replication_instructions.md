@@ -3,8 +3,8 @@
 ## Baseline DA
 
 1. Place the workbook at `data/raw/data.xlsx` or set `ACCRUAL_DATA_PATH`.
-2. Run `Rscript run.R baseline` for a dry-run oriented baseline pass.
-3. Set `ACCRUAL_DRY_RUN=FALSE` and `ACCRUAL_RUN_HEAVY=TRUE` when you are ready to fit models and produce full baseline outputs.
+2. Run `Rscript run.R --dry-run` to inspect the main Chapter 3 plan.
+3. Run `Rscript run.R` for the main Chapter 3 pipeline, and set `ACCRUAL_RUN_HEAVY=TRUE` when you are ready to fit models and produce full baseline outputs.
 4. Final baseline DA outputs are written to `accruals/baseline`.
 
 ## Sensitivity analysis
