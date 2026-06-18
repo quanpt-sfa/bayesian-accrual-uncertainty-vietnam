@@ -14,10 +14,12 @@ Active scripts use numeric prefixes only. No letter suffixes are used in script 
 | 07 | `07_fit_brms_named_models.R` | Baseline brms fits |
 | 08 | `08_mcmc_diagnostics.R` | Baseline MCMC diagnostics |
 | 09 | `09_loo_stacking.R` | Baseline LOO stacking |
-| 10 | `10_construct_uncertainty_adjusted_DA.R` | Baseline uncertainty-adjusted DA |
-| 11 | `11_posterior_predictive_checks.R` | Baseline posterior predictive checks |
+| 10 | `10_construct_uncertainty_adjusted_DA.R` | Secondary PSIS/LOO uncertainty-adjusted DA |
+| 11 | `11_posterior_predictive_checks.R` | Posterior predictive checks for secondary PSIS/LOO DA |
 | 13 | `13_grouped_kfold_firm.R` | Baseline exact grouped K-fold |
 | 28 | `28_row_level_exact_kfold.R` | Main row-level exact K-fold method-matching arm |
+| 31 | `31_construct_exact_kfold_DA.R` | Primary exact-KFoldW DA construction from completed-run pins |
+| 32 | `32_audit_DA_finite_outputs.R` | Hard finite-output gate for exact-KFold DA |
 | 21 | `21_validation_on_scaleaware_student_DA.R` | Baseline validation |
 | 30 | `30_new_firm_predictive_integration_audit.R` | Main new-firm predictive integration reporting gate |
 | C3 | `temp/22_chapter3_methods_tables.R` | Chapter 3 manuscript table export |
@@ -41,7 +43,11 @@ Sensitivity phases 14-20 are prepared for full MCMC refits by prior scenario. He
 
 Sampler protocol: full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations; exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons; FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The baseline 4000/1000 setting is intentional, while 3000/1000 is the primary validation-refit protocol. Manifests should record actual sampler settings.
 
-`Rscript run.R` runs the `main` target by default. The main target includes grouped exact firm K-fold (`scripts/13_grouped_kfold_firm.R`) and row-level exact K-fold (`scripts/28_row_level_exact_kfold.R`) as adjacent primary RQ1 evidence steps, then runs validation, the new-firm predictive integration reporting gate, and the corrected Chapter 3 manuscript export path `scripts/temp/22_chapter3_methods_tables.R`.
+`Rscript run.R` runs the `main` target by default. The main target includes grouped exact firm K-fold (`scripts/13_grouped_kfold_firm.R`) and row-level exact K-fold (`scripts/28_row_level_exact_kfold.R`) as adjacent primary RQ1 evidence steps, then constructs primary exact-KFoldW DA (`scripts/31_construct_exact_kfold_DA.R`), applies the finite-output gate (`scripts/32_audit_DA_finite_outputs.R`), runs validation, the new-firm predictive integration reporting gate, and the corrected Chapter 3 manuscript export path `scripts/temp/22_chapter3_methods_tables.R`.
+
+`scripts/10_construct_uncertainty_adjusted_DA.R` remains the PSIS/LOO secondary DA constructor. Scripts `13` and `28` write `LATEST_COMPLETED_RUN.txt` only for completed primary-eligible exact-refit runs, and script `31` uses those pins or explicit run-root environment variables instead of moving `LATEST_RUN.txt` for primary inference.
+
+`scripts/32_audit_DA_finite_outputs.R` writes `table_DA_finite_gate_decision.csv` and is a hard RQ2/export gate. `Rscript run.R all --dry-run` de-duplicates script `30_new_firm_predictive_integration_audit.R` so the new-firm audit appears once.
 
 LOFO (`scripts/12_lofo_stacking.R`) is an opt-in robustness branch, not a default main step. Sensitivity scripts 14-20 and simulation scripts 23-27 are opt-in branches. PSIS reliability (`scripts/29_psis_reliability_gate.R`) is secondary diagnostics, not the primary RQ1 comparison.
 

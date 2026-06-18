@@ -47,6 +47,37 @@ safe_read_csv <- function(path) {
   read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
+read_required_gate <- function(path, column, label) {
+  x <- safe_read_csv(path)
+  if (is.null(x) || !nrow(x) || !column %in% names(x)) {
+    stop("[GATE BLOCKER] Missing or invalid ", label, " decision table: ", path)
+  }
+  as.character(x[[column]][1])
+}
+
+finite_gate_path <- path_table("table_DA_finite_gate_decision.csv")
+new_firm_gate_path <- path_table(file.path("..", "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv"))
+if (!file.exists(new_firm_gate_path)) {
+  new_firm_gate_path <- file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv")
+}
+DA_Finite_Gate_Decision <- read_required_gate(finite_gate_path, "gate_decision", "DA finite")
+New_Firm_Predictive_Gate_Decision <- read_required_gate(new_firm_gate_path, "audit_decision", "new-firm predictive")
+allowed_finite_decisions <- c("PASS", "PASS_WITH_STRUCTURAL_NA_ONLY", "WARN_SECONDARY_NONFINITE_ONLY")
+if (!DA_Finite_Gate_Decision %in% allowed_finite_decisions) {
+  stop("[GATE BLOCKER] DA finite gate is not passable for primary RQ2/export: ", DA_Finite_Gate_Decision)
+}
+allow_suppressed_tail_flags <- toupper(Sys.getenv("ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
+if (identical(New_Firm_Predictive_Gate_Decision, "PRIMARY_SUPPRESSION_REQUIRED_FOR_UNVERIFIED_FIRMRE_OUT_OF_FIRM_QUANTITIES") &&
+    !allow_suppressed_tail_flags) {
+  stop("[GATE BLOCKER] New-firm predictive audit requires tail-flag suppression/non-primary treatment. ",
+       "Set ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS=TRUE only when downstream reporting preserves that suppression.")
+}
+RQ2_Primary_Output_Allowed <- DA_Finite_Gate_Decision %in% allowed_finite_decisions &&
+  New_Firm_Predictive_Gate_Decision %in% c(
+    "PASS_FOR_AVAILABLE_FIRMRE_OUT_OF_FIRM_QUANTITIES",
+    "NO_FIRMRE_OUT_OF_FIRM_PRIMARY_QUANTITIES_DETECTED"
+  )
+
 safe_n <- function(x) if (is.null(x)) NA_integer_ else nrow(x)
 
 safe_min <- function(x) {
@@ -365,8 +396,12 @@ if (is.null(registry)) {
 write_outputs(model_space, "table_3_5_model_space_matrix", "Table 3.5 Model-Space Matrix")
 write_outputs(appendix_models, "appendix_screened_external_data_extensions", "Appendix Screened External Data Extensions")
 
-latest_run_file <- file.path(output_root, "kfold_firm", "LATEST_RUN.txt")
-kfold_root <- if (file.exists(latest_run_file)) trimws(readLines(latest_run_file, warn = FALSE)[1]) else file.path(output_root, "kfold_firm", "latest_complete")
+latest_completed_run_file <- file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt")
+kfold_root <- if (file.exists(latest_completed_run_file)) {
+  trimws(readLines(latest_completed_run_file, warn = FALSE)[1])
+} else {
+  file.path(output_root, "kfold_firm", "latest_complete")
+}
 kfold_tables <- file.path(kfold_root, "tables")
 if (!dir.exists(kfold_tables)) kfold_tables <- file.path(output_root, "kfold_firm", "latest_complete")
 kfold_manifest <- safe_read_csv(file.path(kfold_root, "logs", "run_config_manifest.csv"))
@@ -582,7 +617,8 @@ manifest <- data.frame(
            "model_formula_file", "winsorized_sample_files", "prior_set_id", "likelihood_family",
            "MCMC_chains", "iterations", "warmup", "seed", "adapt_delta", "max_treedepth",
            "validation_schemes_available", "DA_output_root", "timestamp", "git_commit_hash",
-           "script_version_hash"),
+           "script_version_hash", "DA_Finite_Gate_Decision", "New_Firm_Predictive_Gate_Decision",
+           "RQ2_Primary_Output_Allowed"),
   value = c(
     data_path,
     paste(metadata_sheets, collapse = ", "),
@@ -608,7 +644,10 @@ manifest <- data.frame(
     output_root,
     as.character(Sys.time()),
     if (length(git_hash)) git_hash[1] else NA,
-    script_hash
+    script_hash,
+    DA_Finite_Gate_Decision,
+    New_Firm_Predictive_Gate_Decision,
+    RQ2_Primary_Output_Allowed
   ),
   stringsAsFactors = FALSE
 )

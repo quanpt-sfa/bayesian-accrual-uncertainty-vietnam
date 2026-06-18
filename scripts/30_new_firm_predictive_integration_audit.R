@@ -104,11 +104,14 @@ detect_latest_root <- function(latest_path) {
 }
 
 detect_latest_kfold_root <- function() {
+  completed <- detect_latest_root(file.path(winsor_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt"))
+  if (!is.na(completed)) return(completed)
   detect_latest_root(file.path(winsor_root, "kfold_firm", "LATEST_RUN.txt"))
 }
 
 detect_latest_row_kfold_root <- function() {
   candidates <- c(
+    file.path(winsor_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt"),
     file.path(winsor_root, "row_exact_kfold", "LATEST_RUN.txt"),
     file.path(winsor_root, "kfold_row", "LATEST_RUN.txt"),
     file.path(winsor_root, "row_kfold", "LATEST_RUN.txt")

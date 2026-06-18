@@ -44,19 +44,21 @@ The pipeline reads `Sheet1` for firm-year observations and `Sheet2` for metadata
 7. `07` brms fits
 8. `08` MCMC diagnostics
 9. `09` LOO stacking, reported as secondary to exact K-fold evidence
-10. `10` DA construction
-11. `11` posterior predictive checks
+10. `10` PSIS/LOO secondary DA construction
+11. `11` posterior predictive checks for the secondary PSIS/LOO DA
 12. `13` grouped exact firm K-fold
 13. `28` row-level exact K-fold
-14. `21` validation on baseline DA
-15. `30` new-firm predictive integration audit as a reporting gate
-16. `scripts/temp/22_chapter3_methods_tables.R` manuscript table export
+14. `31` primary exact-KFoldW DA construction from completed-run pins
+15. `32` finite-output gate for exact-KFold DA
+16. `21` validation on baseline DA
+17. `30` new-firm predictive integration audit as a reporting gate
+18. `scripts/temp/22_chapter3_methods_tables.R` manuscript table export
 
 Step `07` fits the winsorized BRMS configurations and can also backfill diagnostics from the winsorized input samples plus existing fitted `.rds` objects when `ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE`. Its diagnostics table records `N_Obs` and `N_Firms` from the input winsorized sample, not from `fit$data`, so pooled models retain correct firm counts. Pareto-k warnings do not fail Step `07`; they are carried forward as `PSIS_REVIEW_REQUIRED`, and Step `09` or grouped K-fold should review those models before relying on PSIS-LOO.
 
 Full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations. Exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The 4000/1000 baseline setting is intentional, not an error; run manifests should record the actual sampler settings used by each branch. Heavy steps are skipped only with explicit warnings unless `ACCRUAL_RUN_HEAVY=TRUE`.
 
-The row-vs-grouped exact K-fold comparison is primary RQ1 evidence. LOFO is a robustness branch and PSIS reliability is a secondary diagnostics branch; neither is required by the default main target. The new-firm predictive integration audit gates Firm-RE out-of-firm posterior predictive tail flags before manuscript export.
+The row-vs-grouped exact K-fold comparison is primary RQ1 evidence. Script `10_construct_uncertainty_adjusted_DA.R` remains the secondary PSIS/LOO DA constructor. Script `31_construct_exact_kfold_DA.R` is the primary exact-KFoldW DA constructor for RQ2 and reads explicit run-root environment variables or `LATEST_COMPLETED_RUN.txt` pins, never moving `LATEST_RUN.txt`, for primary inference. Script `32_audit_DA_finite_outputs.R` is a hard finite-output gate before RQ2/export. LOFO is a robustness branch and PSIS reliability is a secondary diagnostics branch; neither is required by the default main target. The new-firm predictive integration audit gates Firm-RE out-of-firm posterior predictive tail flags before manuscript export.
 
 ## Optional targets
 
@@ -90,7 +92,11 @@ The BRMS simulation stages `26` and `27` are computationally heavy and are skipp
 
 ## Exact K-fold and diagnostics
 
-Script `28` builds an exact row-level K-fold version of the winsorized stack under `out/interim/winsor/row_exact_kfold/`. It does not overwrite Step `13` firm-grouped K-fold outputs.
+Script `13` writes `out/interim/winsor/kfold_firm/LATEST_COMPLETED_RUN.txt` only after a primary-eligible completed grouped exact K-fold refit. Script `28` builds an exact row-level K-fold version of the winsorized stack under `out/interim/winsor/row_exact_kfold/` and writes `out/interim/winsor/row_exact_kfold/LATEST_COMPLETED_RUN.txt` only after a full, primary-eligible completed run. Preflight, FAST_MODE, failed, and partial/filtered runs do not update completed-run pins.
+
+Script `31` constructs exact-KFoldW DA outputs from the completed grouped and row exact K-fold run pins, or from explicit `ACCRUAL_GROUPED_KFOLD_RUN_ROOT` and `ACCRUAL_ROW_KFOLD_RUN_ROOT` values. Its primary outputs are `final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv`, `final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv`, and provenance/gate tables under `out/interim/winsor/tables/`.
+
+Script `32` audits numeric DA columns and writes `table_DA_finite_gate_decision.csv`. `run.R` requires this gate, plus the new-firm predictive gate, before manuscript export. The `all` target de-duplicates script `30` so the new-firm audit is not listed or run twice.
 
 Use preflight first to inspect fold assignment and planned tasks without fitting BRMS models:
 

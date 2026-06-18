@@ -93,6 +93,9 @@ cache_dir <- file.path(kfold_run_root, "cache")
 checkpoints_dir <- file.path(kfold_run_root, "checkpoints")
 lock_path <- file.path(kfold_run_root, "RUNNING.lock")
 latest_run_path <- file.path(kfold_base_root, "LATEST_RUN.txt")
+latest_completed_run_path <- file.path(kfold_base_root, "LATEST_COMPLETED_RUN.txt")
+completed_run_pin_eligible <- FALSE
+completed_run_pin_updated <- FALSE
 
 dir.create(kfold_base_root, recursive = TRUE, showWarnings = FALSE)
 
@@ -167,6 +170,10 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Fold_Filter = paste(fold_filter, collapse = ","),
     Preflight_Only = preflight_only,
     Partial_Run = partial_run,
+    Latest_Run_Path = latest_run_path,
+    Latest_Completed_Run_Path = latest_completed_run_path,
+    Completed_Run_Pin_Eligible = completed_run_pin_eligible,
+    Completed_Run_Pin_Updated = completed_run_pin_updated,
     Status = status,
     stringsAsFactors = FALSE
   )
@@ -288,6 +295,10 @@ write_output_manifest <- function(final_decision = NA_character_) {
     Modified_Time = vapply(outputs, mtime_or_na, character(1)),
     N_Rows = vapply(outputs, nrows_or_na, integer(1)),
     Notes = ifelse(names(outputs) == "decision", paste("Final decision:", final_decision), ""),
+    Latest_Run_Path = latest_run_path,
+    Latest_Completed_Run_Path = latest_completed_run_path,
+    Completed_Run_Pin_Eligible = completed_run_pin_eligible,
+    Completed_Run_Pin_Updated = completed_run_pin_updated,
     stringsAsFactors = FALSE
   )
   write.csv(man, file.path(logs_dir, "output_file_manifest.csv"), row.names = FALSE)
@@ -1444,6 +1455,30 @@ main <- function() {
     final_decision <- "PARTIALLY_SURVIVES_WINSOR_AND_EXACT_GROUPED_KFOLD"
   }
 
+  required_completed_weight_files <- c(
+    file.path(tables_dir, "table_winsor_kfold_weights_ex_post.csv"),
+    file.path(tables_dir, "table_winsor_kfold_weights_no_lookahead.csv")
+  )
+  completed_run_pin_eligible <<- !preflight_only &&
+    !partial_run &&
+    identical(run_mode, "FULL_MODE") &&
+    K == 5L &&
+    attempted > 0 &&
+    completed == attempted &&
+    final_decision %in% c(
+      "SURVIVES_WINSOR_AND_EXACT_GROUPED_KFOLD",
+      "PARTIALLY_SURVIVES_WINSOR_AND_EXACT_GROUPED_KFOLD",
+      "DOES_NOT_SURVIVE_WINSOR_AND_EXACT_GROUPED_KFOLD"
+    ) &&
+    all(file.exists(required_completed_weight_files))
+
+  if (completed_run_pin_eligible) {
+    writeLines(kfold_run_root, latest_completed_run_path)
+    completed_run_pin_updated <<- TRUE
+  } else {
+    completed_run_pin_updated <<- FALSE
+  }
+
   decision_table <- data.frame(
     Criterion = c(
       "Was exact grouped K-fold by firm implemented?",
@@ -1501,6 +1536,9 @@ main <- function() {
     ),
     stringsAsFactors = FALSE
   )
+  decision_table$Kfold_Run_Root <- kfold_run_root
+  decision_table$Completed_Run_Pin_Eligible <- completed_run_pin_eligible
+  decision_table$Completed_Run_Pin_Updated <- completed_run_pin_updated
   write.csv(decision_table, file.path(tables_dir, "table_reviewer_priority2b_exact_kfold_decision.csv"), row.names = FALSE)
 
   manuscript_wording <- switch(

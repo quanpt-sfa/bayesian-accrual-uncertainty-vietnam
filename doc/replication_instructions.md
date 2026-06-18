@@ -5,7 +5,9 @@
 1. Place the workbook at `data/raw/data.xlsx` or set `ACCRUAL_DATA_PATH`.
 2. Run `Rscript run.R --dry-run` to inspect the main Chapter 3 plan.
 3. Run `Rscript run.R` for the main Chapter 3 pipeline, and set `ACCRUAL_RUN_HEAVY=TRUE` when you are ready to fit models and produce full baseline outputs.
-4. Final baseline DA outputs are written to `accruals/baseline`.
+4. Script `10` constructs PSIS/LOO DA as secondary. Script `31` constructs primary exact-KFoldW DA from completed grouped and row exact K-fold pins, and script `32` audits finite DA outputs before RQ2/export.
+5. Scripts `13` and `28` write `LATEST_COMPLETED_RUN.txt` only after primary-eligible completed exact refit runs. Downstream primary DA construction uses those pins or explicit `ACCRUAL_GROUPED_KFOLD_RUN_ROOT` / `ACCRUAL_ROW_KFOLD_RUN_ROOT` values.
+6. Final baseline DA outputs are written to `accruals/baseline`; exact-KFold DA provenance outputs are written under `out/interim/winsor/tables`.
 
 ## Sensitivity analysis
 
@@ -16,6 +18,7 @@
 
 ## Validation reports
 
-1. Baseline validation is produced by script `21` after DA construction.
+1. Baseline validation is produced by script `21` after DA construction and after the finite DA gate has run in the main pipeline.
 2. Sensitivity validation is produced by script `19` and summarized by script `20`.
-3. Final narrative report artifacts are written under `reports/`.
+3. Manuscript export requires both `table_DA_finite_gate_decision.csv` and `table_new_firm_predictive_integration_decision.csv`; failed gates are not represented as primary RQ2 evidence.
+4. Final narrative report artifacts are written under `reports/`.

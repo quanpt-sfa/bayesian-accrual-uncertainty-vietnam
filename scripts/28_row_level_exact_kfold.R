@@ -51,6 +51,7 @@ if (length(fold_filter) > 0 && any(!fold_filter %in% seq_len(K))) {
 preflight_only <- env_flag("ACCRUAL_ROW_KFOLD_PREFLIGHT_ONLY")
 overwrite_outputs <- env_flag("ACCRUAL_ROW_KFOLD_OVERWRITE")
 force_resume <- env_flag("ACCRUAL_ROW_KFOLD_FORCE_RESUME")
+partial_run <- length(target_space_filter) > 0 || length(model_id_filter) > 0 || length(fold_filter) > 0
 
 if (run_mode == "FAST_MODE") {
   chains <- 2
@@ -70,11 +71,16 @@ tables_dir <- file.path(row_kfold_root, "tables")
 logs_dir <- file.path(row_kfold_root, "logs")
 models_dir <- file.path(row_kfold_root, "models")
 cache_dir <- file.path(row_kfold_root, "cache")
+latest_run_path <- file.path(row_kfold_root, "LATEST_RUN.txt")
+latest_completed_run_path <- file.path(row_kfold_root, "LATEST_COMPLETED_RUN.txt")
+completed_run_pin_eligible <- FALSE
+completed_run_pin_updated <- FALSE
+primary_inference_allowed <- FALSE
 dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(logs_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(models_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-writeLines(row_kfold_root, file.path(row_kfold_root, "LATEST_RUN.txt"))
+writeLines(row_kfold_root, latest_run_path)
 
 table_path <- function(file_name, prefer_input = FALSE) {
   candidates <- if (prefer_input) {
@@ -90,7 +96,7 @@ input_paths <- c(
   ex_post_sample = table_path("final_common_ex_post_sample_winsor.csv", prefer_input = TRUE),
   real_time_sample = table_path("final_common_realtime_sample_winsor.csv", prefer_input = TRUE),
   formulas = table_path("table_named_model_formulas_winsor.csv"),
-  firm_kfold_latest = file.path(output_root, "kfold_firm", "LATEST_RUN.txt")
+  firm_kfold_latest = file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt")
 )
 
 required_inputs <- input_paths[c("ex_post_sample", "real_time_sample", "formulas")]
@@ -362,6 +368,7 @@ write_manifest <- function(status, extra_note = NA_character_) {
     Model_ID_Filter = paste(model_id_filter, collapse = ","),
     Fold_Filter = paste(fold_filter, collapse = ","),
     Preflight_Only = preflight_only,
+    Partial_Run = partial_run,
     Overwrite = overwrite_outputs,
     Force_Resume = force_resume,
     Exact_Refit = TRUE,
@@ -372,6 +379,11 @@ write_manifest <- function(status, extra_note = NA_character_) {
     Model_Structure = model_structure,
     Output_Root = output_root,
     Row_KFold_Root = row_kfold_root,
+    Latest_Run_Path = latest_run_path,
+    Latest_Completed_Run_Path = latest_completed_run_path,
+    Completed_Run_Pin_Eligible = completed_run_pin_eligible,
+    Completed_Run_Pin_Updated = completed_run_pin_updated,
+    Primary_Inference_Allowed = primary_inference_allowed,
     ExPost_Input = input_paths[["ex_post_sample"]],
     RealTime_Input = input_paths[["real_time_sample"]],
     Formula_Input = input_paths[["formulas"]],
@@ -780,6 +792,42 @@ family_comparison <- weight_comparison %>%
   ) %>%
   arrange(target_space, firmRE_family_indicator)
 write.csv(family_comparison, file.path(tables_dir, "table_winsor_exact_kfold_family_weight_comparison_row_vs_firm.csv"), row.names = FALSE)
+
+primary_no_lookahead_model_ids <- c("M01", "M02", "M03", "M07", "M09")
+explicit_full_primary_filters <- length(target_space_filter) == 1 &&
+  identical(target_space_filter, "real_time") &&
+  length(model_id_filter) > 0 &&
+  setequal(model_id_filter, primary_no_lookahead_model_ids) &&
+  (length(fold_filter) == 0 || setequal(fold_filter, seq_len(K)))
+full_unfiltered_primary_run <- !partial_run
+completed_task_count <- if (nrow(fold_diagnostics) > 0) sum(fold_diagnostics$Completed, na.rm = TRUE) else 0L
+all_planned_tasks_completed <- nrow(planned_tasks) > 0 && completed_task_count == nrow(planned_tasks)
+row_weight_files_available <- all(file.exists(c(
+  file.path(tables_dir, "table_winsor_row_exact_kfold_weights_ex_post.csv"),
+  file.path(tables_dir, "table_winsor_row_exact_kfold_weights_no_lookahead.csv"),
+  file.path(tables_dir, "table_winsor_row_exact_kfold_model_scores.csv")
+)))
+primary_inference_allowed <<- identical(run_mode, "FULL_MODE") &&
+  K == 5L &&
+  seed == 42L &&
+  (full_unfiltered_primary_run || explicit_full_primary_filters) &&
+  all_planned_tasks_completed &&
+  row_weight_files_available &&
+  nrow(model_scores) > 0 &&
+  nrow(weights_rt) > 0
+completed_run_pin_eligible <<- !preflight_only &&
+  identical(run_mode, "FULL_MODE") &&
+  !partial_run &&
+  all_planned_tasks_completed &&
+  row_weight_files_available &&
+  nrow(model_scores) > 0 &&
+  nrow(weights_rt) > 0
+if (completed_run_pin_eligible) {
+  writeLines(row_kfold_root, latest_completed_run_path)
+  completed_run_pin_updated <<- TRUE
+} else {
+  completed_run_pin_updated <<- FALSE
+}
 
 write_manifest("COMPLETED", NA_character_)
 write_reviewer_note("COMPLETED")

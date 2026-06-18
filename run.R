@@ -16,12 +16,22 @@ if (!target %in% valid_targets) {
 
 run_heavy <- flag_from_env("ACCRUAL_RUN_HEAVY", FALSE)
 allow_suppressed_tail_flags <- flag_from_env("ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS", FALSE)
+output_root <- Sys.getenv("ACCRUAL_OUTPUT_ROOT", file.path("out", "interim", "winsor"))
+tables_root <- file.path(output_root, "tables")
+accruals_root <- Sys.getenv("ACCRUAL_ACCRUALS_ROOT", file.path(output_root, "accruals"))
 
 Sys.setenv(ACCRUAL_RUN_HEAVY = if (run_heavy) "TRUE" else "FALSE")
 Sys.setenv(ACCRUAL_DRY_RUN = if (dry_run) "TRUE" else "FALSE")
 
-step <- function(id, path, role, heavy = FALSE, gate = NULL) {
-  list(id = id, path = path, role = role, heavy = heavy, gate = gate)
+artifact <- function(...) file.path(...)
+table_artifact <- function(file) file.path(tables_root, file)
+baseline_da_path <- function(file = "final_uncertainty_adjusted_accruals_winsor.csv") {
+  file.path(accruals_root, "baseline", file)
+}
+
+step <- function(id, path, role, heavy = FALSE, gate = NULL, requires = character(), require_reason = NULL) {
+  list(id = id, path = path, role = role, heavy = heavy, gate = gate,
+       requires = requires, require_reason = require_reason)
 }
 
 main_steps <- list(
@@ -33,15 +43,58 @@ main_steps <- list(
   step("05", "scripts/05_winsorize_common_samples.R", "Winsorize common samples"),
   step("06", "scripts/06_prior_predictive_checks.R", "Prior predictive gate"),
   step("07", "scripts/07_fit_brms_named_models.R", "Full-sample baseline brms fits", heavy = TRUE),
-  step("08", "scripts/08_mcmc_diagnostics.R", "MCMC diagnostics for baseline fits"),
-  step("09", "scripts/09_loo_stacking.R", "LOO stacking evidence, secondary to exact K-fold"),
-  step("10", "scripts/10_construct_uncertainty_adjusted_DA.R", "Construct uncertainty-adjusted DA"),
-  step("11", "scripts/11_posterior_predictive_checks.R", "Posterior predictive checks"),
+  step("08", "scripts/08_mcmc_diagnostics.R", "MCMC diagnostics for baseline fits",
+       requires = c(table_artifact("table_brms_diagnostics_winsor.csv"), file.path(output_root, "models")),
+       require_reason = "baseline fit diagnostics and model files from script 07"),
+  step("09", "scripts/09_loo_stacking.R", "LOO stacking evidence, secondary to exact K-fold",
+       requires = c(
+         table_artifact("table_brms_diagnostics_winsor.csv"),
+         table_artifact("table_coefficient_summary_winsor.csv"),
+         table_artifact("table_mcmc_diagnostics_gate_winsor.csv")
+       ),
+       require_reason = "baseline MCMC diagnostics gate and coefficient summaries"),
+  step("10", "scripts/10_construct_uncertainty_adjusted_DA.R", "Construct PSIS/LOO secondary uncertainty-adjusted DA",
+       requires = c(
+         table_artifact("table_stacking_weights_ex_post_winsor_corrected.csv"),
+         table_artifact("table_stacking_weights_no_lookahead_winsor_corrected.csv")
+       ),
+       require_reason = "secondary PSIS/LOO stacking weights from script 09"),
+  step("11", "scripts/11_posterior_predictive_checks.R", "Posterior predictive checks for secondary PSIS/LOO DA",
+       requires = c(
+         table_artifact("final_uncertainty_adjusted_accruals_winsor.csv"),
+         table_artifact("table_stacking_weights_ex_post_winsor_corrected.csv"),
+         table_artifact("table_stacking_weights_no_lookahead_winsor_corrected.csv")
+       ),
+       require_reason = "secondary PSIS/LOO DA and weights"),
   step("13", "scripts/13_grouped_kfold_firm.R", "Grouped exact firm K-fold, primary RQ1 evidence", heavy = TRUE),
   step("28", "scripts/28_row_level_exact_kfold.R", "Row-level exact K-fold, primary RQ1 evidence", heavy = TRUE),
-  step("21", "scripts/21_validation_on_scaleaware_student_DA.R", "Outcome validation"),
-  step("30", "scripts/30_new_firm_predictive_integration_audit.R", "New-firm predictive integration reporting gate", gate = "new_firm_predictive"),
-  step("C3", "scripts/temp/22_chapter3_methods_tables.R", "Chapter 3 manuscript table export")
+  step("31", "scripts/31_construct_exact_kfold_DA.R", "Primary exact-KFoldW DA construction",
+       requires = c(
+         if (!nzchar(Sys.getenv("ACCRUAL_GROUPED_KFOLD_RUN_ROOT", ""))) file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt") else character(),
+         if (!nzchar(Sys.getenv("ACCRUAL_ROW_KFOLD_RUN_ROOT", ""))) file.path(output_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt") else character()
+       ),
+       require_reason = "completed exact K-fold run pins from scripts 13 and 28"),
+  step("32", "scripts/32_audit_DA_finite_outputs.R", "Finite-output gate for exact-KFold DA", gate = "da_finite",
+       requires = c(
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv")
+       ),
+       require_reason = "exact-KFold DA outputs from script 31"),
+  step("21", "scripts/21_validation_on_scaleaware_student_DA.R", "Outcome validation",
+       requires = c(baseline_da_path(), table_artifact("table_DA_finite_gate_decision.csv")),
+       require_reason = "baseline DA file and finite DA gate decision"),
+  step("30", "scripts/30_new_firm_predictive_integration_audit.R", "New-firm predictive integration reporting gate", gate = "new_firm_predictive",
+       requires = c(
+         table_artifact("table_DA_finite_gate_decision.csv"),
+         table_artifact("table_DA_exact_kfold_source_manifest.csv")
+       ),
+       require_reason = "finite DA gate and exact-KFold DA provenance manifest"),
+  step("C3", "scripts/temp/22_chapter3_methods_tables.R", "Chapter 3 manuscript table export",
+       requires = c(
+         table_artifact("table_DA_finite_gate_decision.csv"),
+         file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv")
+       ),
+       require_reason = "finite DA and new-firm predictive gate decisions")
 )
 
 robustness_steps <- list(
@@ -70,6 +123,10 @@ diagnostics_steps <- list(
   step("30", "scripts/30_new_firm_predictive_integration_audit.R", "New-firm predictive integration diagnostics", gate = "new_firm_predictive")
 )
 
+diagnostics_steps_for_all <- list(
+  step("29", "scripts/29_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics")
+)
+
 steps_for_target <- function(x) {
   switch(
     x,
@@ -78,7 +135,7 @@ steps_for_target <- function(x) {
     sensitivity = sensitivity_steps,
     simulation = simulation_steps,
     diagnostics = diagnostics_steps,
-    all = c(main_steps, diagnostics_steps, robustness_steps, sensitivity_steps, simulation_steps)
+    all = c(main_steps, diagnostics_steps_for_all, robustness_steps, sensitivity_steps, simulation_steps)
   )
 }
 
@@ -91,18 +148,49 @@ print_header <- function(steps) {
   cat("Plan:\n")
   for (i in seq_along(steps)) {
     s <- steps[[i]]
-    flags <- c(if (isTRUE(s$heavy)) "heavy" else character(), if (!is.null(s$gate)) "gate" else character())
+    flags <- c(
+      if (isTRUE(s$heavy)) "heavy" else character(),
+      if (!is.null(s$gate)) "gate" else character(),
+      if (length(s$requires)) "requires artifacts" else character()
+    )
     flag_text <- if (length(flags)) paste0(" [", paste(flags, collapse = ", "), "]") else ""
     cat(sprintf("  %02d. %s %s - %s%s\n", i, s$id, s$path, s$role, flag_text))
   }
   cat("\n")
 }
 
+require_artifacts <- function(step_id, paths, reason = NULL) {
+  if (!length(paths)) return(invisible(TRUE))
+  missing <- paths[!file.exists(paths)]
+  if (length(missing) > 0) {
+    stop(
+      "[DEPENDENCY BLOCKER] Step ", step_id, " cannot run because required artifact(s) are missing",
+      if (!is.null(reason) && nzchar(reason)) paste0(" for ", reason) else "",
+      ": ", paste(missing, collapse = "; ")
+    )
+  }
+  invisible(TRUE)
+}
+
+check_da_finite_gate <- function() {
+  decision_path <- table_artifact("table_DA_finite_gate_decision.csv")
+  if (!file.exists(decision_path)) {
+    stop("[GATE BLOCKER] DA finite gate decision table was not created: ", decision_path)
+  }
+  decision <- tryCatch(read.csv(decision_path, stringsAsFactors = FALSE), error = function(e) NULL)
+  if (is.null(decision) || nrow(decision) == 0 || !"gate_decision" %in% names(decision)) {
+    stop("[GATE BLOCKER] Cannot read gate_decision from: ", decision_path)
+  }
+  gate_decision <- as.character(decision$gate_decision[[1]])
+  message("[GATE] DA finite output decision: ", gate_decision)
+  if (!gate_decision %in% c("PASS", "PASS_WITH_STRUCTURAL_NA_ONLY", "WARN_SECONDARY_NONFINITE_ONLY")) {
+    stop("[GATE BLOCKER] DA finite gate is not passable for primary RQ2/export: ", gate_decision)
+  }
+  invisible(TRUE)
+}
+
 check_new_firm_predictive_gate <- function() {
-  decision_path <- file.path(
-    "out", "interim", "winsor", "new_firm_predictive_audit", "tables",
-    "table_new_firm_predictive_integration_decision.csv"
-  )
+  decision_path <- file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv")
   if (!file.exists(decision_path)) {
     stop(
       "[GATE BLOCKER] New-firm predictive integration decision table was not created: ",
@@ -138,8 +226,11 @@ run_step <- function(s) {
     warning("[SKIP HEAVY] ", s$path, " requires ACCRUAL_RUN_HEAVY=TRUE; skipped explicitly.", call. = FALSE)
     return(invisible(FALSE))
   }
+  require_artifacts(s$id, s$requires, s$require_reason)
+  if (identical(s$gate, "da_finite")) Sys.setenv(ACCRUAL_DA_FINITE_GATE_STRICT = "TRUE")
   message("[RUN] ", s$path)
   sys.source(s$path, envir = new.env(parent = globalenv()))
+  if (identical(s$gate, "da_finite")) check_da_finite_gate()
   if (identical(s$gate, "new_firm_predictive")) check_new_firm_predictive_gate()
   invisible(TRUE)
 }

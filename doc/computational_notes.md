@@ -8,8 +8,14 @@
 - Run manifests should record the actual sampler settings used by each branch.
 - `Rscript run.R` runs the main Chapter 3 pipeline by default. Use `Rscript run.R --dry-run` to print the ordered plan without running scripts.
 - The main target includes adjacent exact K-fold arms: `scripts/13_grouped_kfold_firm.R` followed immediately by `scripts/28_row_level_exact_kfold.R`.
+- Script `10_construct_uncertainty_adjusted_DA.R` is the PSIS/LOO secondary DA constructor. It is retained for secondary diagnostics and posterior predictive checks.
+- Script `31_construct_exact_kfold_DA.R` is the primary exact-KFoldW DA constructor for RQ2. It uses `ACCRUAL_GROUPED_KFOLD_RUN_ROOT` and `ACCRUAL_ROW_KFOLD_RUN_ROOT` when set, otherwise the `LATEST_COMPLETED_RUN.txt` pins written by scripts `13` and `28`; primary inference does not use moving `LATEST_RUN.txt`.
+- Scripts `13` and `28` update `LATEST_COMPLETED_RUN.txt` only for completed, primary-eligible, non-preflight, non-FAST/non-partial exact refit runs.
+- Script `32_audit_DA_finite_outputs.R` is a hard finite-output gate before RQ2/export/reporting. It writes `table_DA_finite_gate_decision.csv` and blocks primary export when exact-KFold DA primary columns contain undocumented nonfinite values.
+- `run.R` checks artifact dependencies before downstream consumers run, so skipped heavy steps must already have usable artifacts or the pipeline stops with a precise blocker.
 - LOFO is an opt-in robustness target, sensitivity and simulation are opt-in branches, and PSIS reliability is a secondary diagnostics target.
 - `scripts/30_new_firm_predictive_integration_audit.R` is a main reporting gate for Firm-RE out-of-firm posterior predictive tail flags and also remains callable through `Rscript run.R diagnostics`.
+- `Rscript run.R all --dry-run` de-duplicates script `30`; the new-firm audit appears in main and is not repeated in the diagnostics branch of `all`.
 - Chapter 3 manuscript export uses `scripts/temp/22_chapter3_methods_tables.R`.
 - Posterior draws, fitted objects, and diagnostic tables can become large.
 - Heavy outputs should not be committed. Keep them under `out/` and rely on the ignore rules. Heavy steps may be skipped only with explicit logged warnings.
