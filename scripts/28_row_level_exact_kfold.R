@@ -512,10 +512,11 @@ score_task <- function(task) {
   base_diag$Max_Rhat <- fit_diag$max_rhat
   base_diag$Divergences <- fit_diag$divergences
   base_diag$Treedepth_Warnings <- fit_diag$treedepth_warnings
-  base_diag$N_Test_Obs_No_Same_Firm_History <- sum(!same_firm_history_available)
-  base_diag$Any_New_Company_In_Row_Fold <- any_new_company_in_row_fold
+
   same_firm_history_available <- test_df$company %in% train_df$company
   any_new_company_in_row_fold <- any(!same_firm_history_available)
+  base_diag$N_Test_Obs_No_Same_Firm_History <- sum(!same_firm_history_available)
+  base_diag$Any_New_Company_In_Row_Fold <- any_new_company_in_row_fold
 
   # Exact row-level validation should use same-firm history for Firm-RE models
   # whenever the held-out firm is present in the training fold. Therefore the
@@ -604,12 +605,10 @@ model_scores <- if (nrow(obs_scores) > 0) {
     group_by(target_space, sample_group, model_id, model_name, heterogeneity_variant) %>%
     summarise(
       n_obs_scored = n(),
-      n_obs_excluded_no_same_firm_history = sum(!primary_row_target_inclusion, na.rm = TRUE),
       elpd_exact_row_kfold = sum(log_predictive_density, na.rm = TRUE),
       mean_lpd = mean(log_predictive_density, na.rm = TRUE),
       sd_lpd = sd(log_predictive_density, na.rm = TRUE),
-      refit_type = "exact_refit",
-      validation_unit = "row_level",
+      n_new_company_excluded_from_primary = sum(new_company_in_row_fold, na.rm = TRUE),
       .groups = "drop"
     ) %>%
     left_join(
@@ -621,6 +620,8 @@ model_scores <- if (nrow(obs_scores) > 0) {
           max_rhat_max = suppressWarnings(max(Max_Rhat, na.rm = TRUE)),
           divergences_total = sum(Divergences, na.rm = TRUE),
           treedepth_warnings_total = sum(Treedepth_Warnings, na.rm = TRUE),
+          n_test_obs_no_same_firm_history = sum(N_Test_Obs_No_Same_Firm_History, na.rm = TRUE),
+          any_new_company_in_row_fold = any(Any_New_Company_In_Row_Fold, na.rm = TRUE),
           failure_reason = paste(na.omit(unique(Failure_Reason)), collapse = " | "),
           .groups = "drop"
         ),
@@ -638,24 +639,13 @@ model_scores <- if (nrow(obs_scores) > 0) {
         TRUE ~ "LOW_RELIABILITY"
       ),
       included_in_stack = reliability_flag %in% c("OK", "CAUTION") &
-        ifelse(length(fold_filter) == 0, n_folds_completed == K, n_folds_completed > 0)
+        ifelse(length(fold_filter) == 0, n_folds_completed == K, n_folds_completed > 0),
+      refit_type = "exact_refit",
+      validation_unit = "row_level",
+      primary_row_target_excludes_new_company_rows = TRUE
     )
 } else {
   data.frame()
-}
-if (nrow(model_scores) > 0 && nrow(obs_scores) > 0) {
-  exclusion_counts <- obs_scores %>%
-    group_by(target_space, sample_group, model_id, model_name, heterogeneity_variant) %>%
-    summarise(
-      n_obs_total_heldout = n(),
-      n_obs_excluded_no_same_firm_history = sum(primary_row_target_inclusion == FALSE, na.rm = TRUE),
-      .groups = "drop"
-    )
-  model_scores <- model_scores %>%
-    select(-any_of("n_obs_excluded_no_same_firm_history")) %>%
-    left_join(exclusion_counts,
-              by = c("target_space", "sample_group", "model_id", "model_name", "heterogeneity_variant")) %>%
-    relocate(n_obs_total_heldout, n_obs_scored, n_obs_excluded_no_same_firm_history, .after = heterogeneity_variant)
 }
 write.csv(model_scores, file.path(tables_dir, "table_winsor_row_exact_kfold_model_scores.csv"), row.names = FALSE)
 
@@ -664,10 +654,6 @@ build_row_weights <- function(target_space) {
     filter(target_space == !!target_space, sample_group == "main_common", included_in_stack == TRUE) %>%
     arrange(model_id, heterogeneity_variant)
   if (nrow(included) == 0 || nrow(obs_scores) == 0) return(data.frame())
-  expected_n <- obs_scores %>%
-    filter(target_space == !!target_space, primary_row_target_inclusion == TRUE) %>%
-    distinct(observation_id) %>%
-    nrow()
   score_list <- list()
   meta_keys <- character()
   for (i in seq_len(nrow(included))) {
@@ -680,11 +666,16 @@ build_row_weights <- function(target_space) {
              heterogeneity_variant == row$heterogeneity_variant,
              primary_row_target_inclusion == TRUE) %>%
       arrange(observation_id)
-    if (nrow(one) != expected_n) next
+    if (nrow(one) != row$n_obs_scored) next
     score_list[[key]] <- one$log_predictive_density
     meta_keys <- c(meta_keys, key)
   }
   if (length(score_list) == 0) return(data.frame())
+  expected_n <- length(score_list[[1]])
+  if (any(vapply(score_list, length, integer(1)) != expected_n)) {
+    stop("[BLOCKER] Row-level exact K-fold score vectors have unequal lengths for ", target_space,
+         ". This usually means new-company fallback rows differ across models; inspect primary_row_target_inclusion.")
+  }
   lpd_matrix <- do.call(cbind, score_list)
   colnames(lpd_matrix) <- names(score_list)
   weights <- optimize_stacking_from_lpd(lpd_matrix)
@@ -702,7 +693,8 @@ build_row_weights <- function(target_space) {
     mutate(rank_row_exact_kfold = row_number()) %>%
     select(target_space, sample_group, model_id, model_name, heterogeneity_variant,
            model_key_row_exact_kfold, weight_row_exact_kfold, rank_row_exact_kfold,
-           elpd_exact_row_kfold, singleton_elpd, mean_lpd, reliability_flag)
+           elpd_exact_row_kfold, singleton_elpd, mean_lpd, sd_lpd, n_obs_scored,
+           reliability_flag, refit_type, validation_unit, primary_row_target_excludes_new_company_rows)
 }
 
 weights_ep <- build_row_weights("ex_post")
@@ -749,7 +741,6 @@ weight_comparison <- full_join(row_weights, firm_weights,
   ) %>%
   arrange(target_space, row_exact_rank, firm_grouped_rank)
 write.csv(weight_comparison, file.path(tables_dir, "table_winsor_exact_kfold_weight_comparison_row_vs_firm.csv"), row.names = FALSE)
-write.csv(weight_comparison, file.path(tables_dir, "table_winsor_row_vs_firm_kfold_weight_comparison.csv"), row.names = FALSE)
 
 family_comparison <- weight_comparison %>%
   group_by(target_space, firmRE_family_indicator) %>%
@@ -761,7 +752,6 @@ family_comparison <- weight_comparison %>%
   ) %>%
   arrange(target_space, firmRE_family_indicator)
 write.csv(family_comparison, file.path(tables_dir, "table_winsor_exact_kfold_family_weight_comparison_row_vs_firm.csv"), row.names = FALSE)
-write.csv(family_comparison, file.path(tables_dir, "table_winsor_row_vs_firm_kfold_family_comparison.csv"), row.names = FALSE)
 
 write_manifest("COMPLETED", NA_character_)
 write_reviewer_note("COMPLETED")
