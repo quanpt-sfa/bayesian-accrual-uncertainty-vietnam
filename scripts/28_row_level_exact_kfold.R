@@ -13,7 +13,7 @@ source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 
 script_name <- "scripts/28_row_level_exact_kfold.R"
-script_version <- "2026-06-18-row-level-exact-kfold-v2-method-matched-row-target"
+script_version <- "2026-06-18-row-level-exact-kfold-v3-ess-diagnostics"
 script_start_time <- Sys.time()
 
 env_flag <- function(name, default = "FALSE") {
@@ -200,10 +200,24 @@ extract_fit_diagnostics <- function(fit) {
       if ("Rhat" %in% colnames(s$random[[g]])) rhats <- c(rhats, s$random[[g]][, "Rhat"])
     }
   }
+  ess_bulk <- numeric()
+  ess_tail <- numeric()
+  draw_summary <- tryCatch(posterior::summarise_draws(posterior::as_draws_df(fit)), error = function(e) NULL)
+  if (!is.null(draw_summary)) {
+    if ("ess_bulk" %in% names(draw_summary)) ess_bulk <- draw_summary$ess_bulk
+    if ("ess_tail" %in% names(draw_summary)) ess_tail <- draw_summary$ess_tail
+  }
+  min_ess_bulk <- if (length(ess_bulk) > 0) suppressWarnings(min(ess_bulk, na.rm = TRUE)) else NA_real_
+  min_ess_tail <- if (length(ess_tail) > 0) suppressWarnings(min(ess_tail, na.rm = TRUE)) else NA_real_
+  if (is.infinite(min_ess_bulk)) min_ess_bulk <- NA_real_
+  if (is.infinite(min_ess_tail)) min_ess_tail <- NA_real_
   np <- brms::nuts_params(fit)
   treedepths <- subset(np, Parameter == "treedepth__")$Value
   list(
     max_rhat = suppressWarnings(max(rhats, na.rm = TRUE)),
+    min_ess_bulk = min_ess_bulk,
+    min_ess_tail = min_ess_tail,
+    ess_warning = is.na(min_ess_bulk) || is.na(min_ess_tail) || min_ess_bulk < 400 || min_ess_tail < 400,
     divergences = sum(subset(np, Parameter == "divergent__")$Value),
     treedepth_warnings = sum(treedepths >= max_treedepth)
   )
@@ -448,6 +462,9 @@ score_task <- function(task) {
     Completed = FALSE,
     Failure_Reason = NA_character_,
     Max_Rhat = NA_real_,
+    Min_ESS_Bulk = NA_real_,
+    Min_ESS_Tail = NA_real_,
+    ESS_Warning = NA,
     Divergences = NA_integer_,
     Treedepth_Warnings = NA_integer_,
     N_Test_Obs_No_Same_Firm_History = NA_integer_,
@@ -507,9 +524,13 @@ score_task <- function(task) {
     saveRDS(fit, task$Fit_Path)
   }
   fit_diag <- tryCatch(extract_fit_diagnostics(fit), error = function(e) {
-    list(max_rhat = NA_real_, divergences = NA_integer_, treedepth_warnings = NA_integer_)
+    list(max_rhat = NA_real_, min_ess_bulk = NA_real_, min_ess_tail = NA_real_,
+         ess_warning = TRUE, divergences = NA_integer_, treedepth_warnings = NA_integer_)
   })
   base_diag$Max_Rhat <- fit_diag$max_rhat
+  base_diag$Min_ESS_Bulk <- fit_diag$min_ess_bulk
+  base_diag$Min_ESS_Tail <- fit_diag$min_ess_tail
+  base_diag$ESS_Warning <- fit_diag$ess_warning
   base_diag$Divergences <- fit_diag$divergences
   base_diag$Treedepth_Warnings <- fit_diag$treedepth_warnings
 
@@ -618,6 +639,9 @@ model_scores <- if (nrow(obs_scores) > 0) {
           n_folds_attempted = n(),
           n_folds_completed = sum(Completed, na.rm = TRUE),
           max_rhat_max = suppressWarnings(max(Max_Rhat, na.rm = TRUE)),
+          min_ess_bulk_min = suppressWarnings(min(Min_ESS_Bulk, na.rm = TRUE)),
+          min_ess_tail_min = suppressWarnings(min(Min_ESS_Tail, na.rm = TRUE)),
+          ess_warning_any = any(ESS_Warning, na.rm = TRUE),
           divergences_total = sum(Divergences, na.rm = TRUE),
           treedepth_warnings_total = sum(Treedepth_Warnings, na.rm = TRUE),
           n_test_obs_no_same_firm_history = sum(N_Test_Obs_No_Same_Firm_History, na.rm = TRUE),
@@ -631,11 +655,15 @@ model_scores <- if (nrow(obs_scores) > 0) {
     ) %>%
     mutate(
       max_rhat_max = ifelse(is.infinite(max_rhat_max), NA_real_, max_rhat_max),
+      min_ess_bulk_min = ifelse(is.infinite(min_ess_bulk_min), NA_real_, min_ess_bulk_min),
+      min_ess_tail_min = ifelse(is.infinite(min_ess_tail_min), NA_real_, min_ess_tail_min),
       reliability_flag = case_when(
         n_folds_completed == 0 ~ "FAILED",
         length(fold_filter) == 0 & n_folds_completed < K ~ "LOW_RELIABILITY",
-        !is.na(max_rhat_max) & max_rhat_max <= 1.01 & divergences_total == 0 ~ "OK",
-        !is.na(max_rhat_max) & max_rhat_max <= 1.05 ~ "CAUTION",
+        divergences_total > 0 | treedepth_warnings_total > 0 ~ "LOW_RELIABILITY",
+        is.na(max_rhat_max) | is.na(min_ess_bulk_min) | is.na(min_ess_tail_min) ~ "LOW_RELIABILITY",
+        max_rhat_max <= 1.01 & min_ess_bulk_min >= 400 & min_ess_tail_min >= 400 ~ "OK",
+        max_rhat_max <= 1.05 & min_ess_bulk_min >= 100 & min_ess_tail_min >= 100 ~ "CAUTION",
         TRUE ~ "LOW_RELIABILITY"
       ),
       included_in_stack = reliability_flag %in% c("OK", "CAUTION") &
