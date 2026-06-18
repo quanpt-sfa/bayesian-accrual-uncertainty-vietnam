@@ -45,9 +45,11 @@ Sampler protocol: full-sample baseline `brms` fits use 4 chains, 4000 iterations
 
 `Rscript run.R` runs the `main` target by default. The main target includes grouped exact firm K-fold (`scripts/13_grouped_kfold_firm.R`) and row-level exact K-fold (`scripts/28_row_level_exact_kfold.R`) as adjacent primary RQ1 evidence steps, then constructs primary exact-KFoldW DA (`scripts/31_construct_exact_kfold_DA.R`), applies the finite-output gate (`scripts/32_audit_DA_finite_outputs.R`), runs validation, the new-firm predictive integration reporting gate, and the corrected Chapter 3 manuscript export path `scripts/temp/22_chapter3_methods_tables.R`.
 
-`scripts/10_construct_uncertainty_adjusted_DA.R` remains the PSIS/LOO secondary DA constructor. Scripts `13` and `28` write `LATEST_COMPLETED_RUN.txt` only for completed primary-eligible exact-refit runs, and script `31` uses those pins or explicit run-root environment variables instead of moving `LATEST_RUN.txt` for primary inference.
+`scripts/10_construct_uncertainty_adjusted_DA.R` remains the PSIS/LOO secondary DA constructor. Scripts `13` and `28` write `LATEST_COMPLETED_RUN.txt` only for completed primary-eligible exact-refit runs, and script `31` uses those pins or explicit run-root environment variables instead of moving `LATEST_RUN.txt` for primary inference. `LATEST_RUN.txt` is operational only and should not be used as primary provenance.
 
-`scripts/32_audit_DA_finite_outputs.R` writes `table_DA_finite_gate_decision.csv` and is a hard RQ2/export gate. `Rscript run.R all --dry-run` de-duplicates script `30_new_firm_predictive_integration_audit.R` so the new-firm audit appears once.
+`scripts/31_construct_exact_kfold_DA.R` writes file-size/mtime/hash source manifests, draw-file hash manifests, and `table_model_primary_inclusion_gate.csv`. MCMC `FAIL`/`LOW_RELIABILITY` models are excluded from primary exact-KFold DA; `REVIEW`/`CAUTION` models can be retained only with `MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS`.
+
+`scripts/32_audit_DA_finite_outputs.R` writes `table_DA_finite_gate_decision.csv` and is a hard RQ2/export gate. Script `30` is a hard new-firm tail-suppression gate; if unverified Firm-RE out-of-firm posterior predictive tail quantities require suppression, export stops unless the explicit suppression override is set and the outputs are labelled non-primary. `Rscript run.R all --dry-run` de-duplicates script `30_new_firm_predictive_integration_audit.R` so the new-firm audit appears once.
 
 LOFO (`scripts/12_lofo_stacking.R`) is an opt-in robustness branch, not a default main step. Sensitivity scripts 14-20 and simulation scripts 23-27 are opt-in branches. PSIS reliability (`scripts/29_psis_reliability_gate.R`) is secondary diagnostics, not the primary RQ1 comparison.
 

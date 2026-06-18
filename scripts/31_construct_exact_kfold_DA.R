@@ -24,7 +24,8 @@ ensure_analysis_dirs()
 validate_final_analysis_config("Exact K-fold uncertainty-adjusted DA", final_mode = TRUE)
 
 script_name <- "scripts/31_construct_exact_kfold_DA.R"
-script_version <- "2026-06-18-v1-exact-kfold-pinned-da"
+script_version <- "2026-06-19-v2-provenance-inclusion-gate"
+script_start_time <- Sys.time()
 mixture_seed <- as.integer(Sys.getenv("ACCRUAL_EXACT_KFOLD_DA_SEED", "42"))
 if (is.na(mixture_seed)) stop("[BLOCKER] ACCRUAL_EXACT_KFOLD_DA_SEED must be an integer.")
 mixture_draws <- stacking_mixture_draws
@@ -51,6 +52,17 @@ safe_read_csv <- function(path) {
 
 file_size_or_na <- function(path) if (file.exists(path)) as.numeric(file.info(path)$size) else NA_real_
 mtime_or_na <- function(path) if (file.exists(path)) as.character(file.info(path)$mtime) else NA_character_
+file_hash_or_na <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  tryCatch(as.character(tools::md5sum(path)), error = function(e) NA_character_)
+}
+git_commit_or_na <- function() {
+  tryCatch(system("git rev-parse HEAD", intern = TRUE)[1], error = function(e) NA_character_)
+}
+same_normalized_path <- function(a, b) {
+  identical(normalizePath(a, winslash = "/", mustWork = FALSE),
+            normalizePath(b, winslash = "/", mustWork = FALSE))
+}
 
 grouped_pin_path <- file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt")
 row_pin_path <- file.path(output_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt")
@@ -65,7 +77,13 @@ validate_grouped_run <- function(root) {
   preflight <- if ("Preflight_Only" %in% names(manifest)) isTRUE(as.logical(manifest$Preflight_Only[1])) else FALSE
   partial <- if ("Partial_Run" %in% names(manifest)) isTRUE(as.logical(manifest$Partial_Run[1])) else FALSE
   pin_ok <- if ("Completed_Run_Pin_Eligible" %in% names(manifest)) isTRUE(as.logical(manifest$Completed_Run_Pin_Eligible[1])) else TRUE
-  if (!identical(status, "COMPLETED") || !identical(run_mode, "FULL_MODE") || preflight || partial || !pin_ok) {
+  K_manifest <- if ("K" %in% names(manifest)) as.integer(manifest$K[1]) else NA_integer_
+  seed_manifest <- if ("Seed" %in% names(manifest)) as.integer(manifest$Seed[1]) else NA_integer_
+  if ("Kfold_Run_Root" %in% names(manifest) && !same_normalized_path(manifest$Kfold_Run_Root[1], root)) {
+    stop("[BLOCKER] Grouped exact K-fold manifest root disagrees with selected root: ", root)
+  }
+  if (!identical(status, "COMPLETED") || !identical(run_mode, "FULL_MODE") || preflight || partial ||
+      !pin_ok || !identical(K_manifest, 5L) || !identical(seed_manifest, 42L)) {
     stop("[BLOCKER] Grouped exact K-fold run is not a completed primary-eligible run: ", root)
   }
   manifest_path
@@ -78,7 +96,14 @@ validate_row_run <- function(root) {
   run_mode <- if ("Run_Mode" %in% names(manifest)) manifest$Run_Mode[1] else NA_character_
   preflight <- if ("Preflight_Only" %in% names(manifest)) isTRUE(as.logical(manifest$Preflight_Only[1])) else FALSE
   primary_allowed <- if ("Primary_Inference_Allowed" %in% names(manifest)) isTRUE(as.logical(manifest$Primary_Inference_Allowed[1])) else FALSE
-  if (!identical(status, "COMPLETED") || !identical(run_mode, "FULL_MODE") || preflight || !primary_allowed) {
+  pin_ok <- if ("Completed_Run_Pin_Eligible" %in% names(manifest)) isTRUE(as.logical(manifest$Completed_Run_Pin_Eligible[1])) else primary_allowed
+  K_manifest <- if ("K" %in% names(manifest)) as.integer(manifest$K[1]) else NA_integer_
+  seed_manifest <- if ("Seed" %in% names(manifest)) as.integer(manifest$Seed[1]) else NA_integer_
+  if ("Row_KFold_Root" %in% names(manifest) && !same_normalized_path(manifest$Row_KFold_Root[1], root)) {
+    stop("[BLOCKER] Row exact K-fold manifest root disagrees with selected root: ", root)
+  }
+  if (!identical(status, "COMPLETED") || !identical(run_mode, "FULL_MODE") || preflight ||
+      !primary_allowed || !pin_ok || !identical(K_manifest, 5L) || !identical(seed_manifest, 42L)) {
     stop("[BLOCKER] Row exact K-fold run is not a completed primary-eligible run: ", root)
   }
   manifest_path
@@ -92,6 +117,99 @@ rt_sample_path <- file.path(input_winsor_root, "tables", "final_common_realtime_
 df_ep <- safe_read_csv(ep_sample_path)
 df_rt <- safe_read_csv(rt_sample_path)
 
+mcmc_gate_path <- file.path(output_root, "tables", "table_mcmc_diagnostics_gate_winsor.csv")
+mcmc_gate <- safe_read_csv(mcmc_gate_path)
+required_mcmc_cols <- c("model_id", "model_name", "Target_Space", "Heterogeneity_Variant", "diagnostics_status")
+if (!all(required_mcmc_cols %in% names(mcmc_gate))) {
+  stop("[BLOCKER] MCMC diagnostics gate lacks required columns: ", mcmc_gate_path)
+}
+psis_status_path <- file.path(output_root, "tables", "table_loo_comparison_winsor_corrected.csv")
+psis_status <- if (file.exists(psis_status_path)) safe_read_csv(psis_status_path) else data.frame()
+if (nrow(psis_status) > 0 && !"PSIS_Status" %in% names(psis_status)) {
+  psis_status$PSIS_Status <- if ("moment_match_note" %in% names(psis_status)) {
+    psis_status$moment_match_note
+  } else if ("Moment_Match_Note" %in% names(psis_status)) {
+    psis_status$Moment_Match_Note
+  } else {
+    NA_character_
+  }
+}
+inclusion_gate_rows <- list()
+
+apply_primary_inclusion_gate <- function(active, source, validation_target) {
+  active$Exact_KFold_Reliability_Status <- if ("reliability_flag" %in% names(active)) {
+    as.character(active$reliability_flag)
+  } else {
+    "OK"
+  }
+  gate <- active %>%
+    left_join(
+      mcmc_gate %>%
+        transmute(
+          Model_ID = model_id,
+          Target_Space,
+          Heterogeneity_Variant,
+          Full_Sample_MCMC_Status = diagnostics_status
+        ),
+      by = c("Model_ID", "Target_Space", "Heterogeneity_Variant")
+    )
+  if (nrow(psis_status) > 0 && all(c("Model_ID", "Target_Space", "Heterogeneity_Variant") %in% names(psis_status))) {
+    gate <- gate %>%
+      left_join(
+        psis_status %>%
+          transmute(Model_ID, Target_Space, Heterogeneity_Variant, PSIS_Status = as.character(PSIS_Status)) %>%
+          distinct(),
+        by = c("Model_ID", "Target_Space", "Heterogeneity_Variant")
+      )
+  } else {
+    gate$PSIS_Status <- NA_character_
+  }
+  gate <- gate %>%
+    mutate(
+      Full_Sample_MCMC_Status = ifelse(is.na(Full_Sample_MCMC_Status), "MISSING", Full_Sample_MCMC_Status),
+      Exact_KFold_Reliability_Status = ifelse(is.na(Exact_KFold_Reliability_Status), "MISSING", Exact_KFold_Reliability_Status),
+      Primary_Inclusion_Decision = case_when(
+        Full_Sample_MCMC_Status %in% c("PASS", "OK") &
+          Exact_KFold_Reliability_Status %in% c("OK", "PASS", "CAUTION") ~ "INCLUDE_PRIMARY",
+        Full_Sample_MCMC_Status %in% c("REVIEW", "CAUTION", "PSIS_REVIEW_REQUIRED") &
+          Exact_KFold_Reliability_Status %in% c("OK", "PASS", "CAUTION") ~ "MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS",
+        Full_Sample_MCMC_Status %in% c("FAIL", "LOW_RELIABILITY") ~ "EXCLUDE_FULL_SAMPLE_MCMC_FAIL",
+        TRUE ~ "EXCLUDE_RELIABILITY_NOT_PRIMARY"
+      ),
+      Inclusion_Rationale = case_when(
+        Primary_Inclusion_Decision == "INCLUDE_PRIMARY" ~ "Full-sample MCMC diagnostics pass and exact-KFold reliability is acceptable.",
+        Primary_Inclusion_Decision == "MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS" ~ "Full-sample MCMC status is REVIEW/CAUTION, but exact refit reliability is acceptable; included only with explicit flag.",
+        Primary_Inclusion_Decision == "EXCLUDE_FULL_SAMPLE_MCMC_FAIL" ~ "Full-sample MCMC diagnostics fail or are low reliability.",
+        TRUE ~ "Model is not primary-eligible under combined MCMC and exact-KFold reliability gates."
+      ),
+      Primary_Inference_Allowed = Primary_Inclusion_Decision %in% c("INCLUDE_PRIMARY", "MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS"),
+      DA_Source = source,
+      Validation_Target = validation_target,
+      Exact_KFold_Weight = Weight
+    )
+  inclusion_gate_rows[[length(inclusion_gate_rows) + 1]] <<- gate %>%
+    transmute(
+      Target_Space,
+      Model_ID,
+      Model_Name,
+      Heterogeneity_Variant,
+      DA_Source,
+      Exact_KFold_Weight,
+      Exact_KFold_Reliability_Status,
+      Full_Sample_MCMC_Status,
+      PSIS_Status,
+      Primary_Inclusion_Decision,
+      Inclusion_Rationale,
+      Primary_Inference_Allowed
+    )
+  kept <- gate %>% filter(Primary_Inference_Allowed)
+  if (nrow(kept) == 0) {
+    stop("[BLOCKER] No models remain after primary inclusion gate for ", source, " / ", validation_target)
+  }
+  kept$Weight <- kept$Weight / sum(kept$Weight)
+  kept
+}
+
 clean_weights <- function(weights_df, source, target_space) {
   if (identical(source, "exact_grouped_kfold")) {
     out <- weights_df %>%
@@ -101,7 +219,8 @@ clean_weights <- function(weights_df, source, target_space) {
         Model_ID = Model_ID,
         Model_Name = Model_Name,
         Heterogeneity_Variant = Heterogeneity_Variant,
-        Weight = Weight_KFold
+        Weight = Weight_KFold,
+        reliability_flag = if ("reliability_flag" %in% names(weights_df)) reliability_flag else "OK"
       )
   } else {
     out <- weights_df %>%
@@ -111,7 +230,8 @@ clean_weights <- function(weights_df, source, target_space) {
         Model_ID = model_id,
         Model_Name = model_name,
         Heterogeneity_Variant = heterogeneity_variant,
-        Weight = weight_row_exact_kfold
+        Weight = weight_row_exact_kfold,
+        reliability_flag = if ("reliability_flag" %in% names(weights_df)) reliability_flag else "OK"
       )
   }
   out <- out %>%
@@ -123,7 +243,7 @@ clean_weights <- function(weights_df, source, target_space) {
     stop("[BLOCKER] ", source, " weights for ", target_space, " do not sum to 1. Sum=", weight_sum)
   }
   out$Weight <- out$Weight / weight_sum
-  out
+  apply_primary_inclusion_gate(out, source, target_space)
 }
 
 draws_path_for <- function(row, target_space) {
@@ -136,6 +256,7 @@ draws_path_for <- function(row, target_space) {
 
 compute_exact_kfold_da <- function(df_sample, weights_df, source, target_space, validation_target) {
   active <- clean_weights(weights_df, source, target_space)
+  active$Draw_File <- vapply(seq_len(nrow(active)), function(i) draws_path_for(active[i, ], target_space), character(1))
   N <- nrow(df_sample)
   set.seed(mixture_seed + match(target_space, c("ex_post", "real_time"), nomatch = 10L) +
              ifelse(identical(source, "exact_row_kfold"), 1000L, 0L))
@@ -147,7 +268,7 @@ compute_exact_kfold_da <- function(df_sample, weights_df, source, target_space, 
   for (m in seq_len(nrow(active))) {
     row <- active[m, ]
     mix_rows <- which(sampled_model_indices == m)
-    draws_path <- draws_path_for(row, target_space)
+    draws_path <- row$Draw_File
     if (!file.exists(draws_path)) stop("[BLOCKER] Missing full-sample posterior draw file: ", draws_path)
     draws <- readRDS(draws_path)
     if (is.null(draws$epred) || is.null(draws$predict)) {
@@ -264,6 +385,28 @@ weight_files <- data.frame(
   stringsAsFactors = FALSE
 )
 
+draw_hash_manifest <- weight_audit %>%
+  distinct(DA_Source, Validation_Target, Model_ID, Target_Space, Heterogeneity_Variant, Draw_File) %>%
+  mutate(
+    Draw_File_Exists = file.exists(Draw_File),
+    Draw_File_Size = vapply(Draw_File, file_size_or_na, numeric(1)),
+    Draw_File_MTime = vapply(Draw_File, mtime_or_na, character(1)),
+    Draw_File_Hash = vapply(Draw_File, file_hash_or_na, character(1))
+  )
+draw_hash_manifest_path <- file.path(tables_dir, "table_DA_exact_kfold_draw_file_hash_manifest.csv")
+write.csv(draw_hash_manifest, draw_hash_manifest_path, row.names = FALSE)
+
+model_inclusion_gate <- bind_rows(inclusion_gate_rows)
+write.csv(model_inclusion_gate, file.path(tables_dir, "table_model_primary_inclusion_gate.csv"), row.names = FALSE)
+
+weight_audit <- weight_audit %>%
+  left_join(
+    model_inclusion_gate %>%
+      select(Target_Space, Model_ID, Heterogeneity_Variant, DA_Source,
+             Primary_Inclusion_Decision, Full_Sample_MCMC_Status, PSIS_Status),
+    by = c("Target_Space", "Model_ID", "Heterogeneity_Variant", "DA_Source")
+  )
+
 source_manifest <- weight_audit %>%
   group_by(DA_Source, Validation_Target) %>%
   summarise(
@@ -285,14 +428,19 @@ source_manifest <- weight_audit %>%
     Grouped_Weight_File = ifelse(DA_Source == "exact_grouped_kfold", Weight_File, NA_character_),
     Row_Weight_File = ifelse(DA_Source == "exact_row_kfold", Weight_File, NA_character_),
     Weight_File_Size = vapply(Weight_File, file_size_or_na, numeric(1)),
-    Weight_File_MTime = vapply(Weight_File, mtime_or_na, character(1))
+    Weight_File_MTime = vapply(Weight_File, mtime_or_na, character(1)),
+    Weight_File_Hash = vapply(Weight_File, file_hash_or_na, character(1)),
+    Draw_File_Count = vapply(Validation_Target, function(v) sum(draw_hash_manifest$Validation_Target == v), integer(1)),
+    Draw_File_Hash_Manifest = draw_hash_manifest_path,
+    Script_Name = script_name
   ) %>%
   select(
     DA_Source, Validation_Target, Grouped_KFold_Run_Root, Row_KFold_Run_Root,
     Grouped_KFold_Run_Manifest, Row_KFold_Run_Manifest, Grouped_Weight_File,
-    Row_Weight_File, Weight_File_Size, Weight_File_MTime, Weight_Sum,
-    N_Models_Active, N_Draws_Per_Model_Available, N_Mixture_Draws,
-    Mixture_Seed, Script_Version, Primary_Inference_Allowed
+    Row_Weight_File, Weight_File, Weight_File_Size, Weight_File_MTime, Weight_File_Hash,
+    Draw_File_Count, Draw_File_Hash_Manifest, Weight_Sum, N_Models_Active,
+    N_Draws_Per_Model_Available, N_Mixture_Draws, Mixture_Seed, Script_Name,
+    Script_Version, Primary_Inference_Allowed
   )
 
 write.csv(source_manifest, file.path(tables_dir, "table_DA_exact_kfold_source_manifest.csv"), row.names = FALSE)
@@ -336,6 +484,36 @@ gate <- data.frame(
   stringsAsFactors = FALSE
 )
 write.csv(gate, file.path(tables_dir, "table_DA_exact_kfold_gate_decision.csv"), row.names = FALSE)
+
+manifest_paths <- c(
+  grouped_manifest_path, row_manifest_path, grouped_ep_weights_path, grouped_rt_weights_path,
+  row_ep_weights_path, row_rt_weights_path, mcmc_gate_path,
+  grouped_out_path, row_out_path, file.path(tables_dir, "table_DA_exact_kfold_source_manifest.csv"),
+  file.path(tables_dir, "table_DA_exact_kfold_weight_audit.csv"),
+  file.path(tables_dir, "table_DA_exact_kfold_nonfinite_audit.csv"),
+  file.path(tables_dir, "table_DA_exact_kfold_gate_decision.csv"),
+  file.path(tables_dir, "table_model_primary_inclusion_gate.csv"),
+  draw_hash_manifest_path
+)
+script_end_time <- Sys.time()
+io_manifest <- data.frame(
+  Script_Name = script_name,
+  Script_Version = script_version,
+  Start_Time = as.character(script_start_time),
+  End_Time = as.character(script_end_time),
+  Runtime_Seconds = as.numeric(difftime(script_end_time, script_start_time, units = "secs")),
+  Git_Commit = git_commit_or_na(),
+  Classification = c(rep("input", 7), rep("output", length(manifest_paths) - 7)),
+  Path = manifest_paths,
+  Exists = file.exists(manifest_paths),
+  Size = vapply(manifest_paths, file_size_or_na, numeric(1)),
+  MTime = vapply(manifest_paths, mtime_or_na, character(1)),
+  Hash = vapply(manifest_paths, file_hash_or_na, character(1)),
+  Gate_Decision = gate_decision,
+  Primary_Secondary = "primary_exact_kfold",
+  stringsAsFactors = FALSE
+)
+write.csv(io_manifest, file.path(tables_dir, "table_DA_exact_kfold_io_manifest.csv"), row.names = FALSE)
 
 cat("\n[SUCCESS] Exact K-fold DA construction completed.\n")
 cat("Grouped output:", grouped_out_path, "\n")

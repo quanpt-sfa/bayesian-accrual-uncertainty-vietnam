@@ -90,6 +90,11 @@ mtime_or_na <- function(path) {
   as.character(file.info(path)$mtime)
 }
 
+file_hash_or_na <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  tryCatch(as.character(tools::md5sum(path)), error = function(e) NA_character_)
+}
+
 safe_read_csv <- function(path) {
   if (!file.exists(path)) return(NULL)
   tryCatch(read.csv(path, stringsAsFactors = FALSE), error = function(e) NULL)
@@ -106,15 +111,12 @@ detect_latest_root <- function(latest_path) {
 detect_latest_kfold_root <- function() {
   completed <- detect_latest_root(file.path(winsor_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt"))
   if (!is.na(completed)) return(completed)
-  detect_latest_root(file.path(winsor_root, "kfold_firm", "LATEST_RUN.txt"))
+  NA_character_
 }
 
 detect_latest_row_kfold_root <- function() {
   candidates <- c(
-    file.path(winsor_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt"),
-    file.path(winsor_root, "row_exact_kfold", "LATEST_RUN.txt"),
-    file.path(winsor_root, "kfold_row", "LATEST_RUN.txt"),
-    file.path(winsor_root, "row_kfold", "LATEST_RUN.txt")
+    file.path(winsor_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt")
   )
   for (p in candidates) {
     root <- detect_latest_root(p)
@@ -517,6 +519,7 @@ input_manifest <- data.frame(
   exists = file.exists(c(source_paths$path, candidate_outputs$path)),
   file_size_bytes = vapply(c(source_paths$path, candidate_outputs$path), file_size_or_na, numeric(1)),
   modified_time = vapply(c(source_paths$path, candidate_outputs$path), mtime_or_na, character(1)),
+  file_hash = vapply(c(source_paths$path, candidate_outputs$path), file_hash_or_na, character(1)),
   n_rows = c(rep(NA_integer_, nrow(source_paths)), vapply(candidate_outputs$path, nrows_or_na, integer(1))),
   stringsAsFactors = FALSE
 )
@@ -532,6 +535,8 @@ run_manifest <- data.frame(
   audit_root = audit_root,
   strict_mode = strict_mode,
   allow_uncertainty_mode = allow_uncertainty_mode,
+  kfold_root_source = "LATEST_COMPLETED_RUN.txt_only",
+  row_kfold_root_source = "LATEST_COMPLETED_RUN.txt_only",
   verification_scope = "source_role_specific_not_global",
   design_requirement = "Primary Firm-RE out-of-firm posterior predictive quantities must integrate over u_new in their matched generating source.",
   stringsAsFactors = FALSE

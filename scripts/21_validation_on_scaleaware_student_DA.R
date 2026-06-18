@@ -12,6 +12,9 @@ source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 validate_final_analysis_config("Phase 6b baseline validation", final_mode = TRUE)
 
+script_name <- "scripts/21_validation_on_scaleaware_student_DA.R"
+script_version <- "2026-06-19-v1-validation-io-manifest"
+script_start_time <- Sys.time()
 validation_root <- file.path(output_root, "validation")
 dir.create(validation_root, recursive = TRUE, showWarnings = FALSE)
 
@@ -24,6 +27,16 @@ if (!file.exists(master_path)) stop("[BLOCKER] Missing current-root DA file: ", 
 if (!file.exists(ep_sample_path)) stop("[BLOCKER] Missing winsor ex-post sample: ", ep_sample_path)
 if (!file.exists(rt_sample_path)) stop("[BLOCKER] Missing winsor no-lookahead sample: ", rt_sample_path)
 if (!file.exists(data_path)) stop("[BLOCKER] Raw data workbook missing: ", data_path)
+
+file_size_or_na <- function(path) if (file.exists(path)) as.numeric(file.info(path)$size) else NA_real_
+mtime_or_na <- function(path) if (file.exists(path)) as.character(file.info(path)$mtime) else NA_character_
+file_hash_or_na <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  tryCatch(as.character(tools::md5sum(path)), error = function(e) NA_character_)
+}
+git_commit_or_na <- function() {
+  tryCatch(system("git rev-parse HEAD", intern = TRUE)[1], error = function(e) NA_character_)
+}
 
 master_df <- read.csv(master_path, stringsAsFactors = FALSE)
 df_ep_sample <- read.csv(ep_sample_path, stringsAsFactors = FALSE)
@@ -281,6 +294,34 @@ weighted_df <- validation_results %>% filter(Weighted == TRUE)
 write.csv(unweighted_df, file.path(validation_root, "table_unweighted_validation_scaleaware_student.csv"), row.names = FALSE)
 write.csv(weighted_df, file.path(validation_root, "table_precision_weighted_validation_scaleaware_student.csv"), row.names = FALSE)
 write.csv(validation_results, file.path(validation_root, "table_validation_comparison_summary_scaleaware_student.csv"), row.names = FALSE)
+
+validation_manifest_paths <- c(
+  master_path,
+  ep_sample_path,
+  rt_sample_path,
+  data_path,
+  file.path(validation_root, "table_unweighted_validation_scaleaware_student.csv"),
+  file.path(validation_root, "table_precision_weighted_validation_scaleaware_student.csv"),
+  file.path(validation_root, "table_validation_comparison_summary_scaleaware_student.csv")
+)
+script_end_time <- Sys.time()
+validation_io_manifest <- data.frame(
+  Script_Name = script_name,
+  Script_Version = script_version,
+  Start_Time = as.character(script_start_time),
+  End_Time = as.character(script_end_time),
+  Runtime_Seconds = as.numeric(difftime(script_end_time, script_start_time, units = "secs")),
+  Git_Commit = git_commit_or_na(),
+  Classification = c(rep("input", 4), rep("output", 3)),
+  Path = validation_manifest_paths,
+  Exists = file.exists(validation_manifest_paths),
+  Size = vapply(validation_manifest_paths, file_size_or_na, numeric(1)),
+  MTime = vapply(validation_manifest_paths, mtime_or_na, character(1)),
+  Hash = vapply(validation_manifest_paths, file_hash_or_na, character(1)),
+  Primary_Secondary = "primary_validation_after_gates",
+  stringsAsFactors = FALSE
+)
+write.csv(validation_io_manifest, file.path(validation_root, "table_validation_io_manifest.csv"), row.names = FALSE)
 
 writeLines(c(
   "Phase 6b validation on scale-aware Student-t DA",

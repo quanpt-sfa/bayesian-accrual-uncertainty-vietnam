@@ -20,10 +20,21 @@ ensure_analysis_dirs()
 
 script_name <- "scripts/32_audit_DA_finite_outputs.R"
 script_version <- "2026-06-18-v1-finite-da-gate"
+script_start_time <- Sys.time()
 strict_gate <- toupper(Sys.getenv("ACCRUAL_DA_FINITE_GATE_STRICT", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
 
 tables_dir <- file.path(output_root, "tables")
 dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
+
+file_size_or_na <- function(path) if (file.exists(path)) as.numeric(file.info(path)$size) else NA_real_
+mtime_or_na <- function(path) if (file.exists(path)) as.character(file.info(path)$mtime) else NA_character_
+file_hash_or_na <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  tryCatch(as.character(tools::md5sum(path)), error = function(e) NA_character_)
+}
+git_commit_or_na <- function() {
+  tryCatch(system("git rev-parse HEAD", intern = TRUE)[1], error = function(e) NA_character_)
+}
 
 primary_columns <- c(
   "NDA_mean_stacked",
@@ -141,6 +152,34 @@ decision <- data.frame(
 write.csv(column_audit, file.path(tables_dir, "table_DA_nonfinite_column_audit.csv"), row.names = FALSE)
 write.csv(row_audit, file.path(tables_dir, "table_DA_nonfinite_row_audit.csv"), row.names = FALSE)
 write.csv(decision, file.path(tables_dir, "table_DA_finite_gate_decision.csv"), row.names = FALSE)
+
+manifest_paths <- c(
+  input_specs$output_file,
+  file.path(tables_dir, "table_DA_nonfinite_column_audit.csv"),
+  file.path(tables_dir, "table_DA_nonfinite_row_audit.csv"),
+  file.path(tables_dir, "table_DA_finite_gate_decision.csv")
+)
+script_end_time <- Sys.time()
+io_manifest <- data.frame(
+  Script_Name = script_name,
+  Script_Version = script_version,
+  Start_Time = as.character(script_start_time),
+  End_Time = as.character(script_end_time),
+  Runtime_Seconds = as.numeric(difftime(script_end_time, script_start_time, units = "secs")),
+  Git_Commit = git_commit_or_na(),
+  Classification = c(rep("input", nrow(input_specs)), rep("output", 3)),
+  Path = manifest_paths,
+  Exists = file.exists(manifest_paths),
+  Size = vapply(manifest_paths, file_size_or_na, numeric(1)),
+  MTime = vapply(manifest_paths, mtime_or_na, character(1)),
+  Hash = vapply(manifest_paths, file_hash_or_na, character(1)),
+  Gate_Decision = gate_decision,
+  Primary_Secondary = ifelse(seq_along(manifest_paths) <= nrow(input_specs) &
+                               input_specs$Primary_For_RQ2[seq_along(manifest_paths)] %in% TRUE,
+                             "primary_exact_kfold", "secondary_or_gate_output"),
+  stringsAsFactors = FALSE
+)
+write.csv(io_manifest, file.path(tables_dir, "table_DA_finite_io_manifest.csv"), row.names = FALSE)
 
 note_path <- file.path(output_root, "logs", "DA_finite_gate_reviewer_note.md")
 dir.create(dirname(note_path), recursive = TRUE, showWarnings = FALSE)

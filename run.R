@@ -70,10 +70,11 @@ main_steps <- list(
   step("28", "scripts/28_row_level_exact_kfold.R", "Row-level exact K-fold, primary RQ1 evidence", heavy = TRUE),
   step("31", "scripts/31_construct_exact_kfold_DA.R", "Primary exact-KFoldW DA construction",
        requires = c(
+         table_artifact("table_mcmc_diagnostics_gate_winsor.csv"),
          if (!nzchar(Sys.getenv("ACCRUAL_GROUPED_KFOLD_RUN_ROOT", ""))) file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt") else character(),
          if (!nzchar(Sys.getenv("ACCRUAL_ROW_KFOLD_RUN_ROOT", ""))) file.path(output_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt") else character()
        ),
-       require_reason = "completed exact K-fold run pins from scripts 13 and 28"),
+       require_reason = "MCMC diagnostics gate and completed exact K-fold run pins from scripts 13 and 28"),
   step("32", "scripts/32_audit_DA_finite_outputs.R", "Finite-output gate for exact-KFold DA", gate = "da_finite",
        requires = c(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
@@ -92,9 +93,10 @@ main_steps <- list(
   step("C3", "scripts/temp/22_chapter3_methods_tables.R", "Chapter 3 manuscript table export",
        requires = c(
          table_artifact("table_DA_finite_gate_decision.csv"),
+         table_artifact("table_model_primary_inclusion_gate.csv"),
          file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv")
        ),
-       require_reason = "finite DA and new-firm predictive gate decisions")
+       require_reason = "finite DA, model inclusion, and new-firm predictive gate decisions")
 )
 
 robustness_steps <- list(

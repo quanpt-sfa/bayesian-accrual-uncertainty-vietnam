@@ -9,12 +9,25 @@ source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 validate_final_analysis_config("Phase 5b baseline uncertainty-adjusted DA", final_mode = TRUE)
 
+script_name <- "scripts/10_construct_uncertainty_adjusted_DA.R"
+script_version <- "2026-06-19-v1-secondary-psis-loo-da-manifest"
+script_start_time <- Sys.time()
 set.seed(42)
 
 ep_weights_path <- file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv")
 rt_weights_path <- file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv")
 ep_sample_path <- file.path(input_winsor_root, "tables", "final_common_ex_post_sample_winsor.csv")
 rt_sample_path <- file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv")
+
+file_size_or_na <- function(path) if (file.exists(path)) as.numeric(file.info(path)$size) else NA_real_
+mtime_or_na <- function(path) if (file.exists(path)) as.character(file.info(path)$mtime) else NA_character_
+file_hash_or_na <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  tryCatch(as.character(tools::md5sum(path)), error = function(e) NA_character_)
+}
+git_commit_or_na <- function() {
+  tryCatch(system("git rev-parse HEAD", intern = TRUE)[1], error = function(e) NA_character_)
+}
 
 if (!file.exists(ep_weights_path)) stop("[BLOCKER] Missing winsor ex-post stacking weights. Run Phase 4c first.")
 if (!file.exists(rt_weights_path)) stop("[BLOCKER] Missing winsor no-look-ahead stacking weights. Run Phase 4c first.")
@@ -481,6 +494,40 @@ decision_table$Likelihood_Family <- likelihood_family
 decision_table$Model_Structure <- model_structure
 decision_table$Output_Root <- output_root
 write.csv(decision_table, file.path(output_root, "tables", "table_reviewer_priority1_winsor_decision.csv"), row.names = FALSE)
+
+da_manifest_paths <- c(
+  ep_weights_path,
+  rt_weights_path,
+  ep_sample_path,
+  rt_sample_path,
+  file.path(output_root, "tables", "final_uncertainty_adjusted_accruals_winsor.csv"),
+  baseline_accruals_path,
+  file.path(output_root, "tables", "table_DA_distribution_summary_winsor.csv"),
+  file.path(output_root, "tables", "table_extreme_flag_counts_winsor.csv"),
+  file.path(output_root, "tables", "table_uncertainty_summary_winsor.csv"),
+  file.path(output_root, "tables", "table_benchmark_correlations_winsor.csv"),
+  file.path(output_root, "tables", "table_DA_original_vs_winsor_comparison.csv"),
+  file.path(output_root, "tables", "table_reviewer_priority1_winsor_decision.csv")
+)
+script_end_time <- Sys.time()
+da_io_manifest <- data.frame(
+  Script_Name = script_name,
+  Script_Version = script_version,
+  Start_Time = as.character(script_start_time),
+  End_Time = as.character(script_end_time),
+  Runtime_Seconds = as.numeric(difftime(script_end_time, script_start_time, units = "secs")),
+  Git_Commit = git_commit_or_na(),
+  Classification = c(rep("input", 4), rep("output", length(da_manifest_paths) - 4)),
+  Path = da_manifest_paths,
+  Exists = file.exists(da_manifest_paths),
+  Size = vapply(da_manifest_paths, file_size_or_na, numeric(1)),
+  MTime = vapply(da_manifest_paths, mtime_or_na, character(1)),
+  Hash = vapply(da_manifest_paths, file_hash_or_na, character(1)),
+  Primary_Secondary = "secondary_psis_loo_DA",
+  Gate_Decision = headline_decision,
+  stringsAsFactors = FALSE
+)
+write.csv(da_io_manifest, file.path(output_root, "tables", "table_secondary_psis_loo_DA_io_manifest.csv"), row.names = FALSE)
 
 notes <- c(
   "Reviewer Priority 1 winsor response notes",

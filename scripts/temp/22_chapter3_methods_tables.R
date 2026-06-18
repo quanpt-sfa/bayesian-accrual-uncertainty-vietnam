@@ -397,15 +397,17 @@ write_outputs(model_space, "table_3_5_model_space_matrix", "Table 3.5 Model-Spac
 write_outputs(appendix_models, "appendix_screened_external_data_extensions", "Appendix Screened External Data Extensions")
 
 latest_completed_run_file <- file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt")
-kfold_root <- if (file.exists(latest_completed_run_file)) {
-  trimws(readLines(latest_completed_run_file, warn = FALSE)[1])
-} else {
-  file.path(output_root, "kfold_firm", "latest_complete")
+if (!file.exists(latest_completed_run_file)) {
+  stop("[BLOCKER] Missing grouped K-fold completed-run pin for manuscript export: ", latest_completed_run_file)
+}
+kfold_root <- trimws(readLines(latest_completed_run_file, warn = FALSE)[1])
+if (!nzchar(kfold_root) || !dir.exists(kfold_root)) {
+  stop("[BLOCKER] Invalid grouped K-fold completed-run root in manuscript export: ", latest_completed_run_file)
 }
 kfold_tables <- file.path(kfold_root, "tables")
-if (!dir.exists(kfold_tables)) kfold_tables <- file.path(output_root, "kfold_firm", "latest_complete")
+if (!dir.exists(kfold_tables)) stop("[BLOCKER] Grouped K-fold completed-run tables directory is missing: ", kfold_tables)
 kfold_manifest <- safe_read_csv(file.path(kfold_root, "logs", "run_config_manifest.csv"))
-if (is.null(kfold_manifest)) kfold_manifest <- safe_read_csv(file.path(output_root, "kfold_firm", "latest_complete", "run_config_manifest.csv"))
+if (is.null(kfold_manifest)) stop("[BLOCKER] Grouped K-fold completed-run manifest is missing under: ", kfold_root)
 fold_assignment <- safe_read_csv(file.path(kfold_tables, "table_winsor_firm_fold_assignment.csv"))
 kfold_balance_in <- safe_read_csv(file.path(kfold_tables, "table_winsor_kfold_balance.csv"))
 
@@ -612,13 +614,20 @@ write_outputs(materiality, "table_3_10_rq2_materiality_thresholds", "Table 3.10 
 git_hash <- tryCatch(system("git rev-parse HEAD", intern = TRUE), error = function(e) NA_character_)
 script_hash <- tryCatch(as.character(tools::md5sum("scripts/temp/22_chapter3_methods_tables.R")), error = function(e) NA_character_)
 diag <- safe_read_csv(path_table("table_brms_diagnostics_winsor.csv"))
+model_inclusion_gate <- safe_read_csv(path_table("table_model_primary_inclusion_gate.csv"))
+if (is.null(model_inclusion_gate) || !"Primary_Inclusion_Decision" %in% names(model_inclusion_gate)) {
+  stop("[GATE BLOCKER] Missing or invalid model primary inclusion gate: ",
+       path_table("table_model_primary_inclusion_gate.csv"))
+}
 manifest <- data.frame(
   item = c("raw_data_file_path", "raw_data_sheet_names", "common_sample_files_used", "model_registry_file",
            "model_formula_file", "winsorized_sample_files", "prior_set_id", "likelihood_family",
            "MCMC_chains", "iterations", "warmup", "seed", "adapt_delta", "max_treedepth",
            "validation_schemes_available", "DA_output_root", "timestamp", "git_commit_hash",
            "script_version_hash", "DA_Finite_Gate_Decision", "New_Firm_Predictive_Gate_Decision",
-           "RQ2_Primary_Output_Allowed"),
+           "RQ2_Primary_Output_Allowed", "Model_Primary_Inclusion_Gate",
+           "MCMC_REVIEW_Inclusion_Rule", "Suppression_Override_Used",
+           "Tail_Flag_Primary_Status"),
   value = c(
     data_path,
     paste(metadata_sheets, collapse = ", "),
@@ -647,7 +656,11 @@ manifest <- data.frame(
     script_hash,
     DA_Finite_Gate_Decision,
     New_Firm_Predictive_Gate_Decision,
-    RQ2_Primary_Output_Allowed
+    RQ2_Primary_Output_Allowed,
+    path_table("table_model_primary_inclusion_gate.csv"),
+    "PASS/OK included; FAIL/LOW_RELIABILITY excluded; REVIEW/CAUTION included only with MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS when exact-refit reliability is acceptable.",
+    allow_suppressed_tail_flags,
+    ifelse(RQ2_Primary_Output_Allowed, "primary_allowed", "suppressed_or_non_primary")
   ),
   stringsAsFactors = FALSE
 )
