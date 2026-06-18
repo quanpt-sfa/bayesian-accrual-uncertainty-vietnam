@@ -15,8 +15,7 @@ write_prior_registry()
 
 dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
 allow_prior_fail <- env_flag("ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL", "FALSE")
-seed <- as.integer(env_value("ACCRUAL_SENS_SEED", "20260614"))
-if (is.na(seed)) seed <- 20260614L
+seed <- accrual_seed("sensitivity")
 n_draws <- as.integer(env_value("ACCRUAL_PRIOR_PRED_N_DRAWS", as.character(prior_pred_n_draws)))
 if (is.na(n_draws) || n_draws <= 0) n_draws <- prior_pred_n_draws
 set.seed(seed)

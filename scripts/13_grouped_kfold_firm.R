@@ -15,12 +15,7 @@ script_start_time <- Sys.time()
 script_name <- "scripts/13_grouped_kfold_firm.R"
 script_version <- "2026-06-18-v3-reviewer-final-main-stack-ess-gate"
 
-set.seed(20260613)
 options(mc.cores = 1)
-
-env_flag <- function(name, default = "FALSE") {
-  toupper(Sys.getenv(name, default)) %in% c("TRUE", "1", "YES", "Y")
-}
 
 split_env <- function(name) {
   x <- trimws(Sys.getenv(name, ""))
@@ -28,13 +23,19 @@ split_env <- function(name) {
   trimws(strsplit(x, ",", fixed = TRUE)[[1]])
 }
 
-K <- as.integer(Sys.getenv("ACCRUAL_KFOLD_FIRM_K", "5"))
-if (is.na(K) || K < 2) stop("[BLOCKER] ACCRUAL_KFOLD_FIRM_K must be an integer >= 2.")
-
-run_mode <- toupper(Sys.getenv("ACCRUAL_KFOLD_FIRM_MODE", "FULL_MODE"))
+run_mode <- toupper(env_value("ACCRUAL_KFOLD_FIRM_MODE", "FULL_MODE"))
 if (!run_mode %in% c("FULL_MODE", "FAST_MODE")) {
   stop("[BLOCKER] ACCRUAL_KFOLD_FIRM_MODE must be FULL_MODE or FAST_MODE.")
 }
+kfold_cfg <- accrual_kfold_config("grouped_firm", run_mode = run_mode)
+K <- kfold_cfg$K
+seed <- kfold_cfg$seed
+chains <- kfold_cfg$chains
+iter <- kfold_cfg$iter
+warmup <- kfold_cfg$warmup
+adapt_delta <- kfold_cfg$adapt_delta
+max_treedepth <- kfold_cfg$max_treedepth
+set.seed(seed)
 
 run_id <- trimws(Sys.getenv("ACCRUAL_KFOLD_FIRM_RUN_ID", "default"))
 if (!nzchar(run_id)) run_id <- "default"
@@ -49,8 +50,7 @@ force_resume <- env_flag("ACCRUAL_KFOLD_FIRM_FORCE_RESUME")
 # build correct folds. It does NOT paper over data problems such as an industry
 # that contains fewer than K firms; that is handled by a hard data check below.
 kfold_stratified_groups <- env_flag("ACCRUAL_KFOLD_STRATIFIED_GROUPS", "TRUE")
-kfold_repeats <- as.integer(Sys.getenv("ACCRUAL_KFOLD_REPEATS", "1"))
-if (is.na(kfold_repeats) || kfold_repeats < 1) stop("[BLOCKER] ACCRUAL_KFOLD_REPEATS must be an integer >= 1.")
+kfold_repeats <- env_int("ACCRUAL_KFOLD_REPEATS", 1L, min = 1L)
 if (kfold_repeats > 1) {
   warning("[WARNING] ACCRUAL_KFOLD_REPEATS is recognized for future repeated grouped K-fold runs; this script currently executes one repeat per run_id. Use separate ACCRUAL_KFOLD_FIRM_RUN_ID values for repeated runs.")
 }
@@ -66,19 +66,6 @@ if (!kfold_target_mode %in% c("PARETO_PROBLEM_ONLY", "MAIN_STACK_FULL")) {
 }
 
 partial_run <- length(target_space_filter) > 0 || length(model_id_filter) > 0 || length(fold_filter) > 0
-
-if (run_mode == "FAST_MODE") {
-  chains <- 2
-  iter <- 1000
-  warmup <- 500
-} else {
-  chains <- 4
-  iter <- 3000
-  warmup <- 1000
-}
-adapt_delta <- 0.95
-max_treedepth <- 12
-seed <- 42
 
 config_tag <- paste0("K", K, "_", run_mode, "_modelset_primary_v", script_version)
 config_tag <- paste0(config_tag, "_", run_id)
@@ -159,13 +146,15 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Warmup = warmup,
     Adapt_Delta = adapt_delta,
     Max_Treedepth = max_treedepth,
+    Sampler_Profile = kfold_cfg$sampler_profile,
+    Config_Source = kfold_cfg$config_source,
     Seed = seed,
     ExPost_N_Obs = exp_n,
     ExPost_N_Firms = exp_firms,
     NoLookahead_N_Obs = rt_n,
     NoLookahead_N_Firms = rt_firms,
-    ExPost_Model_IDs = paste(c("M01", "M02", "M03", "M04", "M05", "M06", "M07"), collapse = ","),
-    NoLookahead_Model_IDs = paste(c("M01", "M02", "M03", "M07", "M09"), collapse = ","),
+    ExPost_Model_IDs = paste(main_model_ids_for_space("ex_post"), collapse = ","),
+    NoLookahead_Model_IDs = paste(main_model_ids_for_space("real_time"), collapse = ","),
     Target_Space_Filter = paste(target_space_filter, collapse = ","),
     Model_ID_Filter = paste(model_id_filter, collapse = ","),
     KFold_Target_Mode = kfold_target_mode,
@@ -378,8 +367,8 @@ main <- function() {
   df_ep$Obs_ID <- seq_len(nrow(df_ep))
   df_rt$Obs_ID <- seq_len(nrow(df_rt))
 
-  ex_post_ids <- c("M01", "M02", "M03", "M04", "M05", "M06", "M07")
-  no_lookahead_ids <- c("M01", "M02", "M03", "M07", "M09")
+  ex_post_ids <- main_model_ids_for_space("ex_post")
+  no_lookahead_ids <- main_model_ids_for_space("real_time")
 
   if (identical(kfold_target_mode, "PARETO_PROBLEM_ONLY") &&
       length(target_space_filter) == 0 && length(model_id_filter) == 0) {
@@ -518,7 +507,7 @@ main <- function() {
         },
         .groups = "drop"
       )
-    set.seed(20260613)
+    set.seed(seed)
     ordered <- firm_summary %>%
       arrange(company) %>%
       mutate(Random_Order = runif(n()))

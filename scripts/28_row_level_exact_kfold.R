@@ -16,10 +16,6 @@ script_name <- "scripts/28_row_level_exact_kfold.R"
 script_version <- "2026-06-18-row-level-exact-kfold-v3-ess-diagnostics"
 script_start_time <- Sys.time()
 
-env_flag <- function(name, default = "FALSE") {
-  toupper(Sys.getenv(name, default)) %in% c("TRUE", "1", "YES", "Y")
-}
-
 split_env <- function(name) {
   x <- trimws(Sys.getenv(name, ""))
   if (!nzchar(x)) return(character())
@@ -28,16 +24,18 @@ split_env <- function(name) {
 
 format_time <- function(x) format(x, "%Y-%m-%d %H:%M:%S %Z")
 
-K <- as.integer(Sys.getenv("ACCRUAL_ROW_KFOLD_K", "5"))
-if (is.na(K) || K < 2) stop("[BLOCKER] ACCRUAL_ROW_KFOLD_K must be an integer >= 2.")
-
-seed <- as.integer(Sys.getenv("ACCRUAL_ROW_KFOLD_SEED", "42"))
-if (is.na(seed)) stop("[BLOCKER] ACCRUAL_ROW_KFOLD_SEED must be an integer.")
-
-run_mode <- toupper(Sys.getenv("ACCRUAL_ROW_KFOLD_MODE", "FULL_MODE"))
+run_mode <- toupper(env_value("ACCRUAL_ROW_KFOLD_MODE", "FULL_MODE"))
 if (!run_mode %in% c("FULL_MODE", "FAST_MODE")) {
   stop("[BLOCKER] ACCRUAL_ROW_KFOLD_MODE must be FULL_MODE or FAST_MODE.")
 }
+kfold_cfg <- accrual_kfold_config("row", run_mode = run_mode)
+K <- kfold_cfg$K
+seed <- kfold_cfg$seed
+chains <- kfold_cfg$chains
+iter <- kfold_cfg$iter
+warmup <- kfold_cfg$warmup
+adapt_delta <- kfold_cfg$adapt_delta
+max_treedepth <- kfold_cfg$max_treedepth
 
 target_space_filter <- split_env("ACCRUAL_ROW_KFOLD_TARGET_SPACE")
 model_id_filter <- split_env("ACCRUAL_ROW_KFOLD_MODEL_IDS")
@@ -53,17 +51,6 @@ overwrite_outputs <- env_flag("ACCRUAL_ROW_KFOLD_OVERWRITE")
 force_resume <- env_flag("ACCRUAL_ROW_KFOLD_FORCE_RESUME")
 partial_run <- length(target_space_filter) > 0 || length(model_id_filter) > 0 || length(fold_filter) > 0
 
-if (run_mode == "FAST_MODE") {
-  chains <- 2
-  iter <- 1000
-  warmup <- 500
-} else {
-  chains <- 4
-  iter <- 3000
-  warmup <- 1000
-}
-adapt_delta <- 0.95
-max_treedepth <- 12
 options(mc.cores = 1)
 
 row_kfold_root <- file.path(output_root, "row_exact_kfold")
@@ -380,8 +367,8 @@ fold_balance <- fold_assignment %>%
     .groups = "drop"
   )
 
-ex_post_ids <- c("M01", "M02", "M03", "M04", "M05", "M06", "M07")
-real_time_ids <- c("M01", "M02", "M03", "M07", "M09")
+ex_post_ids <- main_model_ids_for_space("ex_post")
+real_time_ids <- main_model_ids_for_space("real_time")
 
 eligible <- formulas_df %>%
   filter(Sample_Group == "main_common", Main_Stack_Inclusion == TRUE) %>%
@@ -446,6 +433,8 @@ write_manifest <- function(status, extra_note = NA_character_) {
     Warmup = warmup,
     Adapt_Delta = adapt_delta,
     Max_Treedepth = max_treedepth,
+    Sampler_Profile = kfold_cfg$sampler_profile,
+    Config_Source = kfold_cfg$config_source,
     Target_Space_Filter = paste(target_space_filter, collapse = ","),
     Model_ID_Filter = paste(model_id_filter, collapse = ","),
     Fold_Filter = paste(fold_filter, collapse = ","),
@@ -876,7 +865,7 @@ family_comparison <- weight_comparison %>%
   arrange(target_space, firmRE_family_indicator)
 write.csv(family_comparison, file.path(tables_dir, "table_winsor_exact_kfold_family_weight_comparison_row_vs_firm.csv"), row.names = FALSE)
 
-primary_no_lookahead_model_ids <- c("M01", "M02", "M03", "M07", "M09")
+primary_no_lookahead_model_ids <- main_model_ids_for_space("real_time")
 explicit_full_primary_filters <- length(target_space_filter) == 1 &&
   identical(target_space_filter, "real_time") &&
   length(model_id_filter) > 0 &&

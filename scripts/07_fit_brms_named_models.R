@@ -10,6 +10,7 @@ source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 write_method_design_files()
 write_prior_registry()
+write_execution_config_registry()
 validate_final_analysis_config("Phase 3b baseline brms fit", final_mode = TRUE)
 
 backfill_diagnostics_only <- env_flag("ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY", "FALSE")
@@ -45,7 +46,7 @@ if (has_prior_pred_fail) {
 }
 
 options(mc.cores = parallel::detectCores())
-set.seed(42)
+set.seed(accrual_seed("baseline"))
 
 run_varying_slope_models <- identical(model_structure, "breuer_varying_slopes")
 if (run_varying_slope_models && !run_varying_slopes) {
@@ -343,32 +344,26 @@ if (!"save_pars_all" %in% names(diagnostics_df)) {
   diagnostics_df$save_pars_all <- FALSE
 }
 
-chains <- 4
-iter <- 4000
-warmup <- 1000
-adapt_delta <- if (run_varying_slope_models) 0.99 else 0.95
-max_treedepth <- if (run_varying_slope_models) 15 else 12
-seed <- 42
+sampler_cfg <- accrual_sampler_config("baseline", varying_slopes = run_varying_slope_models)
+chains <- sampler_cfg$chains
+iter <- sampler_cfg$iter
+warmup <- sampler_cfg$warmup
+adapt_delta <- sampler_cfg$adapt_delta
+max_treedepth <- sampler_cfg$max_treedepth
+seed <- accrual_seed("baseline")
 
-baseline_sampler_controls <- list(
-  chains = 4L,
-  iter = 4000L,
-  warmup = 1000L,
-  adapt_delta = if (run_varying_slope_models) 0.99 else 0.95,
-  max_treedepth = if (run_varying_slope_models) 15L else 12L,
-  seed = 42L
+baseline_sampler_controls <- c(
+  sampler_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")],
+  seed = seed
 )
-remediation_sampler_controls <- list(
-  chains = 4L,
-  iter = 8000L,
-  warmup = 2000L,
-  adapt_delta = 0.99,
-  max_treedepth = 15L,
-  seed = 42L
+remediation_cfg <- accrual_sampler_config("baseline_remediation")
+remediation_sampler_controls <- c(
+  remediation_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")],
+  seed = accrual_seed("baseline")
 )
 
-main_ex_post_ids <- c("M01", "M02", "M03", "M04", "M05", "M06", "M07")
-main_no_lookahead_ids <- c("M01", "M02", "M03", "M07", "M09")
+main_ex_post_ids <- main_model_ids_for_space("ex_post")
+main_no_lookahead_ids <- main_model_ids_for_space("real_time")
 
 formulas_df <- formulas_df %>%
   mutate(
@@ -412,7 +407,7 @@ if (length(remediation_targets) > 0) {
       "; max_treedepth=", remediation_sampler_controls$max_treedepth,
       "; seed=", remediation_sampler_controls$seed
     ),
-    "Seed retained as 42.",
+    sprintf("Seed retained as configured baseline seed: %d.", accrual_seed("baseline")),
     "No seed search was performed.",
     "Formulas, priors, likelihood, model structure, and samples were unchanged."
   )
@@ -542,7 +537,7 @@ for (i in seq_len(total_runs)) {
   if (is.null(fit)) {
     if (row_is_remediation_target) {
       message(
-        "Refitting remediation target with stronger sampler controls and fixed seed 42: ",
+        "Refitting remediation target with stronger sampler controls and configured baseline seed: ",
         row_target_key
       )
     }

@@ -145,6 +145,14 @@ steps_for_target <- function(x) {
   )
 }
 
+write_config_registry_if_available <- function() {
+  helper_env <- new.env(parent = globalenv())
+  sys.source("scripts/00_helpers.R", envir = helper_env)
+  if (exists("write_execution_config_registry", envir = helper_env, inherits = FALSE)) {
+    helper_env$write_execution_config_registry()
+  }
+}
+
 print_header <- function(steps) {
   cat("Bayesian Accrual Uncertainty Vietnam\n")
   cat("Target    :", target, "\n")
@@ -242,6 +250,7 @@ run_step <- function(s) {
 }
 
 selected_steps <- steps_for_target(target)
+write_config_registry_if_available()
 print_header(selected_steps)
 
 if (dry_run) {

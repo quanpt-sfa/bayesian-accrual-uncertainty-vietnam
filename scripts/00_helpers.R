@@ -12,6 +12,40 @@ env_flag <- function(name, default = "FALSE") {
   toupper(env_value(name, default)) %in% c("TRUE", "1", "YES", "Y")
 }
 
+env_first <- function(names, default) {
+  for (nm in names) {
+    val <- Sys.getenv(nm, unset = "")
+    if (nzchar(val)) return(val)
+  }
+  default
+}
+
+env_int <- function(name, default, min = NULL, allow_na = FALSE) {
+  raw <- if (length(name) > 1) env_first(name, as.character(default)) else env_value(name, as.character(default))
+  out <- suppressWarnings(as.integer(raw))
+  if (is.na(out)) {
+    if (allow_na) return(NA_integer_)
+    stop("[BLOCKER] Invalid integer environment value for ", paste(name, collapse = "/"), ": ", raw)
+  }
+  if (!is.null(min) && out < min) {
+    stop("[BLOCKER] Environment value for ", paste(name, collapse = "/"), " must be >= ", min, ". Got: ", out)
+  }
+  out
+}
+
+env_num <- function(name, default, min = NULL, allow_na = FALSE) {
+  raw <- if (length(name) > 1) env_first(name, as.character(default)) else env_value(name, as.character(default))
+  out <- suppressWarnings(as.numeric(raw))
+  if (is.na(out)) {
+    if (allow_na) return(NA_real_)
+    stop("[BLOCKER] Invalid numeric environment value for ", paste(name, collapse = "/"), ": ", raw)
+  }
+  if (!is.null(min) && out < min) {
+    stop("[BLOCKER] Environment value for ", paste(name, collapse = "/"), " must be >= ", min, ". Got: ", out)
+  }
+  out
+}
+
 data_path <- env_value("ACCRUAL_DATA_PATH", file.path("data", "raw", "data.xlsx"))
 baseline_root <- env_value("ACCRUAL_BASELINE_ROOT", file.path("out", "interim", "baseline"))
 output_root <- env_value("ACCRUAL_OUTPUT_ROOT", file.path("out", "interim", "winsor"))
@@ -83,6 +117,140 @@ main_model_ids_for_space <- function(target_space) {
   if (identical(target_space, "ex_post")) return(c("M01", "M02", "M03", "M04", "M05", "M06", "M07"))
   if (identical(target_space, "real_time")) return(c("M01", "M02", "M03", "M07", "M09"))
   character()
+}
+
+primary_model_ids_for_space <- function(target_space) main_model_ids_for_space(target_space)
+exact_kfold_model_ids_for_space <- function(target_space) main_model_ids_for_space(target_space)
+
+accrual_seed <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "simulation"), default = NULL) {
+  kind <- match.arg(kind)
+  spec <- switch(
+    kind,
+    baseline = list(env = "ACCRUAL_BASELINE_SEED", default = 42L),
+    grouped_kfold = list(env = "ACCRUAL_KFOLD_FIRM_SEED", default = 20260613L),
+    row_kfold = list(env = "ACCRUAL_ROW_KFOLD_SEED", default = 42L),
+    sensitivity = list(env = "ACCRUAL_SENS_SEED", default = 20260614L),
+    simulation = list(env = "ACCRUAL_SIM_SEED", default = 42L)
+  )
+  default_value <- if (is.null(default)) spec$default else default
+  env_int(c(spec$env, "ACCRUAL_SEED"), default_value)
+}
+
+accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "baseline_remediation"),
+                                   run_mode = "FULL_MODE", varying_slopes = FALSE) {
+  kind <- match.arg(kind)
+  run_mode <- toupper(run_mode)
+  if (kind %in% c("grouped_kfold", "row_kfold") && !run_mode %in% c("FULL_MODE", "FAST_MODE")) {
+    stop("[BLOCKER] K-fold run_mode must be FULL_MODE or FAST_MODE.")
+  }
+
+  profile <- paste(kind, run_mode, sep = "_")
+  if (identical(kind, "baseline")) {
+    cfg <- list(
+      chains = env_int("ACCRUAL_BASELINE_CHAINS", 4L, min = 1L),
+      iter = env_int("ACCRUAL_BASELINE_ITER", 4000L, min = 1L),
+      warmup = env_int("ACCRUAL_BASELINE_WARMUP", 1000L, min = 0L),
+      adapt_delta = env_num("ACCRUAL_BASELINE_ADAPT_DELTA", if (varying_slopes) 0.99 else 0.95, min = 0),
+      max_treedepth = env_int(c("ACCRUAL_BASELINE_MAX_TREEDEPTH", "ACCRUAL_BASELINE_MAX_TREEDepth"), if (varying_slopes) 15L else 12L, min = 1L),
+      run_mode = "FULL_MODE",
+      sampler_profile = if (varying_slopes) "baseline_varying_slopes" else "baseline",
+      config_source = "scripts/00_helpers.R:accrual_sampler_config"
+    )
+  } else if (identical(kind, "baseline_remediation")) {
+    cfg <- list(
+      chains = env_int("ACCRUAL_REMEDIATION_CHAINS", 4L, min = 1L),
+      iter = env_int("ACCRUAL_REMEDIATION_ITER", 8000L, min = 1L),
+      warmup = env_int("ACCRUAL_REMEDIATION_WARMUP", 2000L, min = 0L),
+      adapt_delta = env_num("ACCRUAL_REMEDIATION_ADAPT_DELTA", 0.99, min = 0),
+      max_treedepth = env_int("ACCRUAL_REMEDIATION_MAX_TREEDEPTH", 15L, min = 1L),
+      run_mode = "REMEDIATION",
+      sampler_profile = "baseline_remediation",
+      config_source = "scripts/00_helpers.R:accrual_sampler_config"
+    )
+  } else if (kind %in% c("grouped_kfold", "row_kfold")) {
+    prefix <- if (identical(kind, "grouped_kfold")) "ACCRUAL_KFOLD_FIRM" else "ACCRUAL_ROW_KFOLD"
+    full_defaults <- run_mode == "FULL_MODE"
+    cfg <- list(
+      chains = env_int(paste0(prefix, "_CHAINS"), if (full_defaults) 4L else 2L, min = 1L),
+      iter = env_int(paste0(prefix, "_ITER"), if (full_defaults) 3000L else 1000L, min = 1L),
+      warmup = env_int(paste0(prefix, "_WARMUP"), if (full_defaults) 1000L else 500L, min = 0L),
+      adapt_delta = env_num(paste0(prefix, "_ADAPT_DELTA"), 0.95, min = 0),
+      max_treedepth = env_int(paste0(prefix, "_MAX_TREEDEPTH"), 12L, min = 1L),
+      run_mode = run_mode,
+      sampler_profile = profile,
+      config_source = "scripts/00_helpers.R:accrual_sampler_config"
+    )
+  } else {
+    cfg <- list(
+      chains = env_int("ACCRUAL_SENS_CHAINS", 4L, min = 1L),
+      iter = env_int("ACCRUAL_SENS_ITER", 4000L, min = 1L),
+      warmup = env_int("ACCRUAL_SENS_WARMUP", 1000L, min = 0L),
+      adapt_delta = env_num("ACCRUAL_SENS_ADAPT_DELTA", 0.95, min = 0),
+      max_treedepth = env_int("ACCRUAL_SENS_MAX_TREEDEPTH", 12L, min = 1L),
+      run_mode = run_mode,
+      sampler_profile = "sensitivity",
+      config_source = "scripts/00_helpers.R:accrual_sampler_config"
+    )
+  }
+  if (cfg$warmup >= cfg$iter) stop("[BLOCKER] warmup must be smaller than iter for ", kind, ".")
+  cfg
+}
+
+accrual_kfold_config <- function(kind = c("grouped_firm", "row"), run_mode = "FULL_MODE") {
+  kind <- match.arg(kind)
+  if (identical(kind, "grouped_firm")) {
+    sampler <- accrual_sampler_config("grouped_kfold", run_mode = run_mode)
+    c(list(K = env_int("ACCRUAL_KFOLD_FIRM_K", 5L, min = 2L), seed = accrual_seed("grouped_kfold")), sampler)
+  } else {
+    sampler <- accrual_sampler_config("row_kfold", run_mode = run_mode)
+    c(list(K = env_int("ACCRUAL_ROW_KFOLD_K", 5L, min = 2L), seed = accrual_seed("row_kfold")), sampler)
+  }
+}
+
+write_execution_config_registry <- function(path = file.path(method_design_root, "execution_config_registry.csv")) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  row <- function(scope, parameter, value, env_names, notes = "") {
+    data.frame(
+      Scope = scope,
+      Parameter = parameter,
+      Value = paste(value, collapse = ","),
+      Env_Names = paste(env_names, collapse = ","),
+      Notes = notes,
+      stringsAsFactors = FALSE
+    )
+  }
+  sampler_rows <- function(scope, cfg) {
+    do.call(rbind, list(
+      row(scope, "chains", cfg$chains, paste0("see_", cfg$sampler_profile), cfg$config_source),
+      row(scope, "iter", cfg$iter, paste0("see_", cfg$sampler_profile), cfg$config_source),
+      row(scope, "warmup", cfg$warmup, paste0("see_", cfg$sampler_profile), cfg$config_source),
+      row(scope, "adapt_delta", cfg$adapt_delta, paste0("see_", cfg$sampler_profile), cfg$config_source),
+      row(scope, "max_treedepth", cfg$max_treedepth, paste0("see_", cfg$sampler_profile), cfg$config_source),
+      row(scope, "sampler_profile", cfg$sampler_profile, "", cfg$config_source)
+    ))
+  }
+  registry <- do.call(rbind, c(
+    list(
+      row("baseline", "seed", accrual_seed("baseline"), c("ACCRUAL_BASELINE_SEED", "ACCRUAL_SEED")),
+      row("grouped_kfold", "seed", accrual_seed("grouped_kfold"), c("ACCRUAL_KFOLD_FIRM_SEED", "ACCRUAL_SEED")),
+      row("row_kfold", "seed", accrual_seed("row_kfold"), c("ACCRUAL_ROW_KFOLD_SEED", "ACCRUAL_SEED")),
+      row("sensitivity", "seed", accrual_seed("sensitivity"), c("ACCRUAL_SENS_SEED", "ACCRUAL_SEED")),
+      row("grouped_kfold", "K", accrual_kfold_config("grouped_firm")$K, "ACCRUAL_KFOLD_FIRM_K"),
+      row("row_kfold", "K", accrual_kfold_config("row")$K, "ACCRUAL_ROW_KFOLD_K"),
+      row("model_space", "ex_post_primary_models", main_model_ids_for_space("ex_post"), "", "M08/M10 secondary; M11/M12 excluded."),
+      row("model_space", "real_time_primary_models", main_model_ids_for_space("real_time"), "", "M08/M10 secondary; M11/M12 excluded.")
+    ),
+    list(
+      sampler_rows("baseline", accrual_sampler_config("baseline")),
+      sampler_rows("grouped_kfold_FULL_MODE", accrual_sampler_config("grouped_kfold", "FULL_MODE")),
+      sampler_rows("grouped_kfold_FAST_MODE", accrual_sampler_config("grouped_kfold", "FAST_MODE")),
+      sampler_rows("row_kfold_FULL_MODE", accrual_sampler_config("row_kfold", "FULL_MODE")),
+      sampler_rows("row_kfold_FAST_MODE", accrual_sampler_config("row_kfold", "FAST_MODE")),
+      sampler_rows("sensitivity", accrual_sampler_config("sensitivity"))
+    )
+  ))
+  write.csv(registry, path, row.names = FALSE)
+  invisible(path)
 }
 
 sensitivity_scenarios <- function() {
@@ -580,6 +748,10 @@ write_pipeline_index <- function() {
     "",
     "Sampler protocol: full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations; exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons; FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The baseline 4000/1000 setting is intentional, while 3000/1000 is the primary validation-refit protocol. Manifests should record actual sampler settings.",
     "",
+    "Execution configuration is centralized in `scripts/00_helpers.R`: `accrual_seed()` supplies seeds, `accrual_sampler_config()` supplies sampler settings, `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings, and `main_model_ids_for_space()` supplies primary model IDs. Existing env vars remain supported, including `ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_KFOLD_FIRM_K`, `ACCRUAL_ROW_KFOLD_K`, and `ACCRUAL_SENS_*`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
+    "",
+    "Primary model helpers return M01-M07 for ex-post and M01, M02, M03, M07, M09 for real-time/no-lookahead. M08/M10 remain secondary/robustness unless explicitly included through documented secondary flows, and M11/M12 remain excluded from active primary helpers.",
+    "",
     "`Rscript run.R` runs the `main` target by default. The main target includes grouped exact firm K-fold (`scripts/13_grouped_kfold_firm.R`) and row-level exact K-fold (`scripts/28_row_level_exact_kfold.R`) as adjacent primary RQ1 evidence steps, then constructs primary exact-KFoldW DA (`scripts/31_construct_exact_kfold_DA.R`), applies the finite-output gate (`scripts/32_audit_DA_finite_outputs.R`), runs validation on the primary exact row-KFold DA, the new-firm predictive integration reporting gate, and the corrected Chapter 3 manuscript export path `scripts/temp/22_chapter3_methods_tables.R`.",
     "",
     "`scripts/10_construct_uncertainty_adjusted_DA.R` remains the PSIS/LOO secondary DA constructor, including secondary validation panels only. Scripts `13` and `28` write `LATEST_COMPLETED_RUN.txt` only for completed primary-eligible exact-refit runs, and script `31` uses those pins or explicit run-root environment variables instead of moving `LATEST_RUN.txt` for primary inference. `LATEST_RUN.txt` is operational only and should not be used as primary provenance. Scripts `13` and `28` write reviewer-grade input/output manifests with file size, mtime, MD5 hash, row counts where applicable, run-root fields, and completed-pin fields.",
@@ -801,4 +973,5 @@ write_method_design_files <- function() {
     "The analysis is therefore positioned as an extension/adaptation, not a replication. The corrected design preserves corrected COGS/INV data, the two-tier sample design, the exclusion of M08 and M10 from main stacks, and the treatment of existing wide-prior Gaussian outputs as diagnostic only."
   ), file.path(design_root, "method_note_adaptation_not_replication.txt"))
   write_pipeline_index()
+  write_execution_config_registry()
 }
