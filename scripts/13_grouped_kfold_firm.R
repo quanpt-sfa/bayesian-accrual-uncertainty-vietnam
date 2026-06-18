@@ -114,10 +114,17 @@ path_starts_with <- function(path, root) {
 
 file_size_or_na <- function(path) if (file.exists(path)) file.info(path)$size else NA_real_
 mtime_or_na <- function(path) if (file.exists(path)) as.character(file.info(path)$mtime) else NA_character_
+file_hash_or_na <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  tryCatch(as.character(tools::md5sum(path)), error = function(e) NA_character_)
+}
 nrows_or_na <- function(path) {
   if (!file.exists(path) || !grepl("\\.csv$", path, ignore.case = TRUE)) return(NA_integer_)
   out <- tryCatch(nrow(read.csv(path, stringsAsFactors = FALSE)), error = function(e) NA_integer_)
   out
+}
+git_commit_or_na <- function() {
+  tryCatch(system("git rev-parse HEAD", intern = TRUE)[1], error = function(e) NA_character_)
 }
 
 stable_hash <- function(x) {
@@ -252,12 +259,20 @@ optional_inputs <- c(
 
 write_input_manifest <- function() {
   man <- data.frame(
+    Script_Name = script_name,
+    Script_Version = script_version,
+    Run_Root = kfold_run_root,
     Input_Name = names(input_paths),
     Path = unname(input_paths),
     Exists = file.exists(input_paths),
     File_Size_Bytes = vapply(input_paths, file_size_or_na, numeric(1)),
     Modified_Time = vapply(input_paths, mtime_or_na, character(1)),
+    File_Hash = vapply(input_paths, file_hash_or_na, character(1)),
+    N_Rows = vapply(input_paths, nrows_or_na, integer(1)),
     Optional = names(input_paths) %in% names(optional_inputs),
+    Primary_Secondary = ifelse(names(input_paths) %in% c("lofo_ex_post", "lofo_no_lookahead", "lofo_diagnostics", "rowloo_ex_post", "rowloo_no_lookahead"),
+                               "secondary_comparison_optional", "primary_grouped_kfold_input"),
+    Git_Commit = git_commit_or_na(),
     Notes = "",
     stringsAsFactors = FALSE
   )
@@ -288,17 +303,25 @@ write_output_manifest <- function(final_decision = NA_character_) {
     heartbeat = file.path(logs_dir, "heartbeat.log")
   )
   man <- data.frame(
+    Script_Name = script_name,
+    Script_Version = script_version,
+    Run_Root = kfold_run_root,
     Output_Name = names(outputs),
     Path = unname(outputs),
     Exists = file.exists(outputs),
     File_Size_Bytes = vapply(outputs, file_size_or_na, numeric(1)),
     Modified_Time = vapply(outputs, mtime_or_na, character(1)),
+    File_Hash = vapply(outputs, file_hash_or_na, character(1)),
     N_Rows = vapply(outputs, nrows_or_na, integer(1)),
     Notes = ifelse(names(outputs) == "decision", paste("Final decision:", final_decision), ""),
     Latest_Run_Path = latest_run_path,
     Latest_Completed_Run_Path = latest_completed_run_path,
     Completed_Run_Pin_Eligible = completed_run_pin_eligible,
     Completed_Run_Pin_Updated = completed_run_pin_updated,
+    Primary_Inference_Allowed = completed_run_pin_eligible,
+    Primary_Secondary = ifelse(names(outputs) %in% c("model_weight_comparison", "family_weight_comparison"),
+                               "secondary_comparison", "primary_grouped_kfold_output"),
+    Git_Commit = git_commit_or_na(),
     stringsAsFactors = FALSE
   )
   write.csv(man, file.path(logs_dir, "output_file_manifest.csv"), row.names = FALSE)

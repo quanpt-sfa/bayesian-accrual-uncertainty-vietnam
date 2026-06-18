@@ -161,6 +161,87 @@ stable_hash <- function(x) {
   paste0(length(x), "_", sum(utf8ToInt(pasted)))
 }
 
+file_size_or_na <- function(path) if (file.exists(path)) as.numeric(file.info(path)$size) else NA_real_
+mtime_or_na <- function(path) if (file.exists(path)) as.character(file.info(path)$mtime) else NA_character_
+file_hash_or_na <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  tryCatch(as.character(tools::md5sum(path)), error = function(e) NA_character_)
+}
+nrows_or_na <- function(path) {
+  if (!file.exists(path) || !grepl("\\.csv$", path, ignore.case = TRUE)) return(NA_integer_)
+  tryCatch(nrow(read.csv(path, stringsAsFactors = FALSE)), error = function(e) NA_integer_)
+}
+git_commit_or_na <- function() {
+  tryCatch(system("git rev-parse HEAD", intern = TRUE)[1], error = function(e) NA_character_)
+}
+
+write_input_file_manifest <- function() {
+  man <- data.frame(
+    Script_Name = script_name,
+    Script_Version = script_version,
+    Run_Root = row_kfold_root,
+    Input_Name = names(input_paths),
+    Path = unname(input_paths),
+    Exists = file.exists(input_paths),
+    File_Size_Bytes = vapply(input_paths, file_size_or_na, numeric(1)),
+    Modified_Time = vapply(input_paths, mtime_or_na, character(1)),
+    File_Hash = vapply(input_paths, file_hash_or_na, character(1)),
+    N_Rows = vapply(input_paths, nrows_or_na, integer(1)),
+    Optional = names(input_paths) == "firm_kfold_latest",
+    Primary_Secondary = ifelse(names(input_paths) == "firm_kfold_latest", "secondary_comparison_optional", "primary_row_exact_kfold_input"),
+    Notes = ifelse(names(input_paths) == "firm_kfold_latest", "Completed grouped K-fold pin used only for row-vs-grouped comparison.", ""),
+    Git_Commit = git_commit_or_na(),
+    stringsAsFactors = FALSE
+  )
+  write.csv(man, file.path(logs_dir, "row_exact_kfold_input_file_manifest.csv"), row.names = FALSE)
+}
+
+write_output_file_manifest <- function(final_status = NA_character_) {
+  outputs <- c(
+    fold_assignment = file.path(tables_dir, "table_winsor_row_exact_kfold_fold_assignment.csv"),
+    fold_balance = file.path(tables_dir, "table_winsor_row_exact_kfold_balance.csv"),
+    planned_tasks = file.path(tables_dir, "table_winsor_row_exact_kfold_planned_tasks.csv"),
+    refit_diagnostics = file.path(tables_dir, "table_winsor_row_exact_kfold_refit_diagnostics.csv"),
+    standardization_audit = file.path(tables_dir, "table_winsor_row_exact_kfold_train_standardization_audit.csv"),
+    observation_scores = file.path(tables_dir, "table_winsor_row_exact_kfold_observation_scores.csv"),
+    model_scores = file.path(tables_dir, "table_winsor_row_exact_kfold_model_scores.csv"),
+    weights_ex_post = file.path(tables_dir, "table_winsor_row_exact_kfold_weights_ex_post.csv"),
+    weights_no_lookahead = file.path(tables_dir, "table_winsor_row_exact_kfold_weights_no_lookahead.csv"),
+    row_vs_firm_weights = file.path(tables_dir, "table_winsor_exact_kfold_weight_comparison_row_vs_firm.csv"),
+    row_vs_firm_family = file.path(tables_dir, "table_winsor_exact_kfold_family_weight_comparison_row_vs_firm.csv"),
+    run_manifest_tables = file.path(tables_dir, "row_exact_kfold_run_manifest.csv"),
+    run_manifest_logs = file.path(logs_dir, "row_exact_kfold_run_manifest.csv"),
+    reviewer_note = file.path(tables_dir, "row_exact_kfold_reviewer_note.md"),
+    input_file_manifest = file.path(logs_dir, "row_exact_kfold_input_file_manifest.csv"),
+    output_file_manifest = file.path(logs_dir, "row_exact_kfold_output_file_manifest.csv"),
+    latest_run = latest_run_path,
+    latest_completed_run = latest_completed_run_path
+  )
+  man <- data.frame(
+    Script_Name = script_name,
+    Script_Version = script_version,
+    Run_Root = row_kfold_root,
+    Output_Name = names(outputs),
+    Path = unname(outputs),
+    Exists = file.exists(outputs),
+    File_Size_Bytes = vapply(outputs, file_size_or_na, numeric(1)),
+    Modified_Time = vapply(outputs, mtime_or_na, character(1)),
+    File_Hash = vapply(outputs, file_hash_or_na, character(1)),
+    N_Rows = vapply(outputs, nrows_or_na, integer(1)),
+    Latest_Run_Path = latest_run_path,
+    Latest_Completed_Run_Path = latest_completed_run_path,
+    Completed_Run_Pin_Eligible = completed_run_pin_eligible,
+    Completed_Run_Pin_Updated = completed_run_pin_updated,
+    Primary_Inference_Allowed = primary_inference_allowed,
+    Primary_Secondary = ifelse(names(outputs) %in% c("row_vs_firm_weights", "row_vs_firm_family"),
+                               "secondary_comparison", "primary_row_exact_kfold_output"),
+    Notes = ifelse(names(outputs) == "run_manifest_tables", paste("Final status:", final_status), ""),
+    Git_Commit = git_commit_or_na(),
+    stringsAsFactors = FALSE
+  )
+  write.csv(man, file.path(logs_dir, "row_exact_kfold_output_file_manifest.csv"), row.names = FALSE)
+}
+
 standardize_fold_data <- function(train_df, test_df) {
   audit <- data.frame(Variable = character(), Train_Mean = double(), Train_SD = double(),
                       Used_Fallback_Zero = logical(), stringsAsFactors = FALSE)
@@ -345,6 +426,7 @@ planned_tasks <- do.call(rbind, lapply(seq_len(nrow(eligible)), function(i) {
 write.csv(fold_assignment, file.path(tables_dir, "table_winsor_row_exact_kfold_fold_assignment.csv"), row.names = FALSE)
 write.csv(fold_balance, file.path(tables_dir, "table_winsor_row_exact_kfold_balance.csv"), row.names = FALSE)
 write.csv(planned_tasks, file.path(tables_dir, "table_winsor_row_exact_kfold_planned_tasks.csv"), row.names = FALSE)
+write_input_file_manifest()
 
 write_manifest <- function(status, extra_note = NA_character_) {
   end_time <- Sys.time()
@@ -420,6 +502,7 @@ write_reviewer_note <- function(status) {
 if (preflight_only) {
   write_manifest("PREFLIGHT_ONLY_COMPLETED", "No brms refits were run.")
   write_reviewer_note("PREFLIGHT_ONLY_COMPLETED")
+  write_output_file_manifest("PREFLIGHT_ONLY_COMPLETED")
   message("Row-level exact K-fold preflight completed: ", row_kfold_root)
   quit(save = "no", status = 0)
 }
@@ -833,4 +916,5 @@ if (completed_run_pin_eligible) {
 
 write_manifest("COMPLETED", NA_character_)
 write_reviewer_note("COMPLETED")
+write_output_file_manifest("COMPLETED")
 message("Row-level exact K-fold completed: ", row_kfold_root)

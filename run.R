@@ -81,9 +81,13 @@ main_steps <- list(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv")
        ),
        require_reason = "exact-KFold DA outputs from script 31"),
-  step("21", "scripts/21_validation_on_scaleaware_student_DA.R", "Outcome validation",
-       requires = c(baseline_da_path(), table_artifact("table_DA_finite_gate_decision.csv")),
-       require_reason = "baseline DA file and finite DA gate decision"),
+  step("21", "scripts/21_validation_on_scaleaware_student_DA.R", "Outcome validation on primary exact row-KFold DA",
+       requires = c(
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv"),
+         table_artifact("table_DA_finite_gate_decision.csv"),
+         table_artifact("table_model_primary_inclusion_gate.csv")
+       ),
+       require_reason = "primary exact row-KFold DA plus finite DA and model inclusion gate decisions"),
   step("30", "scripts/30_new_firm_predictive_integration_audit.R", "New-firm predictive integration reporting gate", gate = "new_firm_predictive",
        requires = c(
          table_artifact("table_DA_finite_gate_decision.csv"),

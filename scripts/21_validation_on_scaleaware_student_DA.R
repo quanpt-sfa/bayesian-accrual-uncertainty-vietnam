@@ -1,6 +1,7 @@
 # -----------------------------------------------------------------------------
 # Script: 21_validation_on_scaleaware_student_DA.R
-# Purpose: Rerun outcome validation on the current ACCRUAL_OUTPUT_ROOT DA file.
+# Purpose: Rerun outcome validation on primary exact-KFold DA, with PSIS/LOO
+#          retained only as a secondary comparison panel.
 # -----------------------------------------------------------------------------
 
 library(dplyr)
@@ -10,20 +11,25 @@ library(lmtest)
 
 source("scripts/00_helpers.R")
 ensure_analysis_dirs()
-validate_final_analysis_config("Phase 6b baseline validation", final_mode = TRUE)
+validate_final_analysis_config("Phase 6b exact-KFold validation", final_mode = TRUE)
 
 script_name <- "scripts/21_validation_on_scaleaware_student_DA.R"
-script_version <- "2026-06-19-v1-validation-io-manifest"
+script_version <- "2026-06-19-v2-exact-kfold-primary-validation"
 script_start_time <- Sys.time()
 validation_root <- file.path(output_root, "validation")
 dir.create(validation_root, recursive = TRUE, showWarnings = FALSE)
 
-master_path <- baseline_accruals_path()
+primary_row_da_path <- file.path(output_root, "tables", "final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv")
+secondary_psis_loo_da_path <- baseline_accruals_path()
+finite_gate_path <- file.path(output_root, "tables", "table_DA_finite_gate_decision.csv")
+model_inclusion_gate_path <- file.path(output_root, "tables", "table_model_primary_inclusion_gate.csv")
 ep_sample_path <- file.path(input_winsor_root, "tables", "final_common_ex_post_sample_winsor.csv")
 rt_sample_path <- file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv")
 data_path <- data_path
 
-if (!file.exists(master_path)) stop("[BLOCKER] Missing current-root DA file: ", master_path)
+if (!file.exists(primary_row_da_path)) stop("[BLOCKER] Missing primary exact row-KFold DA file: ", primary_row_da_path)
+if (!file.exists(finite_gate_path)) stop("[BLOCKER] Missing DA finite gate decision before validation: ", finite_gate_path)
+if (!file.exists(model_inclusion_gate_path)) stop("[BLOCKER] Missing model primary inclusion gate before validation: ", model_inclusion_gate_path)
 if (!file.exists(ep_sample_path)) stop("[BLOCKER] Missing winsor ex-post sample: ", ep_sample_path)
 if (!file.exists(rt_sample_path)) stop("[BLOCKER] Missing winsor no-lookahead sample: ", rt_sample_path)
 if (!file.exists(data_path)) stop("[BLOCKER] Raw data workbook missing: ", data_path)
@@ -38,7 +44,19 @@ git_commit_or_na <- function() {
   tryCatch(system("git rev-parse HEAD", intern = TRUE)[1], error = function(e) NA_character_)
 }
 
-master_df <- read.csv(master_path, stringsAsFactors = FALSE)
+finite_gate <- read.csv(finite_gate_path, stringsAsFactors = FALSE)
+finite_decision <- if ("Gate_Decision" %in% names(finite_gate)) finite_gate$Gate_Decision[1] else if ("gate_decision" %in% names(finite_gate)) finite_gate$gate_decision[1] else NA_character_
+passable_finite_decisions <- c("PASS", "PASS_WITH_STRUCTURAL_NA_ONLY", "WARN_SECONDARY_NONFINITE_ONLY")
+if (!finite_decision %in% passable_finite_decisions) {
+  stop("[BLOCKER] DA finite gate is not passable for primary validation: ", finite_decision)
+}
+model_inclusion_gate <- read.csv(model_inclusion_gate_path, stringsAsFactors = FALSE)
+if (!"Primary_Inclusion_Decision" %in% names(model_inclusion_gate)) {
+  stop("[BLOCKER] Model inclusion gate lacks Primary_Inclusion_Decision: ", model_inclusion_gate_path)
+}
+
+primary_row_df <- read.csv(primary_row_da_path, stringsAsFactors = FALSE)
+secondary_psis_loo_df <- if (file.exists(secondary_psis_loo_da_path)) read.csv(secondary_psis_loo_da_path, stringsAsFactors = FALSE) else NULL
 df_ep_sample <- read.csv(ep_sample_path, stringsAsFactors = FALSE)
 df_rt_sample <- read.csv(rt_sample_path, stringsAsFactors = FALSE)
 df_raw <- readxl::read_excel(data_path, sheet = "Sheet1")
@@ -61,13 +79,16 @@ df_raw_leads <- df_raw %>%
   ungroup() %>%
   select(company, year, A, NI, ROA, CFO, NI_lead, ROA_lead, A_lead, CFO_lead_raw)
 
-add_metadata <- function(df) {
+add_metadata <- function(df, da_source, validation_input_class, primary_allowed, input_path) {
   df %>%
     mutate(
       Prior_Set_ID = prior_set_id,
       Likelihood_Family = likelihood_family,
       Model_Structure = model_structure,
-      DA_Source = "scale-aware Student-t baseline",
+      DA_Source = da_source,
+      Validation_Input_Class = validation_input_class,
+      Primary_Inference_Allowed = primary_allowed,
+      Validation_Input_Path = input_path,
       Output_Root = output_root
     )
 }
@@ -86,8 +107,8 @@ empty_validation_results <- function() {
     p_value = numeric(),
     R2 = numeric(),
     Adj_R2 = numeric(),
-    N_Obs = integer(),
-    stringsAsFactors = FALSE
+            N_Obs = integer(),
+            stringsAsFactors = FALSE
   )
 }
 
@@ -143,7 +164,39 @@ add_validation_debug <- function(space, suffix, df_merged, candidate_predictors,
 }
 
 
-run_validation <- function(space_name, sample_df, suffix) {
+with_suffixed_da_columns <- function(df, suffix) {
+  base_to_suffix <- c(
+    NDA_mean_stacked = paste0("NDA_mean_stacked_", suffix, "_winsor"),
+    NDA_sd_epred_stacked = paste0("NDA_sd_epred_stacked_", suffix, "_winsor"),
+    NDA_sd_predict_stacked = paste0("NDA_sd_predict_stacked_", suffix, "_winsor"),
+    DA_raw_stacked = paste0("DA_raw_stacked_", suffix, "_winsor"),
+    DA_z_estimation_stacked = paste0("DA_z_estimation_stacked_", suffix, "_winsor"),
+    DA_z_predictive_stacked = paste0("DA_z_predictive_stacked_", suffix, "_winsor"),
+    DA_tail_flag_95 = paste0("DA_tail_flag_95_", suffix, "_winsor"),
+    DA_tail_flag_98 = paste0("DA_tail_flag_98_", suffix, "_winsor")
+  )
+  for (base in names(base_to_suffix)) {
+    out_name <- base_to_suffix[[base]]
+    if (base %in% names(df) && !out_name %in% names(df)) df[[out_name]] <- df[[base]]
+  }
+  abs_map <- c(
+    DA_raw_stacked = paste0("Abs_DA_raw_stacked_", suffix, "_winsor"),
+    DA_z_estimation_stacked = paste0("Abs_DA_z_estimation_stacked_", suffix, "_winsor"),
+    DA_z_predictive_stacked = paste0("Abs_DA_z_predictive_stacked_", suffix, "_winsor")
+  )
+  for (base in names(abs_map)) {
+    out_name <- abs_map[[base]]
+    if (base %in% names(df) && !out_name %in% names(df)) df[[out_name]] <- abs(df[[base]])
+  }
+  df
+}
+
+filter_validation_master <- function(df, space_name, suffix) {
+  if ("target_space" %in% names(df)) df <- df[df$target_space == space_name, , drop = FALSE]
+  with_suffixed_da_columns(df, suffix)
+}
+
+run_validation <- function(space_name, sample_df, suffix, master_df) {
   df_merged <- sample_df %>%
     select(company, year, industry, Size, ROA_curr, revenue_growth, A_lag) %>%
     # Drop columns already taken from the sample before joining master_df.
@@ -159,9 +212,9 @@ run_validation <- function(space_name, sample_df, suffix) {
       future_CFO = CFO_lead_raw / A,
       future_Earnings = NI_lead / A,
       future_ROA = ifelse(A_lead > 0, NI_lead / A_lead, NA_real_),
-      abs_DA_Jones_OLS_winsor = abs(DA_Jones_OLS_winsor),
-      abs_DA_ModJones_OLS_winsor = abs(DA_ModJones_OLS_winsor),
-      abs_DA_PerfModJones_OLS_winsor = abs(DA_PerfModJones_OLS_winsor)
+      abs_DA_Jones_OLS_winsor = if ("DA_Jones_OLS_winsor" %in% names(.)) abs(DA_Jones_OLS_winsor) else NA_real_,
+      abs_DA_ModJones_OLS_winsor = if ("DA_ModJones_OLS_winsor" %in% names(.)) abs(DA_ModJones_OLS_winsor) else NA_real_,
+      abs_DA_PerfModJones_OLS_winsor = if ("DA_PerfModJones_OLS_winsor" %in% names(.)) abs(DA_PerfModJones_OLS_winsor) else NA_real_
     )
 
   candidate_predictors <- c(
@@ -269,11 +322,23 @@ run_validation <- function(space_name, sample_df, suffix) {
   do.call(rbind, results)
 }
 
-validation_results <- bind_rows(
-  run_validation("ex_post", df_ep_sample, "ep"),
-  run_validation("real_time", df_rt_sample, "rt")
-) %>%
-  add_metadata()
+primary_rt_master <- filter_validation_master(primary_row_df, "real_time", "rt")
+if (nrow(primary_rt_master) == 0) {
+  stop("[BLOCKER] Primary exact row-KFold DA lacks real_time rows for no-lookahead validation: ", primary_row_da_path)
+}
+primary_validation_results <- run_validation("real_time", df_rt_sample, "rt", primary_rt_master) %>%
+  add_metadata("exact_row_kfold", "primary_exact_row_kfold", TRUE, primary_row_da_path)
+
+secondary_validation_results <- data.frame()
+if (!is.null(secondary_psis_loo_df)) {
+  secondary_validation_results <- bind_rows(
+    run_validation("ex_post", df_ep_sample, "ep", filter_validation_master(secondary_psis_loo_df, "ex_post", "ep")),
+    run_validation("real_time", df_rt_sample, "rt", filter_validation_master(secondary_psis_loo_df, "real_time", "rt"))
+  ) %>%
+    add_metadata("secondary_psis_loo", "secondary_psis_loo", FALSE, secondary_psis_loo_da_path)
+}
+
+validation_results <- bind_rows(primary_validation_results, secondary_validation_results)
 
 if (length(validation_debug_rows) > 0) {
   write.csv(bind_rows(validation_debug_rows),
@@ -296,7 +361,10 @@ write.csv(weighted_df, file.path(validation_root, "table_precision_weighted_vali
 write.csv(validation_results, file.path(validation_root, "table_validation_comparison_summary_scaleaware_student.csv"), row.names = FALSE)
 
 validation_manifest_paths <- c(
-  master_path,
+  primary_row_da_path,
+  secondary_psis_loo_da_path,
+  finite_gate_path,
+  model_inclusion_gate_path,
   ep_sample_path,
   rt_sample_path,
   data_path,
@@ -312,24 +380,26 @@ validation_io_manifest <- data.frame(
   End_Time = as.character(script_end_time),
   Runtime_Seconds = as.numeric(difftime(script_end_time, script_start_time, units = "secs")),
   Git_Commit = git_commit_or_na(),
-  Classification = c(rep("input", 4), rep("output", 3)),
+  Classification = c(rep("input", 7), rep("output", 3)),
   Path = validation_manifest_paths,
   Exists = file.exists(validation_manifest_paths),
   Size = vapply(validation_manifest_paths, file_size_or_na, numeric(1)),
   MTime = vapply(validation_manifest_paths, mtime_or_na, character(1)),
   Hash = vapply(validation_manifest_paths, file_hash_or_na, character(1)),
-  Primary_Secondary = "primary_validation_after_gates",
+  Primary_Secondary = c("primary_exact_row_kfold", "secondary_psis_loo", "gate", "gate", "input", "input", "input", rep("output", 3)),
   stringsAsFactors = FALSE
 )
 write.csv(validation_io_manifest, file.path(validation_root, "table_validation_io_manifest.csv"), row.names = FALSE)
 
 writeLines(c(
-  "Phase 6b validation on scale-aware Student-t DA",
-  sprintf("DA source: %s", master_path),
+  "Phase 6b validation on exact-KFold DA",
+  sprintf("Primary DA source: %s", primary_row_da_path),
+  sprintf("Secondary PSIS/LOO DA source: %s", ifelse(file.exists(secondary_psis_loo_da_path), secondary_psis_loo_da_path, "not available")),
+  sprintf("DA finite gate: %s", finite_decision),
   sprintf("Prior set: %s", prior_set_id),
   sprintf("Likelihood family: %s", likelihood_family),
   sprintf("Model structure: %s", model_structure),
-  "Validation tables are rerun from the current-root DA file and do not reuse old wide-prior Gaussian validation outputs."
+  "Primary validation uses the exact row-KFold DA from script 31. PSIS/LOO DA, when present, is labelled secondary and Primary_Inference_Allowed = FALSE."
 ), file.path(validation_root, "phase6b_validation_scaleaware_student_notes.txt"))
 
-cat("\n[SUCCESS] Phase 6b validation on current-root DA completed.\n")
+cat("\n[SUCCESS] Phase 6b validation on primary exact row-KFold DA completed.\n")

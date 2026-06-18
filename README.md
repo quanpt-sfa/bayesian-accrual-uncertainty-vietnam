@@ -50,7 +50,7 @@ The pipeline reads `Sheet1` for firm-year observations and `Sheet2` for metadata
 13. `28` row-level exact K-fold
 14. `31` primary exact-KFoldW DA construction from completed-run pins
 15. `32` finite-output gate for exact-KFold DA
-16. `21` validation on baseline DA
+16. `21` primary validation on exact row-KFold DA
 17. `30` new-firm predictive integration audit as a reporting gate
 18. `scripts/temp/22_chapter3_methods_tables.R` manuscript table export
 
@@ -58,7 +58,7 @@ Step `07` fits the winsorized BRMS configurations and can also backfill diagnost
 
 Full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations. Exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The 4000/1000 baseline setting is intentional, not an error; run manifests should record the actual sampler settings used by each branch. Heavy steps are skipped only with explicit warnings unless `ACCRUAL_RUN_HEAVY=TRUE`.
 
-The row-vs-grouped exact K-fold comparison is primary RQ1 evidence. Script `10_construct_uncertainty_adjusted_DA.R` remains the secondary PSIS/LOO DA constructor. Script `31_construct_exact_kfold_DA.R` is the primary exact-KFoldW DA constructor for RQ2 and reads explicit run-root environment variables or `LATEST_COMPLETED_RUN.txt` pins, never moving `LATEST_RUN.txt`, for primary inference. `LATEST_RUN.txt` is operational only and is not valid provenance for primary inference. Script `32_audit_DA_finite_outputs.R` is a hard finite-output gate before RQ2/export. LOFO is a robustness branch and PSIS reliability is a secondary diagnostics branch; neither is required by the default main target. The new-firm predictive integration audit gates Firm-RE out-of-firm posterior predictive tail flags before manuscript export.
+The row-vs-grouped exact K-fold comparison is primary RQ1 evidence. Script `10_construct_uncertainty_adjusted_DA.R` remains the secondary PSIS/LOO DA constructor, including for secondary validation panels only. Script `31_construct_exact_kfold_DA.R` is the primary exact-KFoldW DA constructor for RQ2 and reads explicit run-root environment variables or `LATEST_COMPLETED_RUN.txt` pins, never moving `LATEST_RUN.txt`, for primary inference. Script `21_validation_on_scaleaware_student_DA.R` uses the row exact-KFold DA as the primary validation input and labels any PSIS/LOO validation output as secondary. `LATEST_RUN.txt` is operational only and is not valid provenance for primary inference. Script `32_audit_DA_finite_outputs.R` is a hard finite-output gate before RQ2/export. LOFO is a robustness branch and PSIS reliability is a secondary diagnostics branch; neither is required by the default main target. The new-firm predictive integration audit gates Firm-RE out-of-firm posterior predictive tail flags before manuscript export.
 
 ## Optional targets
 
@@ -92,9 +92,9 @@ The BRMS simulation stages `26` and `27` are computationally heavy and are skipp
 
 ## Exact K-fold and diagnostics
 
-Script `13` writes `out/interim/winsor/kfold_firm/LATEST_COMPLETED_RUN.txt` only after a primary-eligible completed grouped exact K-fold refit. Script `28` builds an exact row-level K-fold version of the winsorized stack under `out/interim/winsor/row_exact_kfold/` and writes `out/interim/winsor/row_exact_kfold/LATEST_COMPLETED_RUN.txt` only after a full, primary-eligible completed run. Preflight, FAST_MODE, failed, and partial/filtered runs do not update completed-run pins.
+Script `13` writes `out/interim/winsor/kfold_firm/LATEST_COMPLETED_RUN.txt` only after a primary-eligible completed grouped exact K-fold refit. Script `28` builds an exact row-level K-fold version of the winsorized stack under `out/interim/winsor/row_exact_kfold/` and writes `out/interim/winsor/row_exact_kfold/LATEST_COMPLETED_RUN.txt` only after a full, primary-eligible completed run. Preflight, FAST_MODE, failed, and partial/filtered runs do not update completed-run pins. Scripts `13` and `28` also write reviewer-grade input/output manifests with file size, mtime, MD5 hash, row counts where applicable, run-root fields, and completed-pin fields.
 
-Script `31` constructs exact-KFoldW DA outputs from the completed grouped and row exact K-fold run pins, or from explicit `ACCRUAL_GROUPED_KFOLD_RUN_ROOT` and `ACCRUAL_ROW_KFOLD_RUN_ROOT` values. Its primary outputs are `final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv`, `final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv`, and provenance/gate tables under `out/interim/winsor/tables/`, including file-size/mtime/hash manifests and `table_model_primary_inclusion_gate.csv`.
+Script `31` constructs exact-KFoldW DA outputs from the completed grouped and row exact K-fold run pins, or from explicit `ACCRUAL_GROUPED_KFOLD_RUN_ROOT` and `ACCRUAL_ROW_KFOLD_RUN_ROOT` values. It refuses old or stale run manifests that lack explicit `Completed_Run_Pin_Eligible = TRUE`. Its primary outputs are `final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv`, `final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv`, and provenance/gate tables under `out/interim/winsor/tables/`, including file-size/mtime/hash manifests and `table_model_primary_inclusion_gate.csv`.
 
 Primary model inclusion is explicit. Full-sample MCMC `PASS`/`OK` models may enter primary exact-KFold DA if exact-refit reliability is acceptable. `FAIL` or `LOW_RELIABILITY` models are excluded. `REVIEW`, `CAUTION`, or `PSIS_REVIEW_REQUIRED` models may remain only with the explicit `MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS` decision in `table_model_primary_inclusion_gate.csv`; PSIS/LOO weights from script `09` are labelled secondary.
 

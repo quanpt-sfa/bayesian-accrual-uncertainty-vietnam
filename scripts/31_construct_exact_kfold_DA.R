@@ -76,7 +76,10 @@ validate_grouped_run <- function(root) {
   run_mode <- if ("Run_Mode" %in% names(manifest)) manifest$Run_Mode[1] else NA_character_
   preflight <- if ("Preflight_Only" %in% names(manifest)) isTRUE(as.logical(manifest$Preflight_Only[1])) else FALSE
   partial <- if ("Partial_Run" %in% names(manifest)) isTRUE(as.logical(manifest$Partial_Run[1])) else FALSE
-  pin_ok <- if ("Completed_Run_Pin_Eligible" %in% names(manifest)) isTRUE(as.logical(manifest$Completed_Run_Pin_Eligible[1])) else TRUE
+  if (!"Completed_Run_Pin_Eligible" %in% names(manifest)) {
+    stop("[BLOCKER] Missing Completed_Run_Pin_Eligible in grouped exact K-fold manifest: ", manifest_path)
+  }
+  pin_ok <- isTRUE(as.logical(manifest$Completed_Run_Pin_Eligible[1]))
   K_manifest <- if ("K" %in% names(manifest)) as.integer(manifest$K[1]) else NA_integer_
   seed_manifest <- if ("Seed" %in% names(manifest)) as.integer(manifest$Seed[1]) else NA_integer_
   if ("Kfold_Run_Root" %in% names(manifest) && !same_normalized_path(manifest$Kfold_Run_Root[1], root)) {
@@ -96,7 +99,10 @@ validate_row_run <- function(root) {
   run_mode <- if ("Run_Mode" %in% names(manifest)) manifest$Run_Mode[1] else NA_character_
   preflight <- if ("Preflight_Only" %in% names(manifest)) isTRUE(as.logical(manifest$Preflight_Only[1])) else FALSE
   primary_allowed <- if ("Primary_Inference_Allowed" %in% names(manifest)) isTRUE(as.logical(manifest$Primary_Inference_Allowed[1])) else FALSE
-  pin_ok <- if ("Completed_Run_Pin_Eligible" %in% names(manifest)) isTRUE(as.logical(manifest$Completed_Run_Pin_Eligible[1])) else primary_allowed
+  if (!"Completed_Run_Pin_Eligible" %in% names(manifest)) {
+    stop("[BLOCKER] Missing Completed_Run_Pin_Eligible in row exact K-fold manifest: ", manifest_path)
+  }
+  pin_ok <- isTRUE(as.logical(manifest$Completed_Run_Pin_Eligible[1]))
   K_manifest <- if ("K" %in% names(manifest)) as.integer(manifest$K[1]) else NA_integer_
   seed_manifest <- if ("Seed" %in% names(manifest)) as.integer(manifest$Seed[1]) else NA_integer_
   if ("Row_KFold_Root" %in% names(manifest) && !same_normalized_path(manifest$Row_KFold_Root[1], root)) {
