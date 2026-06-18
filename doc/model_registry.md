@@ -1,5 +1,7 @@
 # Model registry
 
+The active methodology uses a ten-model space, `M01` through `M10`.
+
 ## Core models
 
 - `M01`: Jones model.

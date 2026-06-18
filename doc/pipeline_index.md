@@ -37,6 +37,8 @@ Active scripts use numeric prefixes only. No letter suffixes are used in script 
 
 Sensitivity phases 14-20 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `ACCRUAL_DRY_RUN=FALSE` and the relevant phase is launched intentionally.
 
+Sampler protocol: full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations; exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons; FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The baseline 4000/1000 setting is intentional, while 3000/1000 is the primary validation-refit protocol. Manifests should record actual sampler settings.
+
 Optional artifact-level sanity checks live under `tests/`. Use `tests/test_kfold_weights_sanity.R` to inspect Step 13 exact grouped K-fold weights for a completed run. Override the default artifact root with `ACCRUAL_KFOLD_CHECK_ROOT` when needed.
 
 Scripts 23-27 support the RQ3 leakage-mechanism checks; script 23 is a helper and is not run directly by `run.R`. Scripts 28-29 address reviewer method-matching and reliability concerns: script 28 compares exact row-level K-fold weights against Step 13 firm-grouped K-fold weights, while script 29 centralizes Pareto-k reliability evidence for PSIS-LOO and optional simulation diagnostics.

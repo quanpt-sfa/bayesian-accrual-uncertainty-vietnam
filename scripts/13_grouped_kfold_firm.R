@@ -69,8 +69,8 @@ partial_run <- length(target_space_filter) > 0 || length(model_id_filter) > 0 ||
 
 if (run_mode == "FAST_MODE") {
   chains <- 2
-  iter <- 2000
-  warmup <- 1000
+  iter <- 1000
+  warmup <- 500
 } else {
   chains <- 4
   iter <- 3000

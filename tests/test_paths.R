@@ -1,7 +1,6 @@
 required_dirs <- c(
   "scripts",
   "data/raw",
-  "R",
   "out",
   "accruals",
   "reports",

@@ -36,3 +36,4 @@ renv/cellar/
 .Rhistory
 .Rproj.user/
 __pycache__/
+*.pyc

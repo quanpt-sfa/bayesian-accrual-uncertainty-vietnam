@@ -8,7 +8,6 @@ This repository organizes the accrual uncertainty pipeline into a reproducible r
 
 - `scripts/`: active pipeline scripts.
 - `data/raw/data.xlsx`: canonical local workbook path.
-- `R/`: lightweight helper modules for orchestration and path access.
 - `out/`: intermediate tables, fits, diagnostics, logs, and manifests.
 - `accruals/`: final DA and NDA output tables.
 - `reports/`: final narrative reports and session metadata.
@@ -50,6 +49,8 @@ The baseline sequence is:
 14. `21` validation on baseline DA
 
 Step `07` fits the winsorized BRMS configurations and can also backfill diagnostics from the winsorized input samples plus existing fitted `.rds` objects when `ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE`. Its diagnostics table records `N_Obs` and `N_Firms` from the input winsorized sample, not from `fit$data`, so pooled models retain correct firm counts. Pareto-k warnings do not fail Step `07`; they are carried forward as `PSIS_REVIEW_REQUIRED`, and Step `09` or grouped K-fold should review those models before relying on PSIS-LOO.
+
+Full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations. Exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The 4000/1000 baseline setting is intentional, not an error; run manifests should record the actual sampler settings used by each branch.
 
 ## Sensitivity pipeline
 
@@ -155,4 +156,4 @@ Rscript run.R full
 
 ## Computational requirements
 
-The light setup, sample-building, and manifest scripts are inexpensive. The `07`, `13`, `15`, `26`, `27`, and `28` stages can be computationally expensive because they trigger Bayesian fitting, simulation fitting, or exact K-fold refits. The repository entrypoint skips those stages unless `ACCRUAL_RUN_HEAVY=TRUE`.
+The light setup, sample-building, and manifest scripts are inexpensive. The `07`, `13`, `15`, `26`, `27`, and `28` stages can be computationally expensive because they trigger Bayesian fitting, simulation fitting, or exact K-fold refits. The repository entrypoint skips those stages unless `ACCRUAL_RUN_HEAVY=TRUE`. FAST_MODE is for smoke checks only and is not valid for primary RQ1/RQ2 inference.

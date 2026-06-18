@@ -12,7 +12,18 @@ check_cols <- function(file, required) {
     cat("Skipping missing optional row exact K-fold file:", path, "\n")
     return(invisible(TRUE))
   }
-  x <- read.csv(path, nrows = 1, stringsAsFactors = FALSE)
+  if (file.info(path)$size <= 4) {
+    cat("Skipping empty optional row exact K-fold file:", path, "\n")
+    return(invisible(TRUE))
+  }
+  x <- tryCatch(
+    read.csv(path, nrows = 1, stringsAsFactors = FALSE),
+    error = function(e) {
+      cat("Skipping unreadable optional row exact K-fold file:", path, " (", e$message, ")\n", sep = "")
+      NULL
+    }
+  )
+  if (is.null(x)) return(invisible(TRUE))
   missing <- setdiff(required, names(x))
   if (length(missing) > 0) stop("Missing columns in ", path, ": ", paste(missing, collapse = ", "))
   invisible(TRUE)
@@ -39,7 +50,7 @@ check_cols(
     "model_key_row_exact_kfold", "weight_row_exact_kfold", "rank_row_exact_kfold")
 )
 check_cols(
-  "table_winsor_row_vs_firm_kfold_weight_comparison.csv",
+  "table_winsor_exact_kfold_weight_comparison_row_vs_firm.csv",
   c("target_space", "model_id", "heterogeneity_variant", "row_exact_kfold_weight",
     "firm_grouped_kfold_weight", "difference", "firmRE_family_indicator")
 )

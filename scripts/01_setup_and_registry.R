@@ -12,7 +12,7 @@ ensure_baseline_dirs()
 # 2. Define the Model Registry data frame
 registry_data <- data.frame(
   Model_ID = c(
-    "M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08", "M09", "M10", "M11", "M12"
+    "M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08", "M09", "M10"
   ),
   Model_Name = c(
     "Jones", 
@@ -24,9 +24,7 @@ registry_data <- data.frame(
     "BallShivakumar_Style", 
     "Extended_Perf_Vol", 
     "RealTime_NoLead", 
-    "OperatingCycle",
-    "Larcker_Richardson_BM_Lev",
-    "Lifecycle_Age"
+    "OperatingCycle"
   ),
   Literature_Family = c(
     "Jones (1991)", 
@@ -38,11 +36,9 @@ registry_data <- data.frame(
     "Ball & Shivakumar (2005)", 
     "Extended Performance & Volatility", 
     "Real-time No-lead", 
-    "Operating-cycle Extended", 
-    "Larcker & Richardson (2004)",
-    "Lifecycle Accruals"
+    "Operating-cycle Extended"
   ),
-  Dependent_Variable = rep("TA_scaled", 12),
+  Dependent_Variable = rep("TA_scaled", 10),
   Formula = c(
     "TA_scaled ~ inv_A_lag + dREV_scaled + PPE_scaled",
     "TA_scaled ~ inv_A_lag + dREV_dREC_scaled + PPE_scaled",
@@ -53,9 +49,7 @@ registry_data <- data.frame(
     "TA_scaled ~ CFO_curr_scaled + NEG_CFO + CFO_curr_scaled:NEG_CFO + dREV_scaled + PPE_scaled",
     "TA_scaled ~ inv_A_lag + dREV_dREC_scaled + PPE_scaled + ROA_lag + Size + sd_REV + sd_CFO",
     "TA_scaled ~ CFO_lag_scaled + CFO_curr_scaled + dREV_scaled + PPE_scaled + ROA_lag + Size",
-    "TA_scaled ~ inv_A_lag + dREV_dREC_scaled + PPE_scaled + ROA_lag + operating_cycle + sales_growth",
-    "TA_scaled ~ inv_A_lag + dREV_dREC_scaled + PPE_scaled + book_to_market + Leverage",
-    "TA_scaled ~ inv_A_lag + dREV_dREC_scaled + PPE_scaled + firm_age"
+    "TA_scaled ~ inv_A_lag + dREV_dREC_scaled + PPE_scaled + ROA_lag + operating_cycle + sales_growth"
   ),
   Required_Variables = c(
     "inv_A_lag, dREV_scaled, PPE_scaled",
@@ -67,29 +61,25 @@ registry_data <- data.frame(
     "CFO_curr_scaled, NEG_CFO, dREV_scaled, PPE_scaled",
     "inv_A_lag, dREV_dREC_scaled, PPE_scaled, ROA_lag, Size, sd_REV, sd_CFO",
     "CFO_lag_scaled, CFO_curr_scaled, dREV_scaled, PPE_scaled, ROA_lag, Size",
-    "inv_A_lag, dREV_dREC_scaled, PPE_scaled, ROA_lag, operating_cycle, sales_growth",
-    "inv_A_lag, dREV_dREC_scaled, PPE_scaled, book_to_market, Leverage",
-    "inv_A_lag, dREV_dREC_scaled, PPE_scaled, firm_age"
+    "inv_A_lag, dREV_dREC_scaled, PPE_scaled, ROA_lag, operating_cycle, sales_growth"
   ),
   Uses_CFO_lead = c(
-    "FALSE", "FALSE", "FALSE", "TRUE", "TRUE", "TRUE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE", "FALSE"
+    "FALSE", "FALSE", "FALSE", "TRUE", "TRUE", "TRUE", "FALSE", "FALSE", "FALSE", "FALSE"
   ),
   Lookahead_Status = c(
-    "No-lookahead", "No-lookahead", "No-lookahead", "Lookahead", "Lookahead", "Lookahead", "No-lookahead", "No-lookahead", "No-lookahead", "No-lookahead", "No-lookahead", "No-lookahead"
+    "No-lookahead", "No-lookahead", "No-lookahead", "Lookahead", "Lookahead", "Lookahead", "No-lookahead", "No-lookahead", "No-lookahead", "No-lookahead"
   ),
-  Heterogeneity_Level = rep("Industry FE / Firm RE", 12),
+  Heterogeneity_Level = rep("Industry FE / Firm RE", 10),
   Intended_Space = c(
-    "both", "both", "both", "ex_post_measurement_space", "ex_post_measurement_space", "ex_post_measurement_space", "both", "both", "real_time_prediction_space", "both", "both", "both"
+    "both", "both", "both", "ex_post_measurement_space", "ex_post_measurement_space", "ex_post_measurement_space", "both", "both", "real_time_prediction_space", "both"
   ),
   Feasible_With_This_Data = c(
-    "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "FALSE", "FALSE"
+    "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE"
   ),
   Infeasible_Reason = c(
     "", "", "", "", "", "", "", 
     "", # Note: M08 has leverage omitted to make it feasible
-    "", "", 
-    "Requires book_to_market and Leverage which do not exist in the dataset (R3)", 
-    "Requires firm_age which does not exist in the dataset (R3)"
+    "", ""
   ),
   Rationale = c(
     "Baseline Jones model separating normal/abnormal accruals via changes in revenue and PPE.",
@@ -101,9 +91,7 @@ registry_data <- data.frame(
     "Incorporates asymmetric loss recognition by interacting current cash flows with negative cash flow indicator.",
     "Extended controls for size and volatility. Omitted Leverage to remain feasible.",
     "Real-time McNichols variant omitting CFO_lead to avoid look-ahead bias.",
-    "Jones/McNichols performance-matched variant extended with a reduced proxy for operating cycle.",
-    "Larcker & Richardson (2004) model extending Modified Jones with Book-to-Market and Leverage to control for growth and risk.",
-    "Model extending Modified Jones with firm age to control for lifecycle stages."
+    "Jones/McNichols performance-matched variant extended with a reduced proxy for operating cycle."
   ),
   Notes = c(
     "Fully feasible.",
@@ -115,9 +103,7 @@ registry_data <- data.frame(
     "Fully feasible.",
     "Modified version: Leverage is omitted to satisfy feasibility. Marked feasible with this modification.",
     "Designed specifically for real_time_prediction_space.",
-    "Modified version: operating_cycle constructed as a reduced proxy omitting payables. Marked feasible.",
-    "Infeasible: Book-to-market and Leverage variables are completely unavailable in this dataset.",
-    "Infeasible: Firm age/founding date is completely unavailable in this dataset."
+    "Modified version: operating_cycle constructed as a reduced proxy omitting payables. Marked feasible."
   ),
   stringsAsFactors = FALSE
 )
@@ -198,7 +184,7 @@ Author: Antigravity
   same dependent variable (TA_scaled) while preserving the cash-flow matching predictors.
 
 (b) Feasibility Analysis of Candidate Models with data.xlsx:
-- Feasible Models (M01 - M10):
+- Active ten-model space (M01 - M10):
   - M01_Jones, M02_ModJones, M03_PerfModJones: Feasible using A, REV, REC, PPE, ROA.
   - M04_DD_TotalAccruals, M05_McNichols, M06_McNichols_Perf: Feasible using CFO (and CFO lags/leads),
     dREV, PPE, and ROA. CFO_lead restricts them to the ex_post_measurement_space.
@@ -208,12 +194,6 @@ Author: Antigravity
   - M09_RealTime_NoLead: Feasible using no-lead predictors, designed for real-time prediction.
   - M10_OperatingCycle: Feasible using a reduced proxy for operating_cycle (REC/REV + INV/COGS) due to
     the lack of payables/purchases. Marked feasible under this reduced specification.
-
-- Infeasible Models:
-  - Larcker & Richardson (2004) Model: INFEASIBLE because it requires Book-to-Market and Leverage. 
-    Neither stock prices/market capitalization nor debt/liabilities columns exist in the dataset.
-  - Lifecycle Age Model: INFEASIBLE because it requires firm age or listing/founding date, which
-    are not present in the dataset.
 
 (c) Conformity to Global Rules:
 - Checked against R2 and R3. No book-to-market, Leverage, firm age, or returns are used.

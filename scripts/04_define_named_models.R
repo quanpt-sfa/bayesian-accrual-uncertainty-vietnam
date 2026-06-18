@@ -146,7 +146,6 @@ feasibility_overview <- registry %>%
     Stacking_Tier = case_when(
       Model_ID == "M08" ~ "ROBUSTNESS_M08",
       Model_ID == "M10" ~ "ROBUSTNESS_OPERATING_CYCLE",
-      Model_ID %in% c("M11", "M12") ~ "INFEASIBLE",
       TRUE ~ "CORE"
     ),
     In_ExPost_Stack = Model_ID %in% c(main_ex_post_ids, secondary_volatility_ids, secondary_operating_cycle_ids),
