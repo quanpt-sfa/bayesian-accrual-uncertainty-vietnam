@@ -36,8 +36,9 @@ ensure_recovery_dirs <- function(root = output_root) {
 
 simulate_accrual_panel_student_truth <- function(n_firms = 80, T = 7, sigma_firm = 0.10,
                                                  sigma_eps = 0.08, nu = 7,
-                                                 n_industries = 10, seed = 1) {
-  set.seed(seed)
+                                                 n_industries = 10,
+                                                 rng_context = "sim_brms_recovery_panel", rng_offset = 0L) {
+  set_accrual_seed(rng_context, offset = rng_offset)
   firms <- sprintf("F%04d", seq_len(n_firms))
   years <- seq_len(T)
   inds <- sprintf("IND%02d", seq_len(n_industries))
@@ -91,7 +92,7 @@ recovery_prior <- function() {
   )
 }
 
-fit_recovery_model <- function(df, chains, iter, warmup, cores, seed, adapt_delta, max_treedepth) {
+fit_recovery_model <- function(df, chains, iter, warmup, cores, rng_context, rng_offset, adapt_delta, max_treedepth) {
   brms::brm(
     formula = brms::bf(TA_scaled ~ inv_A_lag + dREV_dREC_scaled + PPE_scaled + ROA_lag + factor(year) + (1 | company)),
     data = df,
@@ -101,7 +102,7 @@ fit_recovery_model <- function(df, chains, iter, warmup, cores, seed, adapt_delt
     iter = iter,
     warmup = warmup,
     cores = cores,
-    seed = seed,
+    seed = accrual_seed_for(rng_context, offset = rng_offset),
     refresh = 0,
     silent = 2,
     save_pars = brms::save_pars(all = TRUE),
@@ -220,10 +221,15 @@ extract_diagnostics <- function(fit, T, sigma_firm, rep_id, n_firms, n_obs,
 run_one_recovery_replication <- function(T, sigma_firm, rep_id, n_firms, n_industries,
                                          sigma_eps, nu, chains, iter, warmup, cores,
                                          adapt_delta, max_treedepth, sd_zero_eps) {
-  base_seed <- accrual_seed("simulation")
-  seed <- base_seed + 700000 + as.integer(rep_id) + as.integer(T) * 1000 + round(sigma_firm * 10000)
-  df <- simulate_accrual_panel_student_truth(n_firms, T, sigma_firm, sigma_eps, nu, n_industries, seed)
-  fit <- fit_recovery_model(df, chains, iter, warmup, cores, seed + 31, adapt_delta, max_treedepth)
+  replication_offset <- 700000L + as.integer(rep_id) + as.integer(T) * 1000L + as.integer(round(sigma_firm * 10000))
+  df <- simulate_accrual_panel_student_truth(
+    n_firms, T, sigma_firm, sigma_eps, nu, n_industries,
+    rng_context = "sim_brms_recovery_panel", rng_offset = replication_offset
+  )
+  fit <- fit_recovery_model(
+    df, chains, iter, warmup, cores,
+    "sim_brms_recovery_fit", replication_offset + 31L, adapt_delta, max_treedepth
+  )
   truth <- attr(df, "truth")
   list(
     recovery = extract_recovery(fit, truth, T, sigma_firm, rep_id, n_firms, nrow(df), chains, iter, warmup, sd_zero_eps),

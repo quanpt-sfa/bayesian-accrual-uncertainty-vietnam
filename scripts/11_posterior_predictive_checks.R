@@ -9,7 +9,7 @@ library(dplyr)
 source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 
-set.seed(accrual_seed("baseline"))
+set_accrual_seed("baseline_posterior_predictive")
 
 final_path <- file.path(output_root, "tables", "final_uncertainty_adjusted_accruals_winsor.csv")
 ep_weights_path <- file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv")

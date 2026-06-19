@@ -15,7 +15,7 @@ validate_final_analysis_config("sensitivity DA construction", final_mode = TRUE)
 dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
 S <- as.integer(env_value("ACCRUAL_STACKING_MIXTURE_DRAWS", as.character(stacking_mixture_draws)))
 if (is.na(S) || S <= 0) S <- stacking_mixture_draws
-set.seed(accrual_seed("sensitivity"))
+set_accrual_seed("sensitivity_construct_da")
 
 scenarios <- selected_sensitivity_scenarios()
 weights_path <- file.path(sensitivity_root(), "tables", "sensitivity_stacking_weights_by_scenario.csv")

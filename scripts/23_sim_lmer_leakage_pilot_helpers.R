@@ -34,8 +34,9 @@ ensure_sim_dirs <- function(root = output_root) {
 }
 
 simulate_accrual_panel <- function(n_firms = 200, T = 7, sigma_firm = 0.10,
-                                   sigma_eps = 0.08, n_industries = 10, seed = accrual_seed("simulation")) {
-  set.seed(seed)
+                                   sigma_eps = 0.08, n_industries = 10,
+                                   rng_context = "sim_lmer_panel", rng_offset = 0L) {
+  set_accrual_seed(rng_context, offset = rng_offset)
   firms <- sprintf("F%04d", seq_len(n_firms))
   years <- seq_len(T)
   inds <- sprintf("IND%02d", seq_len(n_industries))
@@ -60,15 +61,16 @@ simulate_accrual_panel <- function(n_firms = 200, T = 7, sigma_firm = 0.10,
   df
 }
 
-make_row_folds <- function(df, K = 5, seed = accrual_seed("simulation")) {
-  set.seed(seed)
+make_row_folds <- function(df, K = 5, rng_context = "sim_lmer_row_folds", rng_offset = 0L) {
+  set_accrual_seed(rng_context, offset = rng_offset)
   sample(rep(seq_len(K), length.out = nrow(df)))
 }
 
-make_firm_folds <- function(df, K = 5, seed = accrual_seed("simulation")) {
+make_firm_folds <- function(df, K = 5, rng_context = "sim_lmer_firm_folds", rng_offset = 0L) {
   info <- unique(df[, c("company", "industry")])
   info$company <- as.character(info$company); info$industry <- as.character(info$industry)
-  set.seed(seed); info$u <- stats::runif(nrow(info))
+  set_accrual_seed(rng_context, offset = rng_offset)
+  info$u <- stats::runif(nrow(info))
   info <- info[order(info$industry, info$u), ]
   info$fold <- NA_integer_
   for (idx in split(seq_len(nrow(info)), info$industry)) info$fold[idx] <- rep(seq_len(K), length.out = length(idx))
@@ -114,9 +116,14 @@ score_fold <- function(train, test, fold_type = c("row", "group")) {
   )
 }
 
-score_cv <- function(df, fold_type = c("row", "group"), K = 5, seed = 1) {
+score_cv <- function(df, fold_type = c("row", "group"), K = 5,
+                     rng_context = "sim_lmer_cv", rng_offset = 0L) {
   fold_type <- match.arg(fold_type)
-  folds <- if (fold_type == "row") make_row_folds(df, K, seed) else make_firm_folds(df, K, seed)
+  folds <- if (fold_type == "row") {
+    make_row_folds(df, K, rng_context = paste0(rng_context, "_row"), rng_offset = rng_offset)
+  } else {
+    make_firm_folds(df, K, rng_context = paste0(rng_context, "_group"), rng_offset = rng_offset)
+  }
   fold_scores <- lapply(seq_len(K), function(k) score_fold(df[folds != k, ], df[folds == k, ], fold_type))
   singular_folds <- sum(vapply(fold_scores, function(z) isTRUE(z$singular_firmre[1]), logical(1)))
   sc <- do.call(rbind, fold_scores)
@@ -133,11 +140,13 @@ score_cv <- function(df, fold_type = c("row", "group"), K = 5, seed = 1) {
 
 run_one_replication <- function(T, sigma_firm, rep_id, K = 5, n_firms = 200,
                                 n_industries = 10, sigma_eps = 0.08) {
-  base_seed <- accrual_seed("simulation")
-  seed <- base_seed + 100000 + as.integer(rep_id) + as.integer(T) * 1000 + round(sigma_firm * 10000)
-  df <- simulate_accrual_panel(n_firms, T, sigma_firm, sigma_eps, n_industries, seed)
-  row <- score_cv(df, "row", K, seed + 11)
-  grp <- score_cv(df, "group", K, seed + 29)
+  replication_offset <- 100000L + as.integer(rep_id) + as.integer(T) * 1000L + as.integer(round(sigma_firm * 10000))
+  df <- simulate_accrual_panel(
+    n_firms, T, sigma_firm, sigma_eps, n_industries,
+    rng_context = "sim_lmer_panel", rng_offset = replication_offset
+  )
+  row <- score_cv(df, "row", K, rng_context = "sim_lmer_cv", rng_offset = replication_offset + 11L)
+  grp <- score_cv(df, "group", K, rng_context = "sim_lmer_cv", rng_offset = replication_offset + 29L)
   drow <- row$elpd_firmre - row$elpd_pooled
   dgrp <- grp$elpd_firmre - grp$elpd_pooled
   data.frame(

@@ -263,8 +263,11 @@ compute_exact_kfold_da <- function(df_sample, weights_df, source, target_space, 
   active <- clean_weights(weights_df, source, target_space)
   active$Draw_File <- vapply(seq_len(nrow(active)), function(i) draws_path_for(active[i, ], target_space), character(1))
   N <- nrow(df_sample)
-  set.seed(mixture_seed + match(target_space, c("ex_post", "real_time"), nomatch = 10L) +
-             ifelse(identical(source, "exact_row_kfold"), 1000L, 0L))
+  set_accrual_seed(
+    paste0("exact_kfold_da_", source, "_", target_space),
+    offset = match(target_space, c("ex_post", "real_time"), nomatch = 10L) +
+      ifelse(identical(source, "exact_row_kfold"), 1000L, 0L)
+  )
   sampled_model_indices <- sample(seq_len(nrow(active)), size = mixture_draws, replace = TRUE, prob = active$Weight)
   stacked_epred <- matrix(NA_real_, nrow = mixture_draws, ncol = N)
   stacked_predict <- matrix(NA_real_, nrow = mixture_draws, ncol = N)

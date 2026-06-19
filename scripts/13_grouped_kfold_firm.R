@@ -29,13 +29,12 @@ if (!run_mode %in% c("FULL_MODE", "FAST_MODE")) {
 }
 kfold_cfg <- accrual_kfold_config("grouped_firm", run_mode = run_mode)
 K <- kfold_cfg$K
-seed <- kfold_cfg$seed
 chains <- kfold_cfg$chains
 iter <- kfold_cfg$iter
 warmup <- kfold_cfg$warmup
 adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
-set.seed(seed)
+set_accrual_seed("grouped_kfold_script_start")
 
 run_id <- trimws(Sys.getenv("ACCRUAL_KFOLD_FIRM_RUN_ID", "default"))
 if (!nzchar(run_id)) run_id <- "default"
@@ -148,7 +147,7 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Max_Treedepth = max_treedepth,
     Sampler_Profile = kfold_cfg$sampler_profile,
     Config_Source = kfold_cfg$config_source,
-    Seed = seed,
+    Seed = accrual_seed("grouped_kfold"),
     ExPost_N_Obs = exp_n,
     ExPost_N_Firms = exp_firms,
     NoLookahead_N_Obs = rt_n,
@@ -507,7 +506,7 @@ main <- function() {
         },
         .groups = "drop"
       )
-    set.seed(seed)
+    set_accrual_seed("grouped_kfold_fold_assignment")
     ordered <- firm_summary %>%
       arrange(company) %>%
       mutate(Random_Order = runif(n()))
@@ -836,7 +835,10 @@ main <- function() {
       chains = chains,
       iter = iter,
       warmup = warmup,
-      seed = seed + fold_id
+      seed = accrual_seed_for(
+        paste0("grouped_kfold_expected_meta_", task$Target_Space, "_", task$Model_ID),
+        offset = fold_id
+      )
     )
 
     if (file.exists(score_cache_path)) {
@@ -990,7 +992,10 @@ main <- function() {
           iter = iter,
           warmup = warmup,
           control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
-          seed = seed + fold_id,
+          seed = accrual_seed_for(
+            paste0("grouped_kfold_refit_", task$Target_Space, "_", task$Model_ID, "_", task$Heterogeneity_Variant),
+            offset = fold_id
+          ),
           refresh = 500
         )
       }, error = function(e) e)
@@ -1589,7 +1594,7 @@ main <- function() {
     paste("Run_ID:", run_id),
     paste("Config_Tag:", config_tag),
     paste("Kfold_Run_Root:", kfold_run_root),
-    sprintf("Sampling settings: chains=%d iter=%d warmup=%d adapt_delta=%.2f max_treedepth=%d seed=%d", chains, iter, warmup, adapt_delta, max_treedepth, seed),
+    sprintf("Sampling settings: chains=%d iter=%d warmup=%d adapt_delta=%.2f max_treedepth=%d seed=%d", chains, iter, warmup, adapt_delta, max_treedepth, accrual_seed("grouped_kfold")),
     sprintf("Stratified_Grouped_KFold: %s (per-industry round-robin; every industry with >= K firms appears in every fold).", kfold_stratified_groups),
     sprintf("Ex-post observations=%d firms=%d.", nrow(df_ep), length(unique(df_ep$company))),
     sprintf("No-look-ahead observations=%d firms=%d.", nrow(df_rt), length(unique(df_rt$company))),

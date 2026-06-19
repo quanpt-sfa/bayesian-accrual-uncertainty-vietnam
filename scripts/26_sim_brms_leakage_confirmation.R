@@ -46,13 +46,14 @@ lpd_from_log_lik <- function(log_lik_matrix) {
 
 simulate_accrual_panel_bridge <- function(n_firms = 80, T = 7, sigma_firm = 0.10,
                                           sigma_eps = 0.08, n_industries = 10,
-                                          seed = 1, dgp_family = c("gaussian", "student"),
+                                          rng_context = "sim_brms_bridge_panel", rng_offset = 0L,
+                                          dgp_family = c("gaussian", "student"),
                                           dgp_nu = 7) {
   dgp_family <- match.arg(dgp_family)
   if (!is.finite(dgp_nu) || dgp_nu <= 2) {
     stop("[BLOCKER] ACCRUAL_SIM_BRMS_DGP_NU must be finite and > 2.")
   }
-  set.seed(seed)
+  set_accrual_seed(rng_context, offset = rng_offset)
 
   firms <- sprintf("F%04d", seq_len(n_firms))
   years <- seq_len(T)
@@ -155,7 +156,7 @@ brms_formula <- function(model_type = c("pooled", "firmre")) {
 }
 
 fit_brms_model <- function(df, model_type, prior_mode, chains, iter, warmup, cores,
-                           seed, adapt_delta, max_treedepth) {
+                           rng_context, rng_offset, adapt_delta, max_treedepth) {
   brms::brm(
     formula = brms_formula(model_type),
     data = df,
@@ -165,7 +166,7 @@ fit_brms_model <- function(df, model_type, prior_mode, chains, iter, warmup, cor
     iter = iter,
     warmup = warmup,
     cores = cores,
-    seed = seed,
+    seed = accrual_seed_for(rng_context, offset = rng_offset),
     refresh = 0,
     silent = 2,
     save_pars = brms::save_pars(all = TRUE),
@@ -202,17 +203,17 @@ row_loo_score <- function(fit_pooled, fit_firmre) {
 }
 
 group_kfold_score <- function(df, K, prior_mode, chains, iter, warmup, cores,
-                              seed, adapt_delta, max_treedepth) {
-  folds <- make_firm_folds(df, K = K, seed = seed)
+                              rng_context, rng_offset, adapt_delta, max_treedepth) {
+  folds <- make_firm_folds(df, K = K, rng_context = paste0(rng_context, "_folds"), rng_offset = rng_offset)
   lpd_p <- numeric(0)
   lpd_r <- numeric(0)
   for (k in seq_len(K)) {
     train <- df[folds != k, , drop = FALSE]
     test <- df[folds == k, , drop = FALSE]
     fit_p <- fit_brms_model(train, "pooled", prior_mode, chains, iter, warmup, cores,
-                            seed + 1000 + k, adapt_delta, max_treedepth)
+                            paste0(rng_context, "_pooled"), rng_offset + 1000L + k, adapt_delta, max_treedepth)
     fit_r <- fit_brms_model(train, "firmre", prior_mode, chains, iter, warmup, cores,
-                            seed + 2000 + k, adapt_delta, max_treedepth)
+                            paste0(rng_context, "_firmre"), rng_offset + 2000L + k, adapt_delta, max_treedepth)
     lpd_p <- c(lpd_p, lpd_from_log_lik(brms::log_lik(fit_p, newdata = test, allow_new_levels = TRUE)))
     lpd_r <- c(lpd_r, lpd_from_log_lik(brms::log_lik(fit_r, newdata = test, re_formula = NA,
                                                      allow_new_levels = TRUE)))
@@ -230,25 +231,25 @@ run_one_brms_replication <- function(T, sigma_firm, rep_id, K, n_firms, n_indust
                                      sigma_eps, dgp_family, dgp_nu, prior_mode,
                                      chains, iter, warmup, cores, adapt_delta,
                                      max_treedepth) {
-  base_seed <- accrual_seed("simulation")
-  seed <- base_seed + 900000 + as.integer(rep_id) + as.integer(T) * 1000 + round(sigma_firm * 10000)
+  replication_offset <- 900000L + as.integer(rep_id) + as.integer(T) * 1000L + as.integer(round(sigma_firm * 10000))
   df <- simulate_accrual_panel_bridge(
     n_firms = n_firms,
     T = T,
     sigma_firm = sigma_firm,
     sigma_eps = sigma_eps,
     n_industries = n_industries,
-    seed = seed,
+    rng_context = "sim_brms_bridge_panel",
+    rng_offset = replication_offset,
     dgp_family = dgp_family,
     dgp_nu = dgp_nu
   )
   fit_p <- fit_brms_model(df, "pooled", prior_mode, chains, iter, warmup, cores,
-                          seed + 11, adapt_delta, max_treedepth)
+                          "sim_brms_bridge_pooled", replication_offset + 11L, adapt_delta, max_treedepth)
   fit_r <- fit_brms_model(df, "firmre", prior_mode, chains, iter, warmup, cores,
-                          seed + 29, adapt_delta, max_treedepth)
+                          "sim_brms_bridge_firmre", replication_offset + 29L, adapt_delta, max_treedepth)
   row <- row_loo_score(fit_p, fit_r)
   grp <- group_kfold_score(df, K, prior_mode, chains, iter, warmup, cores,
-                           seed + 47, adapt_delta, max_treedepth)
+                           "sim_brms_bridge_group_kfold", replication_offset + 47L, adapt_delta, max_treedepth)
   diag_p <- safe_diag(fit_p)
   diag_r <- safe_diag(fit_r)
   drow <- row$elpd_row_firmre - row$elpd_row_pooled

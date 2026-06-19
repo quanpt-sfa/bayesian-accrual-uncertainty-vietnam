@@ -15,10 +15,9 @@ write_prior_registry()
 
 dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
 allow_prior_fail <- env_flag("ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL", "FALSE")
-seed <- accrual_seed("sensitivity")
 n_draws <- as.integer(env_value("ACCRUAL_PRIOR_PRED_N_DRAWS", as.character(prior_pred_n_draws)))
 if (is.na(n_draws) || n_draws <= 0) n_draws <- prior_pred_n_draws
-set.seed(seed)
+set_accrual_seed("sensitivity_prior_predictive")
 
 scenarios <- selected_sensitivity_scenarios()
 formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
@@ -68,7 +67,7 @@ for (sidx in seq_len(nrow(scenarios))) {
     family = sc$Likelihood_Family,
     model_structure = sc$Model_Structure,
     model_list = model_list,
-    seed = seed,
+    seed = accrual_seed("sensitivity"),
     sampling_config = sprintf("sample_prior=only; draws=%d; dry_run=%s", n_draws, dry_run),
     status = if (dry_run) "DRY_RUN_PLANNED" else "STARTED",
     notes = "Prior predictive gate for sensitivity full-refit scenarios.",

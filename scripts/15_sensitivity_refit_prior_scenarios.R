@@ -15,7 +15,6 @@ validate_final_analysis_config("sensitivity full refit", final_mode = TRUE)
 dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
 force_refit <- env_flag("ACCRUAL_FORCE_REFIT", "FALSE")
 include_secondary <- env_flag("ACCRUAL_SENS_INCLUDE_SECONDARY", "FALSE")
-seed <- accrual_seed("sensitivity")
 sampler_cfg <- accrual_sampler_config("sensitivity")
 chains <- sampler_cfg$chains
 iter <- sampler_cfg$iter
@@ -57,7 +56,7 @@ if (nrow(eligible_formulas) == 0) stop("[BLOCKER] No eligible formulas for sensi
 if (!dry_run && !requireNamespace("brms", quietly = TRUE)) stop("[BLOCKER] brms is required for non-dry-run sensitivity refits.")
 
 sampling_config <- sprintf("chains=%d; iter=%d; warmup=%d; adapt_delta=%.3f; max_treedepth=%d; seed=%d; dry_run=%s",
-                           chains, iter, warmup, adapt_delta, max_treedepth, seed, dry_run)
+                           chains, iter, warmup, adapt_delta, max_treedepth, accrual_seed("sensitivity"), dry_run)
 plan_rows <- list()
 diag_rows <- list()
 
@@ -120,7 +119,7 @@ for (sidx in seq_len(nrow(scenarios))) {
       warmup = warmup,
       adapt_delta = adapt_delta,
       max_treedepth = max_treedepth,
-      seed = seed,
+      seed = accrual_seed("sensitivity"),
       save_pars_all = TRUE,
       stringsAsFactors = FALSE
     )

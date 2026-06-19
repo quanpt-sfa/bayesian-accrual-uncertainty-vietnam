@@ -165,6 +165,27 @@ accrual_seed <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sen
   base
 }
 
+normalize_accrual_seed_offset <- function(offset = 0L, context = "unknown") {
+  offset_value <- suppressWarnings(as.integer(offset))
+  if (length(offset_value) != 1 || is.na(offset_value)) {
+    stop("[BLOCKER] Seed offset for ", context, " must be one integer value. Got: ", paste(offset, collapse = ", "))
+  }
+  offset_value
+}
+
+accrual_seed_for <- function(context, offset = 0L) {
+  if (missing(context) || !nzchar(trimws(as.character(context)))) {
+    stop("[BLOCKER] accrual_seed_for() requires a non-empty context label.")
+  }
+  accrual_base_seed() + normalize_accrual_seed_offset(offset, context)
+}
+
+set_accrual_seed <- function(context, offset = 0L) {
+  seed_value <- accrual_seed_for(context, offset = offset)
+  base::set.seed(seed_value)
+  invisible(seed_value)
+}
+
 accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "baseline_remediation"),
                                    run_mode = "FULL_MODE", varying_slopes = FALSE) {
   kind <- match.arg(kind)
@@ -779,7 +800,7 @@ write_pipeline_index <- function() {
     "",
     "Sampler protocol: full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations; exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons; FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The baseline 4000/1000 setting is intentional, while 3000/1000 is the primary validation-refit protocol. Manifests should record actual sampler settings.",
     "",
-    "Execution configuration is centralized in `scripts/00_helpers.R`: `accrual_base_seed()` and `accrual_seed()` enforce one canonical seed (`ACCRUAL_SEED`, default 42) across baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_sampler_config()` supplies sampler settings; `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings; and `main_model_ids_for_space()` supplies primary model IDs. Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
+    "Execution configuration is centralized in `scripts/00_helpers.R`: `accrual_base_seed()` and `accrual_seed()` enforce one canonical seed (`ACCRUAL_SEED`, default 42) across baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context-specific offsets from that same canonical seed; `set_accrual_seed()` is the only helper that calls base `set.seed()`; `accrual_sampler_config()` supplies sampler settings; `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings; and `main_model_ids_for_space()` supplies primary model IDs. Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
     "",
     "Primary model helpers return M01-M07 for ex-post and M01, M02, M03, M07, M09 for real-time/no-lookahead. M08/M10 remain secondary/robustness unless explicitly included through documented secondary flows, and M11/M12 remain excluded from active primary helpers.",
     "",

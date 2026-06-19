@@ -30,7 +30,6 @@ if (!run_mode %in% c("FULL_MODE", "FAST_MODE")) {
 }
 kfold_cfg <- accrual_kfold_config("row", run_mode = run_mode)
 K <- kfold_cfg$K
-seed <- kfold_cfg$seed
 chains <- kfold_cfg$chains
 iter <- kfold_cfg$iter
 warmup <- kfold_cfg$warmup
@@ -312,7 +311,10 @@ assign_row_folds <- function(df, target_space) {
   # least two folds whenever possible. This prevents a non-singleton firm from being
   # entirely held out in one row-level fold. Singleton firms are unavoidable and are
   # flagged downstream as no_same_firm_history.
-  set.seed(seed + match(target_space, c("ex_post", "real_time"), nomatch = 10L))
+  set_accrual_seed(
+    paste0("row_kfold_fold_assignment_", target_space),
+    offset = match(target_space, c("ex_post", "real_time"), nomatch = 10L)
+  )
   df <- df %>% arrange(company, year, row_id)
   fold_vec <- integer(nrow(df))
   for (cc in unique(df$company)) {
@@ -348,7 +350,11 @@ fold_assignment <- bind_rows(df_ep, df_rt) %>%
     target_space = Target_Space,
     fold = Fold_ID,
     K = K,
-    seed = seed,
+    seed = ifelse(
+      Target_Space == "ex_post",
+      accrual_seed_for("row_kfold_fold_assignment_ex_post", offset = 1L),
+      accrual_seed_for("row_kfold_fold_assignment_real_time", offset = 2L)
+    ),
     fold_assignment_unit = "firm_year",
     fold_assignment_design = "company_stratified_row_level_to_preserve_same_firm_training_history",
     firm_obs_count = firm_obs_count,
@@ -426,7 +432,7 @@ write_manifest <- function(status, extra_note = NA_character_) {
     Status = status,
     Extra_Note = extra_note,
     K = K,
-    Seed = seed,
+    Seed = accrual_seed("row_kfold"),
     Run_Mode = run_mode,
     Chains = chains,
     Iter = iter,
@@ -475,7 +481,7 @@ write_reviewer_note <- function(status) {
     paste("- Version:", script_version),
     paste("- Status:", status),
     paste("- K:", K),
-    paste("- Seed:", seed),
+    paste("- Seed:", accrual_seed("row_kfold")),
     "",
     "This run uses row-level held-out folds where the validation unit is a firm-year observation.",
     "It is intentionally separate from Step 13, which uses firm-grouped folds to test out-of-firm generalization.",
@@ -516,7 +522,7 @@ score_task <- function(task) {
     variant = task$Heterogeneity_Variant,
     fold_id = task$Fold_ID,
     K = K,
-    seed = seed,
+    seed = accrual_seed("row_kfold"),
     formula = task$brms_Formula,
     train_hash = stable_hash(train_df$observation_id),
     test_hash = stable_hash(test_df$observation_id)
@@ -596,7 +602,10 @@ score_task <- function(task) {
         iter = iter,
         warmup = warmup,
         control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
-        seed = seed + task$Fold_ID,
+        seed = accrual_seed_for(
+          paste0("row_kfold_refit_", task$Target_Space, "_", task$Model_ID, "_", task$Heterogeneity_Variant),
+          offset = task$Fold_ID
+        ),
         refresh = 500,
         save_pars = brms::save_pars(all = TRUE)
       )
@@ -881,7 +890,7 @@ row_weight_files_available <- all(file.exists(c(
 )))
 primary_inference_allowed <<- identical(run_mode, "FULL_MODE") &&
   K == 5L &&
-  seed == 42L &&
+  accrual_seed("row_kfold") == 42L &&
   (full_unfiltered_primary_run || explicit_full_primary_filters) &&
   all_planned_tasks_completed &&
   row_weight_files_available &&
@@ -890,7 +899,7 @@ primary_inference_allowed <<- identical(run_mode, "FULL_MODE") &&
 completed_run_pin_eligible <<- !preflight_only &&
   identical(run_mode, "FULL_MODE") &&
   K == 5L &&
-  seed == 42L &&
+  accrual_seed("row_kfold") == 42L &&
   (full_unfiltered_primary_run || explicit_full_primary_filters) &&
   all_planned_tasks_completed &&
   row_weight_files_available &&
