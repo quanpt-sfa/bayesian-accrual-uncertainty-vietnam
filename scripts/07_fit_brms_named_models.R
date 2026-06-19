@@ -46,7 +46,6 @@ if (has_prior_pred_fail) {
 }
 
 options(mc.cores = parallel::detectCores())
-set_accrual_seed("baseline_fit_brms_named_models")
 
 run_varying_slope_models <- identical(model_structure, "breuer_varying_slopes")
 if (run_varying_slope_models && !run_varying_slopes) {
@@ -350,14 +349,15 @@ iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
+seed <- accrual_seed("baseline")
 baseline_sampler_controls <- c(
   sampler_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")],
-  seed = accrual_seed("baseline")
+  seed = seed
 )
 remediation_cfg <- accrual_sampler_config("baseline_remediation")
 remediation_sampler_controls <- c(
   remediation_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")],
-  seed = accrual_seed("baseline")
+  seed = seed
 )
 
 main_ex_post_ids <- main_model_ids_for_space("ex_post")

@@ -21,6 +21,7 @@ iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
+seed <- accrual_seed("sensitivity")
 
 scenarios <- selected_sensitivity_scenarios()
 formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")

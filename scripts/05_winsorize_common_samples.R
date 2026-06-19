@@ -7,8 +7,6 @@
 source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 
-set_accrual_seed("winsorize_common_samples")
-
 sample_specs <- data.frame(
   Sample = c(
     "Main Ex-Post Winsor",

@@ -11,7 +11,6 @@ library(loo)
 source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 
-set_accrual_seed("baseline_lofo_stacking")
 options(mc.cores = 1)
 
 lofo_root <- file.path(winsor_root, "lofo")

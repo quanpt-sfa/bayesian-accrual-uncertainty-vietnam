@@ -34,7 +34,7 @@ iter <- kfold_cfg$iter
 warmup <- kfold_cfg$warmup
 adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
-set_accrual_seed("grouped_kfold_script_start")
+seed <- kfold_cfg$seed
 
 run_id <- trimws(Sys.getenv("ACCRUAL_KFOLD_FIRM_RUN_ID", "default"))
 if (!nzchar(run_id)) run_id <- "default"

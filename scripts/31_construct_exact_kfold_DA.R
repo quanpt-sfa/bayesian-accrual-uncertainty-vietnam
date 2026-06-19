@@ -85,7 +85,7 @@ validate_grouped_run <- function(root) {
     stop("[BLOCKER] Grouped exact K-fold manifest root disagrees with selected root: ", root)
   }
   if (!identical(status, "COMPLETED") || !identical(run_mode, "FULL_MODE") || preflight || partial ||
-      !pin_ok || !identical(K_manifest, 5L) || !identical(seed_manifest, 42L)) {
+      !pin_ok || !identical(K_manifest, 5L) || !identical(seed_manifest, accrual_seed("grouped_kfold"))) {
     stop("[BLOCKER] Grouped exact K-fold run is not a completed primary-eligible run: ", root)
   }
   manifest_path
@@ -108,7 +108,7 @@ validate_row_run <- function(root) {
     stop("[BLOCKER] Row exact K-fold manifest root disagrees with selected root: ", root)
   }
   if (!identical(status, "COMPLETED") || !identical(run_mode, "FULL_MODE") || preflight ||
-      !primary_allowed || !pin_ok || !identical(K_manifest, 5L) || !identical(seed_manifest, 42L)) {
+      !primary_allowed || !pin_ok || !identical(K_manifest, 5L) || !identical(seed_manifest, accrual_seed("row_kfold"))) {
     stop("[BLOCKER] Row exact K-fold run is not a completed primary-eligible run: ", root)
   }
   manifest_path

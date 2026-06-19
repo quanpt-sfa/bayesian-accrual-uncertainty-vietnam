@@ -13,7 +13,6 @@ write_prior_registry()
 validate_final_analysis_config("Phase 4c baseline LOO stacking", final_mode = TRUE)
 
 options(mc.cores = 1)
-set_accrual_seed("baseline_loo_stacking")
 
 compare_original_weights <- toupper(Sys.getenv("ACCRUAL_COMPARE_ORIGINAL_WEIGHTS", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
 
@@ -71,11 +70,13 @@ if (nrow(eligible_models) == 0) {
   stop("[BLOCKER] No stacking-eligible winsor models found after filtering by MCMC diagnostics gate status.")
 }
 
-chains <- 4
-iter <- 4000
-warmup <- 1000
-adapt_delta <- 0.95
-max_treedepth <- 12
+sampler_cfg <- accrual_sampler_config("baseline")
+chains <- sampler_cfg$chains
+iter <- sampler_cfg$iter
+warmup <- sampler_cfg$warmup
+adapt_delta <- sampler_cfg$adapt_delta
+max_treedepth <- sampler_cfg$max_treedepth
+seed <- accrual_seed("baseline")
 
 eligible_joined <- eligible_models %>%
   left_join(

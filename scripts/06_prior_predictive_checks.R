@@ -12,7 +12,6 @@ ensure_analysis_dirs()
 write_method_design_files()
 write_prior_registry()
 
-set_accrual_seed("baseline_prior_predictive")
 options(mc.cores = 1)
 
 mode <- prior_predictive_mode

@@ -12,7 +12,6 @@ validate_final_analysis_config("Phase 5b baseline uncertainty-adjusted DA", fina
 script_name <- "scripts/10_construct_uncertainty_adjusted_DA.R"
 script_version <- "2026-06-19-v1-secondary-psis-loo-da-manifest"
 script_start_time <- Sys.time()
-set_accrual_seed("baseline_construct_da")
 
 ep_weights_path <- file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv")
 rt_weights_path <- file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv")
