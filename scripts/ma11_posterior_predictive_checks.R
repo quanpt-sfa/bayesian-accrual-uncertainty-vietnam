@@ -269,7 +269,7 @@ write.csv(moments_df, moments_path, row.names = FALSE)
 write.csv(tail_df, tail_path, row.names = FALSE)
 
 notes <- c(
-  "Phase 5c posterior predictive notes",
+  "ma11 posterior predictive notes",
   sprintf("Output root: %s", output_root),
   sprintf("Prior set: %s; likelihood family: %s; model structure: %s", prior_set_id, likelihood_family, model_structure),
   "Posterior predictive checks evaluate whether the stacked Bayesian accrual model can reproduce the observed TA_scaled distribution.",
@@ -294,5 +294,5 @@ if (any(summary_df$PPC_Flag == "FAIL")) {
   warning("[WARNING] Posterior predictive checks require review for at least one target space.")
 }
 
-cat("\n[SUCCESS] Phase 5c posterior predictive checks completed.\n")
+cat("\n[SUCCESS] ma11 posterior predictive checks completed.\n")
 phase_end("ma11", "Posterior predictive checks")

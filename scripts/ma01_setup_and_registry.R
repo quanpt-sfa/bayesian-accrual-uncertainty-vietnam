@@ -166,7 +166,7 @@ writeLines(method_note, con = baseline_log_path("method_note_operating_cycle_sec
 
 # 3. Create the registry notes explaining the design choices
 notes_content <- "=============================================================================
-Phase 0 Registry Notes: Model Registry and Design Choices for accrual uncertainty pipeline
+ma01 Registry Notes: Model Registry and Design Choices for accrual uncertainty pipeline
 =============================================================================
 Date: 2026-06-04
 Author: Antigravity
@@ -205,5 +205,5 @@ registry_notes_out <- baseline_log_path("phase0_registry_notes.txt")
 writeLines(notes_content, con = registry_notes_out)
 message("Saved registry notes to: ", registry_notes_out)
 
-cat("\n[SUCCESS] Phase 0 Setup and Registry completed successfully.\n")
+cat("\n[SUCCESS] ma01 setup and registry completed successfully.\n")
 phase_end("ma01", "Setup and model registry")

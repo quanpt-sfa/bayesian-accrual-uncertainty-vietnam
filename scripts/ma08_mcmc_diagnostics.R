@@ -15,7 +15,7 @@ ensure_analysis_dirs()
 diag_input_path <- file.path(output_root, "tables", "table_brms_diagnostics_winsor.csv")
 models_dir <- file.path(output_root, "models")
 
-if (!file.exists(diag_input_path)) stop("[BLOCKER] Missing winsor diagnostics table from Phase 3b.")
+if (!file.exists(diag_input_path)) stop("[BLOCKER] Missing winsor diagnostics table from ma07.")
 if (!dir.exists(models_dir)) stop("[BLOCKER] Missing winsor models directory.")
 
 diag_input <- read.csv(diag_input_path, stringsAsFactors = FALSE)
@@ -222,7 +222,7 @@ if (nrow(detailed_df) > 0) {
 }
 
 notes <- c(
-  "Phase 3c MCMC diagnostics notes",
+  "ma08 MCMC diagnostics notes",
   sprintf("Models summarized: %d", nrow(summary_df)),
   sprintf("PASS=%d REVIEW=%d FAIL=%d",
           sum(summary_df$Convergence_Flag == "PASS", na.rm = TRUE),
@@ -231,7 +231,7 @@ notes <- c(
   sprintf("Output root: %s", output_root),
   sprintf("Prior set: %s; likelihood family: %s; model structure: %s", prior_set_id, likelihood_family, model_structure),
   "Thresholds: Rhat <= 1.01, Bulk_ESS >= 400, Tail_ESS >= 400, divergences = 0. ESS >= 1000 is reported as a stricter marker.",
-  "Phase 3c reads existing fit files only and does not refit any models."
+  "ma08 reads existing fit files only and does not refit any models."
 )
 writeLines(notes, notes_path)
 
@@ -239,5 +239,5 @@ if (any(summary_df$Convergence_Flag == "FAIL", na.rm = TRUE)) {
   warning("[WARNING] Some winsorized brms fits failed formal convergence thresholds.")
 }
 
-cat("\n[SUCCESS] Phase 3c MCMC diagnostics completed.\n")
+cat("\n[SUCCESS] ma08 MCMC diagnostics completed.\n")
 phase_end("ma08", "MCMC diagnostics")

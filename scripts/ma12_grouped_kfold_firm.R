@@ -1142,7 +1142,7 @@ main <- function() {
       paste("Expected model-fold refits:", expected_refits)
     ), file.path(logs_dir, "reviewer_priority2b_exact_kfold_response_notes.txt"))
     writeLines(c(
-      "Phase 4e exact grouped K-fold by firm technical log",
+      "ma12 exact grouped K-fold by firm technical log",
       paste("Script:", script_name),
       paste("Start_Time:", format_time(script_start_time)),
       paste("End_Time:", format_time(Sys.time())),
@@ -1599,7 +1599,7 @@ main <- function() {
   end_time <- Sys.time()
   runtime_seconds <- as.numeric(difftime(end_time, script_start_time, units = "secs"))
   writeLines(c(
-    "Phase 4e exact grouped K-fold by firm technical log",
+    "ma12 exact grouped K-fold by firm technical log",
     paste("Script:", script_name),
     paste("Script_Version:", script_version),
     paste("Start_Time:", format_time(script_start_time)),

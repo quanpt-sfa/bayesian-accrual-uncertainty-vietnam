@@ -681,7 +681,7 @@ reviewer_notes <- c(
 writeLines(reviewer_notes, file.path(lofo_root, "logs", "reviewer_priority2_lofo_response_notes.txt"))
 
 technical_log <- c(
-  "Phase 4d grouped PSIS-LOFO technical log",
+  "ro01 grouped PSIS-LOFO technical log",
   paste("Run date/time:", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")),
   "",
   "Input files used:",
@@ -725,5 +725,5 @@ cat("7. Pareto-k diagnostic summary:\n")
 print(as.data.frame(diag_counts), row.names = FALSE)
 cat("8. Final Priority 2 decision: ", final_decision, "\n", sep = "")
 
-cat("\n[SUCCESS] Phase 4d grouped PSIS-LOFO stacking completed.\n")
+cat("\n[SUCCESS] ro01 grouped PSIS-LOFO stacking completed.\n")
 phase_end("ro01", "Grouped PSIS-LOFO robustness")

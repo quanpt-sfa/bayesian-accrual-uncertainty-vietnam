@@ -348,7 +348,7 @@ if (length(validation_debug_rows) > 0) {
 }
 
 if (nrow(validation_results) == 0) {
-  stop("[BLOCKER] Phase 6b validation produced zero regression rows. ",
+  stop("[BLOCKER] ma16 validation produced zero regression rows. ",
        "This usually means predictor/control names changed after joins, outcomes are all missing, ",
        "or all validation fits failed. See: ",
        file.path(validation_root, "table_validation_debug_scaleaware_student.csv"))
@@ -393,7 +393,7 @@ validation_io_manifest <- data.frame(
 write.csv(validation_io_manifest, file.path(validation_root, "table_validation_io_manifest.csv"), row.names = FALSE)
 
 writeLines(c(
-  "Phase 6b validation on exact-KFold DA",
+  "ma16 validation on exact-KFold DA",
   sprintf("Primary DA source: %s", primary_row_da_path),
   sprintf("Secondary PSIS/LOO DA source: %s", ifelse(file.exists(secondary_psis_loo_da_path), secondary_psis_loo_da_path, "not available")),
   sprintf("DA finite gate: %s", finite_decision),
@@ -403,5 +403,5 @@ writeLines(c(
   "Primary validation uses the exact row-KFold DA from script 31. PSIS/LOO DA, when present, is labelled secondary and Primary_Inference_Allowed = FALSE."
 ), file.path(validation_root, "phase6b_validation_scaleaware_student_notes.txt"))
 
-cat("\n[SUCCESS] Phase 6b validation on primary exact row-KFold DA completed.\n")
+cat("\n[SUCCESS] ma16 validation on primary exact row-KFold DA completed.\n")
 phase_end("ma16", "Validate outcomes")

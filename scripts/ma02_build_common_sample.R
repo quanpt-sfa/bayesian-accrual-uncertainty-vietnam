@@ -400,9 +400,9 @@ common_summary <- bind_rows(
 )
 write.csv(common_summary, baseline_table_path("table_common_sample_summary.csv"), row.names = FALSE)
 
-# 6. WRITE PHASE 1 LOG NOTES
+# 6. WRITE ma02 LOG NOTES
 phase1_notes <- sprintf("=============================================================================
-Phase 1 Sample Construction Notes: Two-Tier Common Sample Structure
+ma02 Sample Construction Notes: Two-Tier Common Sample Structure
 =============================================================================
 Date: 2026-06-04
 Author: Antigravity
@@ -449,7 +449,7 @@ Reason for Dropping rows (from Core Ex-Post):
 
 writeLines(phase1_notes, con = baseline_log_path("phase1_sample_notes.txt"))
 writeLines(c(
-  "Phase 1 sample design after operating-cycle separation",
+  "ma02 sample design after operating-cycle separation",
   "",
   "operating_cycle is no longer used to restrict the main common sample.",
   "M10 OperatingCycle is secondary robustness only.",
@@ -460,7 +460,7 @@ writeLines(c(
   sprintf("Secondary OperatingCycle Ex-Post N: %d", nrow(final_operating_cycle_ex_post)),
   sprintf("Secondary OperatingCycle No-Lookahead N: %d", nrow(final_operating_cycle_realtime))
 ), con = baseline_log_path("phase1_sample_design_after_operating_cycle_separation.txt"))
-message("Saved Phase 1 sample notes.")
+message("Saved ma02 sample notes.")
 
-cat("\n[SUCCESS] Phase 1 Build Common Sample (Two-Tier) completed successfully.\n")
+cat("\n[SUCCESS] ma02 build common sample (Two-Tier) completed successfully.\n")
 phase_end("ma02", "Build common samples")

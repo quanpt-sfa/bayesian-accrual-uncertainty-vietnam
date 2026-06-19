@@ -48,7 +48,7 @@ desc_rows <- list()
 cutoff_rows <- list()
 sd_rows <- list()
 notes <- c(
-  "Phase 1b winsorization notes",
+  "ma05 winsorization notes",
   "Winsorization rule: continuous accrual/model variables capped at sample-specific 1st/99th percentiles.",
   "Winsorization is applied before downstream z-standardization.",
   paste("Continuous variables considered:", paste(continuous_vars_to_winsor, collapse = ", ")),
@@ -268,5 +268,5 @@ notes <- c(
 )
 writeLines(notes, con = file.path(winsor_root, "logs", "phase1b_winsor_notes.txt"))
 
-cat("\n[SUCCESS] Phase 1b winsorized samples and audit tables created under ", winsor_root, "/.\n", sep = "")
+cat("\n[SUCCESS] ma05 winsorized samples and audit tables created under ", winsor_root, "/.\n", sep = "")
 phase_end("ma05", "Winsorize common samples")

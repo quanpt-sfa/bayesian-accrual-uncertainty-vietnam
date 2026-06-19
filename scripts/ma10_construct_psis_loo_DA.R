@@ -29,8 +29,8 @@ git_commit_or_na <- function() {
   tryCatch(system("git rev-parse HEAD", intern = TRUE)[1], error = function(e) NA_character_)
 }
 
-if (!file.exists(ep_weights_path)) stop("[BLOCKER] Missing winsor ex-post stacking weights. Run Phase 4c first.")
-if (!file.exists(rt_weights_path)) stop("[BLOCKER] Missing winsor no-look-ahead stacking weights. Run Phase 4c first.")
+if (!file.exists(ep_weights_path)) stop("[BLOCKER] Missing winsor ex-post stacking weights. Run ma09 first.")
+if (!file.exists(rt_weights_path)) stop("[BLOCKER] Missing winsor no-look-ahead stacking weights. Run ma09 first.")
 if (!file.exists(ep_sample_path)) stop("[BLOCKER] Missing winsor ex-post sample.")
 if (!file.exists(rt_sample_path)) stop("[BLOCKER] Missing winsor no-look-ahead sample.")
 
@@ -453,7 +453,7 @@ decision_table <- data.frame(
     "Recommended manuscript action."
   ),
   Evidence = c(
-    "Phase 1b writes winsorized samples; Phase 3b/4c standardize those samples only after reading them.",
+    "ma05 writes winsorized samples; ma07/ma09 standardize those samples only after reading them.",
     sprintf("Ex-post N=%d, no-look-ahead N=%d; unchanged=%s.", nrow(df_ep), nrow(df_rt), row_count_ok),
     paste(head(key_shrink$Evidence_Text, 12), collapse = "; "),
     sprintf("Winsor ex-post top model: %s %s (%.4f).", top_ep$Model_ID, top_ep$Model_Name, top_ep$Weight),
@@ -571,5 +571,5 @@ cat("7. OLS top-5% flag count vs posterior-tail 95% flag count after winsorizati
 print(extreme_summary %>% filter(Variable %in% c("DA_Jones_OLS_winsor", "DA_tail_flag_95_rt_winsor", "DA_tail_flag_95_ep_winsor")), row.names = FALSE)
 cat("8. Final Priority 1 decision: ", headline_decision, "\n", sep = "")
 
-cat("\n[SUCCESS] Phase 5b winsor uncertainty-adjusted DA construction completed.\n")
+cat("\n[SUCCESS] ma10 winsor uncertainty-adjusted DA construction completed.\n")
 phase_end("ma10", "Construct PSIS/LOO secondary DA")

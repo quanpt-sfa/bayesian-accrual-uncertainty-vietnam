@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------
-# Script: 03_audit_cogs_inv_operating_cycle.R
-# Purpose: Audit corrected COGS/INV fields and operating_cycle after Phase 1.
+# Script: ma03_audit_data_integrity.R
+# Purpose: Audit corrected COGS/INV fields and operating_cycle after ma02.
 # -----------------------------------------------------------------------------
 
 options(stringsAsFactors = FALSE)
@@ -21,7 +21,7 @@ required_files <- c(
 )
 missing_files <- required_files[!file.exists(required_files)]
 if (length(missing_files) > 0) {
-  stop("[BLOCKER] Missing required corrected Phase 1 file(s): ", paste(missing_files, collapse = ", "))
+  stop("[BLOCKER] Missing required corrected ma02 file(s): ", paste(missing_files, collapse = ", "))
 }
 
 if (!requireNamespace("readxl", quietly = TRUE)) {
@@ -266,7 +266,7 @@ if (nzchar(quarantine_path)) {
 }
 
 notes <- c(
-  "COGS/INV correction audit after Phase 1",
+  "COGS/INV correction audit after ma02",
   paste("Audit timestamp:", format(Sys.time(), "%Y-%m-%d %H:%M:%S %z")),
   paste("Audit status:", audit_status),
   paste("Main sample status:", main_sample_status),

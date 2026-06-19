@@ -14,7 +14,7 @@ library(dplyr)
 ensure_baseline_dirs()
 registry_path <- baseline_table_path("table_model_registry.csv")
 if (!file.exists(registry_path)) {
-  stop("[BLOCKER] Model registry CSV not found. Please run Phase 0 script first.")
+  stop("[BLOCKER] Model registry CSV not found. Please run ma01 first.")
 }
 
 registry <- read.csv(registry_path, stringsAsFactors = FALSE)
@@ -172,9 +172,9 @@ model_req_vars <- registry %>%
   )
 write.csv(model_req_vars, baseline_table_path("table_model_required_variables.csv"), row.names = FALSE)
 
-# 2. WRITE PHASE 2 LOG NOTES
+# 2. WRITE ma04 LOG NOTES
 phase2_notes <- "=============================================================================
-Phase 2 Model Space definition: Space Membership & Two-Tier Stacking
+ma04 Model Space definition: Space Membership & Two-Tier Stacking
 =============================================================================
 Date: 2026-06-04
 Author: Antigravity
@@ -201,7 +201,7 @@ Double Fitting:
 "
 
 writeLines(phase2_notes, con = baseline_log_path("phase2_model_space_notes.txt"))
-message("Saved Phase 2 model space notes.")
+message("Saved ma04 model space notes.")
 
-cat("\n[SUCCESS] Phase 2 Define Named-Model Space (with explicit Stacking Spaces) completed successfully.\n")
+cat("\n[SUCCESS] ma04 define named-model space (with explicit Stacking Spaces) completed successfully.\n")
 phase_end("ma04", "Define named models")

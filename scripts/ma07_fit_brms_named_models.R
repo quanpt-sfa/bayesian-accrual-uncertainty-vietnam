@@ -381,9 +381,9 @@ if (length(remediation_targets) > 0) {
     )
   }
 
-  remediation_log_path <- file.path(phase_root, "logs", "phase3c_mcmc_remediation_log.txt")
+  remediation_log_path <- file.path(phase_root, "logs", "ma08_mcmc_remediation_log.txt")
   remediation_log_lines <- c(
-    "Phase 3c one-time MCMC remediation log",
+    "ma08 one-time MCMC remediation log",
     paste0("Target keys: ", paste(remediation_targets, collapse = "; ")),
     paste0(
       "Baseline sampler controls: chains=", baseline_sampler_controls$chains,
@@ -494,7 +494,7 @@ for (i in seq_len(total_runs)) {
       NULL
     })
     if (file.exists(draws_filename)) {
-      message("Draw file already exists; Phase 3b will not regenerate it unless ACCRUAL_FORCE_REFIT='TRUE': ", draws_filename)
+      message("Draw file already exists; ma07 will not regenerate it unless ACCRUAL_FORCE_REFIT='TRUE': ", draws_filename)
     }
   }
 
@@ -727,7 +727,7 @@ write.csv(coeff_df, coeff_path, row.names = FALSE)
 
 phase3_notes <- sprintf(
   paste0(
-    "Phase 3b winsorized BRMS fit notes\n",
+    "ma07 winsorized BRMS fit notes\n",
     "Winsorized samples are read from %s/tables/.\n",
     "Outputs are written to %s/.\n",
     "Diagnostics-only backfill mode: %s.\n",
@@ -753,13 +753,13 @@ phase3_notes <- sprintf(
 notes_file <- if (run_varying_slope_models) {
   file.path(phase_root, "logs", "varyslopes_notes.txt")
 } else {
-  file.path(phase_root, "logs", "phase3b_fit_notes_winsor.txt")
+  file.path(phase_root, "logs", "ma07_fit_notes_winsor.txt")
 }
 writeLines(phase3_notes, con = notes_file)
 
 if (run_varying_slope_models) {
   empty_weights <- data.frame(
-    Status = "NOT_COMPUTED_BY_PHASE_3B",
+    Status = "NOT_COMPUTED_BY_ma07",
     Notes = "Varying-slope fits are a Breuer-structure robustness check. Run a separate varying-slope stacking analysis before using weights.",
     Prior_Set_ID = prior_set_id,
     Likelihood_Family = likelihood_family,
@@ -819,5 +819,5 @@ write_run_manifest(
 )
 message("Saved baseline manifest to: ", manifest_path)
 
-cat("\n[SUCCESS] Phase 3b winsorized model fitting completed.\n")
+cat("\n[SUCCESS] ma07 winsorized model fitting completed.\n")
 phase_end("ma07", "Fit baseline brms models")

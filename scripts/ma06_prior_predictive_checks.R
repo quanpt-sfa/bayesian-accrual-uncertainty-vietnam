@@ -20,7 +20,7 @@ include_m10 <- identical(mode, "FULL") || identical(mode, "EXTENDED")
 
 formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
 if (!file.exists(formulas_path)) {
-  stop("[BLOCKER] Winsor formula table not found. Run Phase 1b first.")
+  stop("[BLOCKER] Winsor formula table not found. Run ma05 first.")
 }
 
 prior_spec_path <- file.path(output_root, "tables", "table_prior_specification.csv")
@@ -124,14 +124,14 @@ write_overlay_plot <- function(observed, simulated, figure_path, title_text) {
 summary_rows <- list()
 extreme_rows <- list()
 notes <- c(
-  "Phase 3a prior predictive notes",
+  "ma06 prior predictive notes",
   sprintf("Mode: %s", mode),
   sprintf("Output root: %s", output_root),
   sprintf("Input winsor root: %s", input_winsor_root),
   sprintf("Prior set: %s", prior_set_id),
   sprintf("Likelihood family: %s", likelihood_family),
   sprintf("Representative configurations checked: %d", nrow(representative_rows)),
-  "Priors are formalized in table_prior_specification.csv and table_prior_sets.csv and match the current Phase 3b defaults.",
+  "Priors are formalized in table_prior_specification.csv and table_prior_sets.csv and match the current ma07 defaults.",
   "Main-stack design is unchanged: winsorized samples remain primary, and M08/M10 stay outside the main stacks.",
   "Flags use domain thresholds: PASS if share |TA_scaled| > 1 <= 0.05 and share |TA_scaled| > 2 <= 0.005; REVIEW if <= 0.15 and <= 0.02; otherwise FAIL.",
   ""
@@ -254,7 +254,7 @@ notes <- c(
   notes,
   "",
   sprintf("Overall prior predictive status: %s", status_line),
-  if (status_line == "FAIL") "Do not proceed to Phase 3B until priors are revised." else "Prior predictive status does not block manual review.",
+  if (status_line == "FAIL") "Do not proceed to ma07 until priors are revised." else "Prior predictive status does not block manual review.",
   "REVIEW does not block the pipeline but should be acknowledged in the manuscript."
 )
 writeLines(notes, prior_notes_path)
@@ -283,5 +283,5 @@ if (status_line == "REVIEW") {
   warning("[WARNING] Prior predictive checks require review for at least one representative configuration.")
 }
 
-cat("\n[SUCCESS] Phase 3a prior predictive checks completed.\n")
+cat("\n[SUCCESS] ma06 prior predictive checks completed.\n")
 phase_end("ma06", "Prior predictive checks")

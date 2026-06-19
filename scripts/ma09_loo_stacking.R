@@ -26,8 +26,8 @@ loo_cache_dir <- file.path(output_root, "draws", "loo_cache")
 models_dir <- file.path(output_root, "models")
 
 if (!file.exists(formulas_path)) stop("[BLOCKER] Missing winsor formula table.")
-if (!file.exists(diag_path)) stop("[BLOCKER] Missing winsor diagnostics table. Run Phase 3b first.")
-if (!file.exists(coeff_path)) stop("[BLOCKER] Missing winsor coefficient table. Run Phase 3b first.")
+if (!file.exists(diag_path)) stop("[BLOCKER] Missing winsor diagnostics table. Run ma07 first.")
+if (!file.exists(coeff_path)) stop("[BLOCKER] Missing winsor coefficient table. Run ma07 first.")
 if (!dir.exists(loo_cache_dir)) dir.create(loo_cache_dir, recursive = TRUE)
 
 formulas_df <- read.csv(formulas_path, stringsAsFactors = FALSE)
@@ -225,7 +225,7 @@ for (i in seq_len(nrow(eligible_joined))) {
   }
 
   diff_elpd <- refit_raw_elpd - row$elpd_loo
-  message(sprintf("  Refit raw ELPD = %.5f (Phase 3b = %.5f, Diff = %.5f)",
+  message(sprintf("  Refit raw ELPD = %.5f (ma07 = %.5f, Diff = %.5f)",
                   refit_raw_elpd, row$elpd_loo, diff_elpd))
   if (abs(diff_elpd) >= 10.0) {
     stop(sprintf("[BLOCKER] Winsor elpd shifted materially by %.4f for %s.", diff_elpd, base_key))
@@ -523,11 +523,11 @@ if (!compare_original_weights) {
 }
 
 notes <- c(
-  "Phase 4c winsor corrected LOO/stacking notes",
+  "ma09 winsor corrected LOO/stacking notes",
   sprintf("Output root: %s", output_root),
   sprintf("Input winsor root for sample sizes/formulas when needed: %s", input_winsor_root),
   sprintf("Prior set: %s; likelihood family: %s; model structure: %s", prior_set_id, likelihood_family, model_structure),
-  "Phase 4C is based only on current-root winsorized model files and LOO cache.",
+  "ma09 is based only on current-root winsorized model files and LOO cache.",
   "Authoritative logic adapted from the earlier corrected refit workflow.",
   "Features retained: pre-factored industry/year variables, save_pars(all=TRUE), coefficient sanity check, raw elpd sanity check, moment matching, N-check before stacking, separate ex-post and no-look-ahead stacks.",
   sprintf("Ex-post expected N: %d", expected_n_ep),
@@ -549,7 +549,7 @@ notes <- c(
     "Original weight source files used: none"
   }
 )
-writeLines(notes, file.path(output_root, "logs", "phase4c_loo_stacking_winsor_notes.txt"))
+writeLines(notes, file.path(output_root, "logs", "ma09_loo_stacking_winsor_notes.txt"))
 
-cat("\n[SUCCESS] Phase 4c winsor corrected LOO and stacking completed.\n")
+cat("\n[SUCCESS] ma09 winsor corrected LOO and stacking completed.\n")
 phase_end("ma09", "LOO stacking (secondary)")
