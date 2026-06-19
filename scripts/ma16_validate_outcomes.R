@@ -400,7 +400,7 @@ writeLines(c(
   sprintf("Prior set: %s", prior_set_id),
   sprintf("Likelihood family: %s", likelihood_family),
   sprintf("Model structure: %s", model_structure),
-  "Primary validation uses the exact row-KFold DA from script 31. PSIS/LOO DA, when present, is labelled secondary and Primary_Inference_Allowed = FALSE."
+  "Primary validation uses the exact row-KFold DA from ma14. PSIS/LOO DA, when present, is labelled secondary and Primary_Inference_Allowed = FALSE."
 ), file.path(validation_root, "phase6b_validation_scaleaware_student_notes.txt"))
 
 cat("\n[SUCCESS] ma16 validation on primary exact row-KFold DA completed.\n")

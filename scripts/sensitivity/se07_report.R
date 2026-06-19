@@ -92,7 +92,7 @@ repro <- data.frame(
     file.path(reports_root, "sensitivity_sessionInfo.txt"),
     as.character(accrual_base_seed()),
     env_value("ACCRUAL_SENS_CHAINS", "4"),
-    env_value("ACCRUAL_SENS_ITER", "4000"),
+    env_value("ACCRUAL_SENS_ITER", "3000"),
     env_value("ACCRUAL_SENS_WARMUP", "1000"),
     env_value("ACCRUAL_SENS_ADAPT_DELTA", "0.95"),
     env_value("ACCRUAL_SENS_MAX_TREEDEPTH", "12"),
@@ -171,7 +171,7 @@ report_lines <- c(
   sprintf("- Package versions: %s", repro$Value[repro$Item == "Package versions"]),
   sprintf("- Session info: `%s`", repro$Value[repro$Item == "Session info path"]),
   sprintf("- Canonical seed (ACCRUAL_SEED): %s", accrual_base_seed()),
-  sprintf("- Chains/iter/warmup: %s/%s/%s", env_value("ACCRUAL_SENS_CHAINS", "4"), env_value("ACCRUAL_SENS_ITER", "4000"), env_value("ACCRUAL_SENS_WARMUP", "1000")),
+  sprintf("- Chains/iter/warmup: %s/%s/%s", env_value("ACCRUAL_SENS_CHAINS", "4"), env_value("ACCRUAL_SENS_ITER", "3000"), env_value("ACCRUAL_SENS_WARMUP", "1000")),
   sprintf("- adapt_delta/max_treedepth: %s/%s", env_value("ACCRUAL_SENS_ADAPT_DELTA", "0.95"), env_value("ACCRUAL_SENS_MAX_TREEDEPTH", "12")),
   "",
   "Optional renv snapshot guidance: if this project uses renv, run `renv::snapshot()` manually after confirming package state. This workflow does not force renv initialization."

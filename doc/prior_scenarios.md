@@ -14,4 +14,4 @@ The wide scenario uses `scale_aware_student_wide_v1`. It remains scale-aware but
 
 ## Prior predictive gate logic
 
-Script `06_prior_predictive_checks.R` computes representative prior predictive draws and assigns `PASS`, `REVIEW`, or `FAIL` based on domain thresholds for extreme `TA_scaled` draws. A `FAIL` blocks downstream fitting unless `ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE` is explicitly set. Script `07_fit_brms_named_models.R` re-checks the gate before fitting.
+Script `scripts/ma06_prior_predictive_checks.R` computes representative prior predictive draws and assigns `PASS`, `REVIEW`, or `FAIL` using the Chapter 3 gates: prior mass outside `|TA_scaled| > 1` must be no more than 5%, prior mass outside `|TA_scaled| > 2` must be no more than 1%, and the prior predictive 1st-to-99th percentile range must be no more than three times the observed 1st-to-99th percentile range. A `FAIL` blocks downstream fitting unless `ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE` is explicitly set. Script `scripts/ma07_fit_brms_named_models.R` re-checks the gate before fitting.

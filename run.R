@@ -51,66 +51,66 @@ step <- function(id, path, role, heavy = FALSE, gate = NULL, requires = characte
 }
 
 main_steps <- list(
-  step("00", "scripts/ma00_setup.R", "Setup helpers and shared registries"),
-  step("01", "scripts/ma01_setup_and_registry.R", "Setup and ten-model registry"),
-  step("02", "scripts/ma02_build_common_sample.R", "Build common samples"),
-  step("03", "scripts/ma03_audit_data_integrity.R", "Data integrity audit"),
-  step("04", "scripts/ma04_define_named_models.R", "Define named model formulas"),
-  step("05", "scripts/ma05_winsorize_common_samples.R", "Winsorize common samples"),
-  step("06", "scripts/ma06_prior_predictive_checks.R", "Prior predictive gate"),
-  step("07", "scripts/ma07_fit_brms_named_models.R", "Full-sample baseline brms fits", heavy = TRUE),
-  step("08", "scripts/ma08_mcmc_diagnostics.R", "MCMC diagnostics for baseline fits",
+  step("ma00", "scripts/ma00_setup.R", "Setup helpers and shared registries"),
+  step("ma01", "scripts/ma01_setup_and_registry.R", "Setup and ten-model registry"),
+  step("ma02", "scripts/ma02_build_common_sample.R", "Build common samples"),
+  step("ma03", "scripts/ma03_audit_data_integrity.R", "Data integrity audit"),
+  step("ma04", "scripts/ma04_define_named_models.R", "Define named model formulas"),
+  step("ma05", "scripts/ma05_winsorize_common_samples.R", "Winsorize common samples"),
+  step("ma06", "scripts/ma06_prior_predictive_checks.R", "Prior predictive gate"),
+  step("ma07", "scripts/ma07_fit_brms_named_models.R", "Full-sample baseline brms fits", heavy = TRUE),
+  step("ma08", "scripts/ma08_mcmc_diagnostics.R", "MCMC diagnostics for baseline fits",
        requires = c(table_artifact("table_brms_diagnostics_winsor.csv"), file.path(output_root, "models")),
-       require_reason = "baseline fit diagnostics and model files from script 07"),
-  step("09", "scripts/ma09_loo_stacking.R", "LOO stacking evidence, secondary to exact K-fold",
+       require_reason = "baseline fit diagnostics and model files from ma07"),
+  step("ma09", "scripts/ma09_loo_stacking.R", "PSIS/LOO stacking evidence, secondary to exact K-fold",
        requires = c(
          table_artifact("table_brms_diagnostics_winsor.csv"),
          table_artifact("table_coefficient_summary_winsor.csv"),
          table_artifact("table_mcmc_diagnostics_gate_winsor.csv")
        ),
        require_reason = "baseline MCMC diagnostics gate and coefficient summaries"),
-  step("10", "scripts/ma10_construct_psis_loo_DA.R", "Construct PSIS/LOO secondary uncertainty-adjusted DA",
+  step("ma10", "scripts/ma10_construct_psis_loo_DA.R", "Construct PSIS/LOO secondary uncertainty-adjusted DA",
        requires = c(
          table_artifact("table_stacking_weights_ex_post_winsor_corrected.csv"),
          table_artifact("table_stacking_weights_no_lookahead_winsor_corrected.csv")
        ),
-       require_reason = "secondary PSIS/LOO stacking weights from script 09"),
-  step("11", "scripts/ma11_posterior_predictive_checks.R", "Posterior predictive checks for secondary PSIS/LOO DA",
+       require_reason = "secondary PSIS/LOO stacking weights from ma09"),
+  step("ma11", "scripts/ma11_posterior_predictive_checks.R", "Posterior predictive checks for secondary PSIS/LOO DA",
        requires = c(
          table_artifact("final_uncertainty_adjusted_accruals_winsor.csv"),
          table_artifact("table_stacking_weights_ex_post_winsor_corrected.csv"),
          table_artifact("table_stacking_weights_no_lookahead_winsor_corrected.csv")
        ),
        require_reason = "secondary PSIS/LOO DA and weights"),
-  step("13", "scripts/ma12_grouped_kfold_firm.R", "Grouped exact firm K-fold, primary RQ1 evidence", heavy = TRUE),
-  step("28", "scripts/ma13_row_level_exact_kfold.R", "Row-level exact K-fold, primary RQ1 evidence", heavy = TRUE),
-  step("31", "scripts/ma14_construct_exact_kfold_DA.R", "Primary exact-KFoldW DA construction",
+  step("ma12", "scripts/ma12_grouped_kfold_firm.R", "Grouped exact firm K-fold, primary RQ1 evidence", heavy = TRUE),
+  step("ma13", "scripts/ma13_row_level_exact_kfold.R", "Row-level exact K-fold, primary RQ1 evidence", heavy = TRUE),
+  step("ma14", "scripts/ma14_construct_exact_kfold_DA.R", "Primary exact-KFoldW DA construction",
        requires = c(
          table_artifact("table_mcmc_diagnostics_gate_winsor.csv"),
          if (!nzchar(Sys.getenv("ACCRUAL_GROUPED_KFOLD_RUN_ROOT", ""))) file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt") else character(),
          if (!nzchar(Sys.getenv("ACCRUAL_ROW_KFOLD_RUN_ROOT", ""))) file.path(output_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt") else character()
        ),
-       require_reason = "MCMC diagnostics gate and completed exact K-fold run pins from scripts 13 and 28"),
-  step("32", "scripts/ma15_audit_DA_finite_outputs.R", "Finite-output gate for exact-KFold DA", gate = "da_finite",
+       require_reason = "MCMC diagnostics gate and completed exact K-fold run pins from ma12 and ma13"),
+  step("ma15", "scripts/ma15_audit_DA_finite_outputs.R", "Finite-output gate for exact-KFold DA", gate = "da_finite",
        requires = c(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv")
        ),
-       require_reason = "exact-KFold DA outputs from script 31"),
-  step("21", "scripts/ma16_validate_outcomes.R", "Outcome validation on primary exact row-KFold DA",
+       require_reason = "exact-KFold DA outputs from ma14"),
+  step("ma16", "scripts/ma16_validate_outcomes.R", "Outcome validation on primary exact row-KFold DA",
        requires = c(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv"),
          table_artifact("table_DA_finite_gate_decision.csv"),
          table_artifact("table_model_primary_inclusion_gate.csv")
        ),
        require_reason = "primary exact row-KFold DA plus finite DA and model inclusion gate decisions"),
-  step("30", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration reporting gate", gate = "new_firm_predictive",
+  step("di02", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration reporting gate", gate = "new_firm_predictive",
        requires = c(
          table_artifact("table_DA_finite_gate_decision.csv"),
          table_artifact("table_DA_exact_kfold_source_manifest.csv")
        ),
        require_reason = "finite DA gate and exact-KFold DA provenance manifest"),
-  step("C3", "scripts/ma17_export_tables_figures.R", "Chapter 3 manuscript table export",
+  step("ma17", "scripts/ma17_export_tables_figures.R", "Chapter 3 manuscript table export",
        requires = c(
          table_artifact("table_DA_finite_gate_decision.csv"),
          table_artifact("table_model_primary_inclusion_gate.csv"),
@@ -120,33 +120,33 @@ main_steps <- list(
 )
 
 robustness_steps <- list(
-  step("12", "scripts/robustness/ro01_lofo_stacking.R", "Grouped PSIS-LOFO robustness evidence")
+  step("ro01", "scripts/robustness/ro01_lofo_stacking.R", "Grouped PSIS-LOFO robustness evidence")
 )
 
 sensitivity_steps <- list(
-  step("14", "scripts/sensitivity/se01_prior_predictive.R", "Sensitivity prior predictive gate"),
-  step("15", "scripts/sensitivity/se02_refit_prior_scenarios.R", "Sensitivity full refits by prior scenario", heavy = TRUE),
-  step("16", "scripts/sensitivity/se03_mcmc_diagnostics.R", "Sensitivity MCMC diagnostics"),
-  step("17", "scripts/sensitivity/se04_stacking.R", "Sensitivity stacking"),
-  step("18", "scripts/sensitivity/se05_construct_DA.R", "Sensitivity DA reconstruction"),
-  step("19", "scripts/sensitivity/se06_validation.R", "Sensitivity validation"),
-  step("20", "scripts/sensitivity/se07_report.R", "Sensitivity report")
+  step("se01", "scripts/sensitivity/se01_prior_predictive.R", "Sensitivity prior predictive gate"),
+  step("se02", "scripts/sensitivity/se02_refit_prior_scenarios.R", "Sensitivity full refits by prior scenario", heavy = TRUE),
+  step("se03", "scripts/sensitivity/se03_mcmc_diagnostics.R", "Sensitivity MCMC diagnostics"),
+  step("se04", "scripts/sensitivity/se04_stacking.R", "Sensitivity stacking"),
+  step("se05", "scripts/sensitivity/se05_construct_DA.R", "Sensitivity DA reconstruction"),
+  step("se06", "scripts/sensitivity/se06_validation.R", "Sensitivity validation"),
+  step("se07", "scripts/sensitivity/se07_report.R", "Sensitivity report")
 )
 
 simulation_steps <- list(
-  step("24", "scripts/simulation/si01_lmer_pilot_run.R", "LMER leakage pilot simulation"),
-  step("25", "scripts/simulation/si02_lmer_pilot_report.R", "LMER leakage pilot report"),
-  step("26", "scripts/simulation/si03_brms_leakage_confirmation.R", "BRMS leakage confirmation simulation", heavy = TRUE),
-  step("27", "scripts/simulation/si04_brms_parameter_recovery.R", "BRMS parameter recovery simulation", heavy = TRUE)
+  step("si01", "scripts/simulation/si01_lmer_pilot_run.R", "LMER leakage pilot simulation"),
+  step("si02", "scripts/simulation/si02_lmer_pilot_report.R", "LMER leakage pilot report"),
+  step("si03", "scripts/simulation/si03_brms_leakage_confirmation.R", "BRMS leakage confirmation simulation", heavy = TRUE),
+  step("si04", "scripts/simulation/si04_brms_parameter_recovery.R", "BRMS parameter recovery simulation", heavy = TRUE)
 )
 
 diagnostics_steps <- list(
-  step("29", "scripts/diagnostics/di01_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics"),
-  step("30", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration diagnostics", gate = "new_firm_predictive")
+  step("di01", "scripts/diagnostics/di01_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics"),
+  step("di02", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration diagnostics", gate = "new_firm_predictive")
 )
 
 diagnostics_steps_for_all <- list(
-  step("29", "scripts/diagnostics/di01_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics")
+  step("di01", "scripts/diagnostics/di01_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics")
 )
 
 steps_for_target <- function(x) {

@@ -4,10 +4,10 @@
 #          pipeline outputs without refitting Bayesian models.
 #
 # Prior predictive manuscript-acceptance rule:
-# A prior is acceptable if the prior predictive median is near the empirical
-# scaled-TA center, prior q01/q99 are not absurdly wider than empirical q01/q99,
-# mass outside |TA| > 1 is small, mass outside |TA| > 2 is near zero, and no
-# prior scenario produces implausible accounting-scale predictions.
+# A prior is acceptable under Chapter 3 if mass outside |TA| > 1 is no more
+# than 5%, mass outside |TA| > 2 is no more than 1%, and the prior predictive
+# 1st-to-99th percentile range is no more than three times the empirical range
+# unless explicitly justified.
 # -----------------------------------------------------------------------------
 
 source("scripts/ma00_setup.R")
@@ -17,9 +17,10 @@ suppressPackageStartupMessages({
   library(readxl)
 })
 
-PRIOR_MAX_MASS_ABS_GT_1 <- as.numeric(Sys.getenv("PRIOR_MAX_MASS_ABS_GT_1", "0.05"))
-PRIOR_MAX_MASS_ABS_GT_2 <- as.numeric(Sys.getenv("PRIOR_MAX_MASS_ABS_GT_2", "0.005"))
-PRIOR_MAX_Q99_TO_EMPIRICAL_Q99_RATIO <- as.numeric(Sys.getenv("PRIOR_MAX_Q99_TO_EMPIRICAL_Q99_RATIO", "5"))
+chapter3_prior_thresholds <- chapter3_prior_predictive_thresholds()
+PRIOR_MAX_MASS_ABS_GT_1 <- as.numeric(Sys.getenv("PRIOR_MAX_MASS_ABS_GT_1", as.character(chapter3_prior_thresholds$abs_gt_1_pass)))
+PRIOR_MAX_MASS_ABS_GT_2 <- as.numeric(Sys.getenv("PRIOR_MAX_MASS_ABS_GT_2", as.character(chapter3_prior_thresholds$abs_gt_2_pass)))
+PRIOR_MAX_RANGE_RATIO <- as.numeric(Sys.getenv("PRIOR_MAX_RANGE_RATIO", as.character(chapter3_prior_thresholds$range_ratio_pass)))
 
 RQ2_SPEARMAN_MODERATE <- 0.95
 RQ2_SPEARMAN_HIGH <- 0.90
@@ -559,15 +560,14 @@ if (is.null(prior_summary)) {
     mutate(
       empirical_width_1_99 = abs(.data$Observed_TA_P99 - .data$Observed_TA_P01),
       prior_width_1_99 = abs(.data$PriorPred_TA_P99 - .data$PriorPred_TA_P01),
-      q99_ratio = .data$prior_width_1_99 / pmax(.data$empirical_width_1_99, .Machine$double.eps),
+      range_ratio = .data$prior_width_1_99 / pmax(.data$empirical_width_1_99, .Machine$double.eps),
       acceptance_status = ifelse(
-        abs(.data$PriorPred_TA_Median - .data$Observed_TA_Median) <= pmax(0.05, abs(.data$empirical_width_1_99)) &
-          .data$q99_ratio <= PRIOR_MAX_Q99_TO_EMPIRICAL_Q99_RATIO &
+        .data$range_ratio <= PRIOR_MAX_RANGE_RATIO &
           .data$PriorPred_Share_Abs_GT_1 <= PRIOR_MAX_MASS_ABS_GT_1 &
           .data$PriorPred_Share_Abs_GT_2 <= PRIOR_MAX_MASS_ABS_GT_2,
         "PASS", "WARN"
       ),
-      reason = ifelse(.data$acceptance_status == "PASS", "Meets configurable prior predictive acceptance thresholds.", "One or more configurable prior predictive thresholds exceeded or unavailable.")
+      reason = ifelse(.data$acceptance_status == "PASS", "Meets Chapter 3 prior predictive acceptance thresholds.", "One or more Chapter 3 prior predictive thresholds exceeded or unavailable.")
     ) %>%
     transmute(
       prior_set_id = .data$Prior_Set_ID,

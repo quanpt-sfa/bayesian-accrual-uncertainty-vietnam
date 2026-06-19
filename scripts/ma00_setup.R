@@ -92,10 +92,10 @@ varyslope_group <- env_value("ACCRUAL_VARYSLOPE_GROUP", "industry_year")
 force_refit <- env_flag("ACCRUAL_FORCE_REFIT", "FALSE")
 prior_predictive_mode <- toupper(env_value("ACCRUAL_PRIOR_PREDICTIVE_MODE", "REPRESENTATIVE"))
 prior_pred_n_draws <- as.integer(env_value("ACCRUAL_PRIOR_PRED_N_DRAWS", "1000"))
-stacking_mixture_draws <- as.integer(env_value("ACCRUAL_STACKING_MIXTURE_DRAWS", "12000"))
+stacking_mixture_draws <- as.integer(env_value("ACCRUAL_STACKING_MIXTURE_DRAWS", "8000"))
 
 if (is.na(prior_pred_n_draws) || prior_pred_n_draws <= 0) prior_pred_n_draws <- 1000L
-if (is.na(stacking_mixture_draws) || stacking_mixture_draws <= 0) stacking_mixture_draws <- 12000L
+if (is.na(stacking_mixture_draws) || stacking_mixture_draws <= 0) stacking_mixture_draws <- 8000L
 if (!likelihood_family %in% c("gaussian", "student")) {
   stop("[BLOCKER] ACCRUAL_FAMILY must be 'gaussian' or 'student'.")
 }
@@ -151,6 +151,45 @@ main_model_ids_for_space <- function(target_space) {
 
 primary_model_ids_for_space <- function(target_space) main_model_ids_for_space(target_space)
 exact_kfold_model_ids_for_space <- function(target_space) main_model_ids_for_space(target_space)
+
+chapter3_prior_predictive_thresholds <- function() {
+  list(
+    abs_gt_1_pass = 0.05,
+    abs_gt_2_pass = 0.01,
+    range_ratio_pass = 3.00,
+    abs_gt_1_review = 0.15,
+    abs_gt_2_review = 0.02,
+    range_ratio_review = 5.00,
+    source = "reports/chapter_3_method_only_reviewer_final_journal_style_transitions.md"
+  )
+}
+
+classify_chapter3_prior_predictive <- function(share_gt_1, share_gt_2, prior_p01, prior_p99, observed_p01, observed_p99) {
+  thr <- chapter3_prior_predictive_thresholds()
+  vals <- c(share_gt_1, share_gt_2, prior_p01, prior_p99, observed_p01, observed_p99)
+  if (any(!is.finite(vals))) {
+    return(list(status = "FAIL", reason = "non-finite prior predictive or observed summary", range_ratio = NA_real_))
+  }
+  empirical_range <- observed_p99 - observed_p01
+  prior_range <- prior_p99 - prior_p01
+  if (!is.finite(empirical_range) || empirical_range <= 0 || !is.finite(prior_range)) {
+    return(list(status = "FAIL", reason = "invalid empirical or prior predictive 1st-to-99th percentile range", range_ratio = NA_real_))
+  }
+  range_ratio <- prior_range / empirical_range
+  pass <- share_gt_1 <= thr$abs_gt_1_pass &&
+    share_gt_2 <= thr$abs_gt_2_pass &&
+    range_ratio <= thr$range_ratio_pass
+  if (pass) {
+    return(list(status = "PASS", reason = "meets Chapter 3 prior predictive gates", range_ratio = range_ratio))
+  }
+  review <- share_gt_1 <= thr$abs_gt_1_review &&
+    share_gt_2 <= thr$abs_gt_2_review &&
+    range_ratio <= thr$range_ratio_review
+  if (review) {
+    return(list(status = "REVIEW", reason = "misses Chapter 3 PASS gate but remains within derived REVIEW band", range_ratio = range_ratio))
+  }
+  list(status = "FAIL", reason = "fails Chapter 3 prior predictive gates", range_ratio = range_ratio)
+}
 
 accrual_base_seed <- function() {
   env_int("ACCRUAL_SEED", 42L, min = 0L)
@@ -242,7 +281,7 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
   if (identical(kind, "baseline")) {
     cfg <- list(
       chains = env_int("ACCRUAL_BASELINE_CHAINS", 4L, min = 1L),
-      iter = env_int("ACCRUAL_BASELINE_ITER", 4000L, min = 1L),
+      iter = env_int("ACCRUAL_BASELINE_ITER", 3000L, min = 1L),
       warmup = env_int("ACCRUAL_BASELINE_WARMUP", 1000L, min = 0L),
       adapt_delta = env_num("ACCRUAL_BASELINE_ADAPT_DELTA", if (varying_slopes) 0.99 else 0.95, min = 0),
       max_treedepth = env_int(c("ACCRUAL_BASELINE_MAX_TREEDEPTH", "ACCRUAL_BASELINE_MAX_TREEDepth"), if (varying_slopes) 15L else 12L, min = 1L),
@@ -277,7 +316,7 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
   } else {
     cfg <- list(
       chains = env_int("ACCRUAL_SENS_CHAINS", 4L, min = 1L),
-      iter = env_int("ACCRUAL_SENS_ITER", 4000L, min = 1L),
+      iter = env_int("ACCRUAL_SENS_ITER", 3000L, min = 1L),
       warmup = env_int("ACCRUAL_SENS_WARMUP", 1000L, min = 0L),
       adapt_delta = env_num("ACCRUAL_SENS_ADAPT_DELTA", 0.95, min = 0),
       max_treedepth = env_int("ACCRUAL_SENS_MAX_TREEDEPTH", 12L, min = 1L),
@@ -843,7 +882,7 @@ write_pipeline_index <- function() {
     "",
     "Sensitivity scripts se01-se07 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `ACCRUAL_DRY_RUN=FALSE` and the relevant script is launched intentionally.",
     "",
-    "Sampler protocol: full-sample baseline `brms` fits use 4 chains, 4000 iterations, and 1000 warmup iterations; exact K-fold refits use 4 chains, 3000 iterations, and 1000 warmup iterations because they are repeated across validation folds and are used for method-matched validation comparisons; FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. The baseline 4000/1000 setting is intentional, while 3000/1000 is the primary validation-refit protocol. Manifests should record actual sampler settings.",
+    "Sampler protocol: Chapter 3 specifies 4 chains, 3000 iterations, 1000 warmup iterations, fixed seed 42, adapt_delta = 0.95, and max_treedepth = 12 for brms/Stan estimation. Baseline full-sample fits, exact K-fold refits, and sensitivity refits use those defaults unless explicitly overridden and recorded in manifests. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference.",
     "",
     "Execution configuration is centralized in `scripts/ma00_setup.R`: `accrual_base_seed()` and `accrual_seed()` enforce one canonical seed (`ACCRUAL_SEED`, default 42) across baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context-specific offsets from that same canonical seed; `set_accrual_seed()` is the only helper that calls base `set.seed()`; `accrual_sampler_config()` supplies sampler settings; `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings; and `main_model_ids_for_space()` supplies primary model IDs. Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
     "",

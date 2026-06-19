@@ -38,12 +38,18 @@ eligible_formulas <- formulas_df %>%
 
 if (nrow(eligible_formulas) == 0) stop("[BLOCKER] No eligible main-stack formulas for sensitivity prior predictive checks.")
 
-classify_prior_pp <- function(p_abs_gt_1, p_abs_gt_2, yrep_sd) {
-  if (!is.finite(p_abs_gt_1) || !is.finite(p_abs_gt_2) || !is.finite(yrep_sd)) return(c("FAIL", "non-finite prior predictive summary"))
-  if (p_abs_gt_2 > 0.01) return(c("FAIL", "more than 1% prior predictive mass exceeds absolute accrual 2"))
-  if (p_abs_gt_1 > 0.05) return(c("REVIEW", "more than 5% prior predictive mass exceeds absolute accrual 1"))
-  if (yrep_sd > 0.50) return(c("REVIEW", "prior predictive standard deviation is large for scaled accruals"))
-  c("PASS", "prior predictive scale is within configured thresholds")
+classify_prior_pp <- function(vals, observed) {
+  prior_q <- stats::quantile(vals, probs = c(0.01, 0.99), na.rm = TRUE, names = FALSE, type = 7)
+  obs_q <- stats::quantile(observed, probs = c(0.01, 0.99), na.rm = TRUE, names = FALSE, type = 7)
+  out <- classify_chapter3_prior_predictive(
+    share_gt_1 = mean(abs(vals) > 1, na.rm = TRUE),
+    share_gt_2 = mean(abs(vals) > 2, na.rm = TRUE),
+    prior_p01 = prior_q[[1]],
+    prior_p99 = prior_q[[2]],
+    observed_p01 = obs_q[[1]],
+    observed_p99 = obs_q[[2]]
+  )
+  c(out$status, out$reason, as.character(out$range_ratio))
 }
 
 scenario_rows <- list()
@@ -103,6 +109,7 @@ for (sidx in seq_len(nrow(scenarios))) {
     }
 
     df_scaled <- read_winsor_sample(row$Target_Sample)
+    observed <- df_scaled$TA_scaled
     formula_str <- fix_formula(row$brms_Formula)
     prior_list <- default_prior_list(
       row$Heterogeneity_Variant,
@@ -155,7 +162,7 @@ for (sidx in seq_len(nrow(scenarios))) {
     saveRDS(fit, out_fit)
     yrep <- brms::posterior_predict(fit, ndraws = n_draws)
     vals <- as.numeric(yrep)
-    pp <- classify_prior_pp(mean(abs(vals) > 1, na.rm = TRUE), mean(abs(vals) > 2, na.rm = TRUE), sd(vals, na.rm = TRUE))
+    pp <- classify_prior_pp(vals, observed)
 
     scenario_rows[[length(scenario_rows) + 1]] <- data.frame(
       scenario = scenario,
@@ -169,6 +176,7 @@ for (sidx in seq_len(nrow(scenarios))) {
       p_abs_gt_2 = mean(abs(vals) > 2, na.rm = TRUE),
       yrep_mean = mean(vals, na.rm = TRUE),
       yrep_sd = sd(vals, na.rm = TRUE),
+      range_ratio_to_observed = as.numeric(pp[3]),
       status = pp[1],
       reason = pp[2],
       output_path = out_fit,
@@ -213,6 +221,7 @@ writeLines(c(
   sprintf("Dry run: %s", dry_run),
   sprintf("Scenarios: %s", paste(scenarios$Scenario, collapse = ", ")),
   sprintf("Allow prior predictive fail override: %s", allow_prior_fail),
+  "Chapter 3 PASS thresholds: share |TA_scaled| > 1 <= 0.05; share |TA_scaled| > 2 <= 0.01; prior predictive p01-p99 range <= 3 times observed p01-p99 range.",
   "Scenario FAIL blocks full refit unless ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE."
 ), file.path(sensitivity_root(), "logs", "sensitivity_prior_predictive_notes.txt"))
 

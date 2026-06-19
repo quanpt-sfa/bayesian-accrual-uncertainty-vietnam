@@ -191,8 +191,8 @@ writeLines(c(
   paste("- Version:", script_version),
   paste("- Decision:", gate_decision),
   "",
-  "Primary RQ2 DA files are the exact grouped K-fold and exact row K-fold outputs from script 31.",
-  "The PSIS/LOO DA file from script 10 is audited as secondary when present.",
+  "Primary RQ2 DA files are the exact grouped K-fold and exact row K-fold outputs from ma14.",
+  "The PSIS/LOO DA file from ma10 is audited as secondary when present.",
   "Primary DA columns must be finite unless a missing column is explicitly classified as structural."
 ), note_path)
 

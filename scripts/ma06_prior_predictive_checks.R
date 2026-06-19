@@ -67,12 +67,9 @@ summarize_quantiles <- function(x) {
 }
 
 plausibility_flag <- function(share_gt_1, share_gt_2) {
-  if (is.na(share_gt_1) || is.na(share_gt_2)) {
-    return("FAIL")
-  }
-  if (share_gt_1 <= 0.05 && share_gt_2 <= 0.005) return("PASS")
-  if (share_gt_1 <= 0.15 && share_gt_2 <= 0.02) return("REVIEW")
-  "FAIL"
+  warning("plausibility_flag() is deprecated; use classify_chapter3_prior_predictive().", call. = FALSE)
+  out <- classify_chapter3_prior_predictive(share_gt_1, share_gt_2, 0, 1, 0, 1)
+  out$status
 }
 
 sample_prior_predictions <- function(row, rng_offset) {
@@ -133,7 +130,8 @@ notes <- c(
   sprintf("Representative configurations checked: %d", nrow(representative_rows)),
   "Priors are formalized in table_prior_specification.csv and table_prior_sets.csv and match the current ma07 defaults.",
   "Main-stack design is unchanged: winsorized samples remain primary, and M08/M10 stay outside the main stacks.",
-  "Flags use domain thresholds: PASS if share |TA_scaled| > 1 <= 0.05 and share |TA_scaled| > 2 <= 0.005; REVIEW if <= 0.15 and <= 0.02; otherwise FAIL.",
+  "Flags use Chapter 3 thresholds: PASS if share |TA_scaled| > 1 <= 0.05, share |TA_scaled| > 2 <= 0.01, and prior predictive p01-p99 range <= 3 times the observed p01-p99 range.",
+  "REVIEW is a derived implementation band used for reporting: share |TA_scaled| > 1 <= 0.15, share |TA_scaled| > 2 <= 0.02, and range ratio <= 5.00; otherwise FAIL.",
   ""
 )
 
@@ -151,7 +149,15 @@ for (i in seq_len(nrow(representative_rows))) {
   share_gt_1 <- mean(abs(simulated) > 1, na.rm = TRUE)
   share_gt_2 <- mean(abs(simulated) > 2, na.rm = TRUE)
   share_gt_5 <- mean(abs(simulated) > 5, na.rm = TRUE)
-  flag <- plausibility_flag(share_gt_1 = share_gt_1, share_gt_2 = share_gt_2)
+  gate <- classify_chapter3_prior_predictive(
+    share_gt_1 = share_gt_1,
+    share_gt_2 = share_gt_2,
+    prior_p01 = prior_q$p01,
+    prior_p99 = prior_q$p99,
+    observed_p01 = obs_q$p01,
+    observed_p99 = obs_q$p99
+  )
+  flag <- gate$status
 
   summary_rows[[length(summary_rows) + 1]] <- data.frame(
     Model_ID = row$Model_ID,
@@ -168,10 +174,14 @@ for (i in seq_len(nrow(representative_rows))) {
     PriorPred_TA_P01 = prior_q$p01,
     PriorPred_TA_Median = prior_q$median,
     PriorPred_TA_P99 = prior_q$p99,
+    PriorPred_TA_P01_P99_Range = prior_q$p99 - prior_q$p01,
+    Observed_TA_P01_P99_Range = obs_q$p99 - obs_q$p01,
+    PriorPred_Range_Ratio_to_Observed = gate$range_ratio,
     PriorPred_Share_Abs_GT_1 = share_gt_1,
     PriorPred_Share_Abs_GT_2 = share_gt_2,
     PriorPred_Share_Abs_GT_5 = share_gt_5,
     Prior_Plausibility_Flag = flag,
+    Prior_Plausibility_Reason = gate$reason,
     Prior_Set_ID = prior_set_id,
     Likelihood_Family = likelihood_family,
     Model_Structure = model_structure,
@@ -236,9 +246,10 @@ gate_df <- data.frame(
   prior_set_id = prior_set_id,
   family = likelihood_family,
   status = summary_df$Prior_Plausibility_Flag,
-  reason = sprintf("Share abs(TA) > 1: %.4f; Share abs(TA) > 2: %.4f",
+  reason = sprintf("Share abs(TA) > 1: %.4f; Share abs(TA) > 2: %.4f; p01-p99 range ratio: %.4f",
                    summary_df$PriorPred_Share_Abs_GT_1,
-                   summary_df$PriorPred_Share_Abs_GT_2),
+                   summary_df$PriorPred_Share_Abs_GT_2,
+                   summary_df$PriorPred_Range_Ratio_to_Observed),
   timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"),
   config_hash = config_hash_val,
   stringsAsFactors = FALSE
@@ -266,7 +277,7 @@ method_note <- c(
   sprintf("Likelihood family: %s", likelihood_family),
   "The wide_original Gaussian prior set is retained only as a diagnostic reference because its prior predictive checks imply implausibly wide TA_scaled distributions.",
   "The scale-aware Student-t baseline uses normal(0, 0.10) priors on coefficients and intercepts, exponential(10) priors on residual/group scales, and gamma(2, 0.1) on Student-t nu.",
-  "Prior predictive checks are domain-based rather than fitted-data-range-based: PASS requires share |TA_scaled| > 1 <= 0.05 and share |TA_scaled| > 2 <= 0.005.",
+  "Prior predictive checks follow Chapter 3: PASS requires share |TA_scaled| > 1 <= 0.05, share |TA_scaled| > 2 <= 0.01, and prior predictive p01-p99 range <= 3 times the observed p01-p99 range.",
   "FAIL blocks the baseline pipeline unless overridden with ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL=TRUE."
 )
 writeLines(method_note, prior_method_note_path)

@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # Script: 31_construct_exact_kfold_DA.R
 # Purpose: Construct exact-K-fold-weighted winsorized DA from pinned completed
-#          grouped and row exact K-fold runs. This is separate from script 10,
+#          grouped and row exact K-fold runs. This is separate from ma10,
 #          which remains the secondary PSIS/LOO DA constructor.
 # -----------------------------------------------------------------------------
 

@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 30_new_firm_predictive_integration_audit.R
+# Script: di02_new_firm_predictive_integration_audit.R
 # Purpose: Audit whether primary out-of-firm posterior predictive quantities from
 #          Firm-RE models verify integration over new-firm effects u_new.
 #
@@ -30,7 +30,7 @@ if (exists("ensure_analysis_dirs", mode = "function")) ensure_analysis_dirs()
 
 script_start_time <- Sys.time()
 script_name <- "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R"
-script_version <- "2026-06-18-v2-source-specific-failsafe"
+script_version <- "2026-06-19-v3-active-reorg-source-paths"
 
 audit_root <- file.path(output_root, "new_firm_predictive_audit")
 tables_dir <- file.path(audit_root, "tables")
@@ -199,12 +199,12 @@ source_paths <- data.frame(
     "psis_reliability_gate_candidate"
   ),
   path = c(
-    file.path("scripts", "10_construct_uncertainty_adjusted_DA.R"),
-    file.path("scripts", "12_lofo_stacking.R"),
-    file.path("scripts", "13_grouped_kfold_firm.R"),
-    file.path("scripts", "26_sim_brms_leakage_confirmation.R"),
-    file.path("scripts", "28_row_level_exact_kfold.R"),
-    file.path("scripts", "29_psis_reliability_gate.R")
+    file.path("scripts", "ma10_construct_psis_loo_DA.R"),
+    file.path("scripts", "robustness", "ro01_lofo_stacking.R"),
+    file.path("scripts", "ma12_grouped_kfold_firm.R"),
+    file.path("scripts", "simulation", "si03_brms_leakage_confirmation.R"),
+    file.path("scripts", "ma13_row_level_exact_kfold.R"),
+    file.path("scripts", "diagnostics", "di01_psis_reliability_gate.R")
   ),
   stringsAsFactors = FALSE
 )
@@ -269,7 +269,7 @@ quantity_class_from_name <- function(quantity, output_role) {
   dplyr::case_when(
     grepl("tail_flag|tail_prob|ppd|predictive|da_z_predictive|posterior_predict|posterior_epred", q) ~ "posterior_predictive_tail_or_distribution",
     grepl("log_predictive_density|elpd|lpd|score", q) ~ "predictive_score",
-    grepl("weight", q) || grepl("weights", r) ~ "model_weight",
+    grepl("weight", q) | grepl("weights", r) ~ "model_weight",
     TRUE ~ "other"
   )
 }
