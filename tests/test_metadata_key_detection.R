@@ -1,4 +1,4 @@
-source("scripts/00_helpers.R")
+source("scripts/ma00_setup.R")
 
 cases <- list(
   list(columns = c("Mã", "Industry"), expected = "Mã"),

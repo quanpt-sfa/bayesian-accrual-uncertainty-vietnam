@@ -1,5 +1,5 @@
-script_06 <- readLines("scripts/06_prior_predictive_checks.R", warn = FALSE)
-script_07 <- readLines("scripts/07_fit_brms_named_models.R", warn = FALSE)
+script_06 <- readLines("scripts/ma06_prior_predictive_checks.R", warn = FALSE)
+script_07 <- readLines("scripts/ma07_fit_brms_named_models.R", warn = FALSE)
 
 checks <- c(
   any(grepl("prior_predictive_gate_status", script_06, fixed = TRUE)),
