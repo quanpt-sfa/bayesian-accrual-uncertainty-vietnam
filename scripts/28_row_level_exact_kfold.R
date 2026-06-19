@@ -35,6 +35,7 @@ iter <- kfold_cfg$iter
 warmup <- kfold_cfg$warmup
 adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
+row_run_rng_meta <- accrual_rng_metadata_list("row_kfold_run_manifest")
 
 target_space_filter <- split_env("ACCRUAL_ROW_KFOLD_TARGET_SPACE")
 model_id_filter <- split_env("ACCRUAL_ROW_KFOLD_MODEL_IDS")
@@ -350,11 +351,19 @@ fold_assignment <- bind_rows(df_ep, df_rt) %>%
     target_space = Target_Space,
     fold = Fold_ID,
     K = K,
-    seed = ifelse(
+    RNG_Context = ifelse(
+      Target_Space == "ex_post",
+      "row_kfold_fold_assignment_ex_post",
+      "row_kfold_fold_assignment_real_time"
+    ),
+    RNG_Offset = ifelse(Target_Space == "ex_post", 1L, 2L),
+    Canonical_Seed = accrual_base_seed(),
+    Effective_Seed = ifelse(
       Target_Space == "ex_post",
       accrual_seed_for("row_kfold_fold_assignment_ex_post", offset = 1L),
       accrual_seed_for("row_kfold_fold_assignment_real_time", offset = 2L)
     ),
+    RNG_Source = "scripts/00_helpers.R",
     fold_assignment_unit = "firm_year",
     fold_assignment_design = "company_stratified_row_level_to_preserve_same_firm_training_history",
     firm_obs_count = firm_obs_count,
@@ -432,7 +441,11 @@ write_manifest <- function(status, extra_note = NA_character_) {
     Status = status,
     Extra_Note = extra_note,
     K = K,
-    Seed = accrual_seed("row_kfold"),
+    RNG_Context = row_run_rng_meta$RNG_Context,
+    RNG_Offset = row_run_rng_meta$RNG_Offset,
+    Canonical_Seed = row_run_rng_meta$Canonical_Seed,
+    Effective_Seed = row_run_rng_meta$Effective_Seed,
+    RNG_Source = row_run_rng_meta$RNG_Source,
     Run_Mode = run_mode,
     Chains = chains,
     Iter = iter,
@@ -481,7 +494,9 @@ write_reviewer_note <- function(status) {
     paste("- Version:", script_version),
     paste("- Status:", status),
     paste("- K:", K),
-    paste("- Seed:", accrual_seed("row_kfold")),
+    paste("- Canonical Seed:", row_run_rng_meta$Canonical_Seed),
+    paste("- Effective Seed:", row_run_rng_meta$Effective_Seed),
+    paste("- RNG Context:", row_run_rng_meta$RNG_Context),
     "",
     "This run uses row-level held-out folds where the validation unit is a firm-year observation.",
     "It is intentionally separate from Step 13, which uses firm-grouped folds to test out-of-firm generalization.",
@@ -515,6 +530,10 @@ score_task <- function(task) {
   train_df <- sample_df %>% filter(Fold_ID != task$Fold_ID)
   test_df <- sample_df %>% filter(Fold_ID == task$Fold_ID)
   task_start <- Sys.time()
+  task_rng_context <- paste0(
+    "row_kfold_refit_", task$Target_Space, "_", task$Model_ID, "_", task$Heterogeneity_Variant
+  )
+  task_rng_meta <- accrual_rng_metadata_list(task_rng_context, offset = task$Fold_ID)
   expected_meta <- list(
     script_version = script_version,
     target_space = task$Target_Space,
@@ -522,7 +541,11 @@ score_task <- function(task) {
     variant = task$Heterogeneity_Variant,
     fold_id = task$Fold_ID,
     K = K,
-    seed = accrual_seed("row_kfold"),
+    RNG_Context = task_rng_meta$RNG_Context,
+    RNG_Offset = task_rng_meta$RNG_Offset,
+    Canonical_Seed = task_rng_meta$Canonical_Seed,
+    Effective_Seed = task_rng_meta$Effective_Seed,
+    RNG_Source = task_rng_meta$RNG_Source,
     formula = task$brms_Formula,
     train_hash = stable_hash(train_df$observation_id),
     test_hash = stable_hash(test_df$observation_id)
@@ -602,10 +625,7 @@ score_task <- function(task) {
         iter = iter,
         warmup = warmup,
         control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
-        seed = accrual_seed_for(
-          paste0("row_kfold_refit_", task$Target_Space, "_", task$Model_ID, "_", task$Heterogeneity_Variant),
-          offset = task$Fold_ID
-        ),
+        seed = task_rng_meta$Effective_Seed,
         refresh = 500,
         save_pars = brms::save_pars(all = TRUE)
       )
@@ -890,7 +910,7 @@ row_weight_files_available <- all(file.exists(c(
 )))
 primary_inference_allowed <<- identical(run_mode, "FULL_MODE") &&
   K == 5L &&
-  accrual_seed("row_kfold") == 42L &&
+  accrual_base_seed() == 42L &&
   (full_unfiltered_primary_run || explicit_full_primary_filters) &&
   all_planned_tasks_completed &&
   row_weight_files_available &&
@@ -899,7 +919,7 @@ primary_inference_allowed <<- identical(run_mode, "FULL_MODE") &&
 completed_run_pin_eligible <<- !preflight_only &&
   identical(run_mode, "FULL_MODE") &&
   K == 5L &&
-  accrual_seed("row_kfold") == 42L &&
+  accrual_base_seed() == 42L &&
   (full_unfiltered_primary_run || explicit_full_primary_filters) &&
   all_planned_tasks_completed &&
   row_weight_files_available &&

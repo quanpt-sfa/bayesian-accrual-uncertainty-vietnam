@@ -21,7 +21,6 @@ iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
-seed <- accrual_seed("sensitivity")
 
 scenarios <- selected_sensitivity_scenarios()
 formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
@@ -56,8 +55,10 @@ eligible_formulas <- eligible_formulas %>%
 if (nrow(eligible_formulas) == 0) stop("[BLOCKER] No eligible formulas for sensitivity refit.")
 if (!dry_run && !requireNamespace("brms", quietly = TRUE)) stop("[BLOCKER] brms is required for non-dry-run sensitivity refits.")
 
-sampling_config <- sprintf("chains=%d; iter=%d; warmup=%d; adapt_delta=%.3f; max_treedepth=%d; seed=%d; dry_run=%s",
-                           chains, iter, warmup, adapt_delta, max_treedepth, accrual_seed("sensitivity"), dry_run)
+sampling_config <- sprintf(
+  "chains=%d; iter=%d; warmup=%d; adapt_delta=%.3f; max_treedepth=%d; canonical_seed=%d; dry_run=%s",
+  chains, iter, warmup, adapt_delta, max_treedepth, accrual_base_seed(), dry_run
+)
 plan_rows <- list()
 diag_rows <- list()
 
@@ -82,6 +83,7 @@ for (sidx in seq_len(nrow(scenarios))) {
   ensure_sensitivity_dirs(scenario)
   proceed <- gate_allows(scenario)
   model_list <- unique(paste(eligible_formulas$Target_Space, eligible_formulas$Model_ID, sep = ":"))
+  manifest_rng_context <- paste0("sensitivity_refit_manifest_", scenario)
 
   write_run_manifest(
     file.path(scenario_root, "manifests", "refit_manifest.csv"),
@@ -90,11 +92,13 @@ for (sidx in seq_len(nrow(scenarios))) {
     family = sc$Likelihood_Family,
     model_structure = sc$Model_Structure,
     model_list = model_list,
-    seed = seed,
+    seed = accrual_seed_for(manifest_rng_context, offset = sidx),
     sampling_config = sampling_config,
     status = if (dry_run) "DRY_RUN_PLANNED" else if (proceed) "STARTED" else "BLOCKED_BY_PRIOR_PREDICTIVE_GATE",
     notes = "Sensitivity refit never reuses baseline posterior draws; existing scenario fits are reused only if metadata matches.",
-    input_paths = c(formulas_path, gate_path)
+    input_paths = c(formulas_path, gate_path),
+    rng_context = manifest_rng_context,
+    rng_offset = sidx
   )
 
   for (i in seq_len(nrow(eligible_formulas))) {
@@ -103,6 +107,12 @@ for (sidx in seq_len(nrow(scenarios))) {
     fit_path <- file.path(scenario_root, "fits", paste0("fit_", model_key, ".rds"))
     draws_path <- file.path(scenario_root, "draws", paste0("draws_", model_key, ".rds"))
     meta_path <- file.path(scenario_root, "fits", paste0("fit_", model_key, "_metadata.csv"))
+    fit_rng_context <- paste0(
+      "sensitivity_refit_", scenario, "_", row$Target_Space, "_",
+      row$Model_ID, "_", row$Heterogeneity_Variant
+    )
+    fit_rng_offset <- sidx * 1000L + i
+    fit_rng_meta <- accrual_rng_metadata_list(fit_rng_context, offset = fit_rng_offset)
     expected_meta <- data.frame(
       scenario = scenario,
       prior_set_id = sc$Prior_Set_ID,
@@ -120,7 +130,11 @@ for (sidx in seq_len(nrow(scenarios))) {
       warmup = warmup,
       adapt_delta = adapt_delta,
       max_treedepth = max_treedepth,
-      seed = accrual_seed("sensitivity"),
+      RNG_Context = fit_rng_meta$RNG_Context,
+      RNG_Offset = fit_rng_meta$RNG_Offset,
+      Canonical_Seed = fit_rng_meta$Canonical_Seed,
+      Effective_Seed = fit_rng_meta$Effective_Seed,
+      RNG_Source = fit_rng_meta$RNG_Source,
       save_pars_all = TRUE,
       stringsAsFactors = FALSE
     )
@@ -221,7 +235,7 @@ for (sidx in seq_len(nrow(scenarios))) {
             iter = iter,
             warmup = warmup,
             control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
-            seed = seed,
+            seed = fit_rng_meta$Effective_Seed,
             save_pars = brms::save_pars(all = TRUE),
             refresh = 500
           )
@@ -247,7 +261,10 @@ for (sidx in seq_len(nrow(scenarios))) {
     log_lines <- c(
       paste0("Scenario: ", scenario),
       paste0("Model ID: ", row$Model_ID),
-      paste0("Seed: ", seed),
+      paste0("Canonical Seed: ", fit_rng_meta$Canonical_Seed),
+      paste0("Effective Seed: ", fit_rng_meta$Effective_Seed),
+      paste0("RNG Context: ", fit_rng_meta$RNG_Context),
+      paste0("RNG Offset: ", fit_rng_meta$RNG_Offset),
       paste0("Sampling Config: ", sampling_config),
       paste0("Status: ", if (inherits(fit, "error")) "ERROR" else if (length(captured_warnings) > 0) "WARNING" else "SUCCESS"),
       paste0("Elapsed seconds: ", elapsed),

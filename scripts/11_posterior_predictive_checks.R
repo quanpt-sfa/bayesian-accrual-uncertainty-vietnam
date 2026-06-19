@@ -9,8 +9,6 @@ library(dplyr)
 source("scripts/00_helpers.R")
 ensure_analysis_dirs()
 
-set_accrual_seed("baseline_posterior_predictive")
-
 final_path <- file.path(output_root, "tables", "final_uncertainty_adjusted_accruals_winsor.csv")
 ep_weights_path <- file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv")
 rt_weights_path <- file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv")
@@ -50,6 +48,7 @@ sample_stacked_predictive <- function(df_sample, weights_df, space_name, n_draws
   }
 
   n_obs <- nrow(df_sample)
+  set_accrual_seed(paste0("baseline_posterior_predictive_model_mix_", space_name))
   sampled_model_idx <- sample(seq_len(nrow(active_weights)), size = n_draws, replace = TRUE, prob = active_weights$Weight)
   stacked_predict <- matrix(NA_real_, nrow = n_draws, ncol = n_obs)
 
@@ -65,6 +64,10 @@ sample_stacked_predictive <- function(df_sample, weights_df, space_name, n_draws
                    draws_path, n_obs, ncol(draws$predict)))
     }
     pool <- seq_len(nrow(draws$predict))
+    set_accrual_seed(
+      paste0("baseline_posterior_predictive_draw_rows_", space_name, "_", row$Model_ID, "_", row$Heterogeneity_Variant),
+      offset = m
+    )
     chosen <- sample(pool, size = length(use_rows), replace = length(pool) < length(use_rows))
     stacked_predict[use_rows, ] <- draws$predict[chosen, , drop = FALSE]
     rm(draws)

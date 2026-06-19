@@ -349,16 +349,11 @@ iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
-seed <- accrual_seed("baseline")
-baseline_sampler_controls <- c(
-  sampler_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")],
-  seed = seed
-)
+baseline_sampler_controls <- sampler_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")]
 remediation_cfg <- accrual_sampler_config("baseline_remediation")
-remediation_sampler_controls <- c(
-  remediation_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")],
-  seed = seed
-)
+remediation_sampler_controls <- remediation_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")]
+baseline_rng_meta <- accrual_rng_metadata_list("baseline_fit_brms_named_models")
+remediation_rng_meta <- accrual_rng_metadata_list("baseline_fit_brms_named_models_remediation")
 
 main_ex_post_ids <- main_model_ids_for_space("ex_post")
 main_no_lookahead_ids <- main_model_ids_for_space("real_time")
@@ -395,7 +390,8 @@ if (length(remediation_targets) > 0) {
       "; warmup=", baseline_sampler_controls$warmup,
       "; adapt_delta=", baseline_sampler_controls$adapt_delta,
       "; max_treedepth=", baseline_sampler_controls$max_treedepth,
-      "; seed=", baseline_sampler_controls$seed
+      "; canonical_seed=", baseline_rng_meta$Canonical_Seed,
+      "; effective_seed=", baseline_rng_meta$Effective_Seed
     ),
     paste0(
       "Remediation sampler controls: chains=", remediation_sampler_controls$chains,
@@ -403,9 +399,10 @@ if (length(remediation_targets) > 0) {
       "; warmup=", remediation_sampler_controls$warmup,
       "; adapt_delta=", remediation_sampler_controls$adapt_delta,
       "; max_treedepth=", remediation_sampler_controls$max_treedepth,
-      "; seed=", remediation_sampler_controls$seed
+      "; canonical_seed=", remediation_rng_meta$Canonical_Seed,
+      "; effective_seed=", remediation_rng_meta$Effective_Seed
     ),
-    sprintf("Seed retained as configured baseline seed: %d.", accrual_seed("baseline")),
+    sprintf("Canonical pipeline seed retained: %d.", baseline_rng_meta$Canonical_Seed),
     "No seed search was performed.",
     "Formulas, priors, likelihood, model structure, and samples were unchanged."
   )
@@ -558,7 +555,14 @@ for (i in seq_len(total_runs)) {
         iter = active_sampler_controls$iter,
         warmup = active_sampler_controls$warmup,
         control = list(adapt_delta = active_sampler_controls$adapt_delta, max_treedepth = active_sampler_controls$max_treedepth),
-        seed = active_sampler_controls$seed,
+        seed = accrual_seed_for(
+          if (row_is_remediation_target) {
+            paste0("baseline_fit_brms_named_models_remediation_", row_target_key)
+          } else {
+            paste0("baseline_fit_brms_named_models_", row_target_key)
+          },
+          offset = i
+        ),
         save_pars = save_pars(all = TRUE),
         refresh = 500
       )
@@ -728,7 +732,7 @@ phase3_notes <- sprintf(
     "Diagnostics-only backfill mode: %s.\n",
     "Targeted MCMC remediation mode: %s.\n",
     "Predictors are z-standardized after winsorization using winsorized sample moments.\n",
-    "Sampling settings: chains=%d, iter=%d, warmup=%d, adapt_delta=%.2f, max_treedepth=%d, seed=%d.\n",
+    "Sampling settings: chains=%d, iter=%d, warmup=%d, adapt_delta=%.2f, max_treedepth=%d, canonical_seed=%d, effective_seed=%d.\n",
     "Prior_Set_ID: %s.\n",
     "Likelihood_Family: %s.\n",
     "Model_Structure: %s.\n",
@@ -741,7 +745,8 @@ phase3_notes <- sprintf(
   ),
   input_winsor_root, phase_root, ifelse(backfill_diagnostics_only, "TRUE", "FALSE"),
   ifelse(length(remediation_targets) > 0, "TRUE", "FALSE"),
-  chains, iter, warmup, adapt_delta, max_treedepth, seed,
+  chains, iter, warmup, adapt_delta, max_treedepth,
+  baseline_rng_meta$Canonical_Seed, baseline_rng_meta$Effective_Seed,
   prior_set_id, likelihood_family, model_structure
 )
 notes_file <- if (run_varying_slope_models) {
@@ -791,7 +796,7 @@ write_run_manifest(
   family = likelihood_family,
   model_structure = model_structure,
   model_list = unique(formulas_df$Model_ID),
-  seed = seed,
+  seed = baseline_rng_meta$Effective_Seed,
   sampling_config = if (length(remediation_targets) > 0) {
     sprintf(
       "baseline_chains=%d;baseline_iter=%d;baseline_warmup=%d;remediation_chains=%d;remediation_iter=%d;remediation_warmup=%d",
@@ -807,7 +812,9 @@ write_run_manifest(
   },
   status = "SUCCESS",
   notes = notes_str,
-  input_paths = c(formulas_path, gate_csv_path)
+  input_paths = c(formulas_path, gate_csv_path),
+  rng_context = baseline_rng_meta$RNG_Context,
+  rng_offset = baseline_rng_meta$RNG_Offset
 )
 message("Saved baseline manifest to: ", manifest_path)
 

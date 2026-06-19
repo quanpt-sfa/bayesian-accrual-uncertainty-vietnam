@@ -186,6 +186,20 @@ set_accrual_seed <- function(context, offset = 0L) {
   invisible(seed_value)
 }
 
+accrual_rng_metadata_list <- function(context = "global", offset = 0L) {
+  list(
+    RNG_Context = context,
+    RNG_Offset = normalize_accrual_seed_offset(offset, context),
+    Canonical_Seed = accrual_base_seed(),
+    Effective_Seed = accrual_seed_for(context, offset),
+    RNG_Source = "scripts/00_helpers.R"
+  )
+}
+
+accrual_rng_metadata <- function(context = "global", offset = 0L) {
+  as.data.frame(accrual_rng_metadata_list(context, offset), stringsAsFactors = FALSE)
+}
+
 accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "baseline_remediation"),
                                    run_mode = "FULL_MODE", varying_slopes = FALSE) {
   kind <- match.arg(kind)
@@ -678,13 +692,15 @@ metadata_matches <- function(path, expected) {
 
 write_run_manifest <- function(path, scenario, prior_set_id, family, model_structure,
                                   model_list, seed, sampling_config, status,
-                                  notes = "", input_paths = character()) {
+                                  notes = "", input_paths = character(),
+                                  rng_context = "manifest", rng_offset = 0L) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   input_hash <- if (length(input_paths) > 0) {
     paste(paste(input_paths, vapply(input_paths, file_fingerprint, character(1)), sep = "="), collapse = "; ")
   } else {
     NA_character_
   }
+  rng_meta <- accrual_rng_metadata(rng_context, rng_offset)
   manifest <- data.frame(
     Scenario = scenario,
     Prior_Set_ID = prior_set_id,
@@ -702,6 +718,7 @@ write_run_manifest <- function(path, scenario, prior_set_id, family, model_struc
     Session_Info = session_info_string(),
     stringsAsFactors = FALSE
   )
+  manifest <- cbind(manifest, rng_meta)
   write.csv(manifest, path, row.names = FALSE)
   path
 }

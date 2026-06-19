@@ -15,7 +15,6 @@ validate_final_analysis_config("sensitivity DA construction", final_mode = TRUE)
 dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
 S <- as.integer(env_value("ACCRUAL_STACKING_MIXTURE_DRAWS", as.character(stacking_mixture_draws)))
 if (is.na(S) || S <= 0) S <- stacking_mixture_draws
-set_accrual_seed("sensitivity_construct_da")
 
 scenarios <- selected_sensitivity_scenarios()
 weights_path <- file.path(sensitivity_root(), "tables", "sensitivity_stacking_weights_by_scenario.csv")
@@ -35,6 +34,10 @@ compute_stacked_da <- function(df_sample, weights_space, scenario, space_name) {
     arrange(desc(stacking_weight))
   if (nrow(active) == 0) stop("[BLOCKER] No finite active sensitivity stacking weights for ", scenario, " / ", space_name)
 
+  set_accrual_seed(
+    paste0("sensitivity_construct_da_model_mix_", scenario, "_", space_name),
+    offset = match(space_name, c("ex_post", "real_time"), nomatch = 10L)
+  )
   sampled_model_indices <- sample(seq_len(nrow(active)), size = S, replace = TRUE, prob = active$stacking_weight)
   stacked_epred <- matrix(NA_real_, nrow = S, ncol = N)
   stacked_predict <- matrix(NA_real_, nrow = S, ncol = N)
@@ -52,6 +55,10 @@ compute_stacked_da <- function(df_sample, weights_space, scenario, space_name) {
     if (ncol(draws$epred) != N || ncol(draws$predict) != N) {
       stop("[BLOCKER] Draw observation count mismatch for ", draws_path)
     }
+    set_accrual_seed(
+      paste0("sensitivity_construct_da_draw_rows_", scenario, "_", space_name, "_", row$model_id, "_", row$heterogeneity_variant),
+      offset = m
+    )
     selected <- sample(seq_len(nrow(draws$epred)), size = length(mix_rows), replace = nrow(draws$epred) < length(mix_rows))
     stacked_epred[mix_rows, ] <- draws$epred[selected, ]
     stacked_predict[mix_rows, ] <- draws$predict[selected, ]
@@ -147,7 +154,8 @@ compute_stacked_da <- function(df_sample, weights_space, scenario, space_name) {
 da_rows <- list()
 plan_rows <- list()
 
-for (scenario in scenarios$Scenario) {
+for (sidx in seq_len(nrow(scenarios))) {
+  scenario <- scenarios$Scenario[sidx]
   scenario_root <- sensitivity_root(scenario)
   ensure_sensitivity_dirs(scenario)
   sc_weights <- weights_df %>% filter(scenario == !!scenario)
@@ -167,11 +175,13 @@ for (scenario in scenarios$Scenario) {
     family = "student",
     model_structure = "pooled_random_intercept",
     model_list = unique(sc_weights$model_id),
-    seed = accrual_seed("sensitivity"),
+    seed = accrual_seed_for(paste0("sensitivity_construct_da_manifest_", scenario), offset = sidx),
     sampling_config = sprintf("stacking_mixture_draws=%d; dry_run=%s", S, dry_run),
     status = if (dry_run) "DRY_RUN_PLANNED" else "STARTED",
     notes = "DA is recomputed from scenario stacking weights and posterior predictive draws.",
-    input_paths = c(weights_path, ep_sample_path, rt_sample_path)
+    input_paths = c(weights_path, ep_sample_path, rt_sample_path),
+    rng_context = paste0("sensitivity_construct_da_manifest_", scenario),
+    rng_offset = sidx
   )
 
   if (dry_run) next

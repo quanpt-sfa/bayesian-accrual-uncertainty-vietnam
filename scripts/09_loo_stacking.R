@@ -76,7 +76,6 @@ iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
-seed <- accrual_seed("baseline")
 
 eligible_joined <- eligible_models %>%
   left_join(
@@ -175,7 +174,10 @@ for (i in seq_len(nrow(eligible_joined))) {
         iter = iter,
         warmup = warmup,
         control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
-        seed = seed,
+        seed = accrual_seed_for(
+          paste0("baseline_loo_refit_", row$Target_Space, "_", row$Model_ID, "_", row$Heterogeneity_Variant),
+          offset = i
+        ),
         save_pars = save_pars(all = TRUE),
         refresh = 500
       )

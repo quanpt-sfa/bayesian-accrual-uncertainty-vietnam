@@ -74,7 +74,7 @@ plausibility_flag <- function(share_gt_1, share_gt_2) {
   "FAIL"
 }
 
-sample_prior_predictions <- function(row) {
+sample_prior_predictions <- function(row, rng_offset) {
   df_scaled <- read_winsor_sample(row$Target_Sample)
   formula_str <- fix_formula(row$brms_Formula)
   fit_prior <- brm(
@@ -86,7 +86,7 @@ sample_prior_predictions <- function(row) {
     chains = chains,
     iter = iter,
     warmup = warmup,
-    seed = accrual_seed_for("baseline_prior_predictive_fit", offset = i),
+    seed = accrual_seed_for("baseline_prior_predictive_fit", offset = rng_offset),
     refresh = 0
   )
   posterior_predict(fit_prior)
@@ -143,7 +143,7 @@ for (i in seq_len(nrow(representative_rows))) {
 
   observed_df <- read_winsor_sample(row$Target_Sample)
   observed <- observed_df$TA_scaled
-  simulated <- sample_prior_predictions(row)
+  simulated <- sample_prior_predictions(row, rng_offset = i)
 
   obs_q <- summarize_quantiles(observed)
   prior_q <- summarize_quantiles(as.vector(simulated))

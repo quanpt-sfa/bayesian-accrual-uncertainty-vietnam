@@ -26,7 +26,6 @@ validate_final_analysis_config("Exact K-fold uncertainty-adjusted DA", final_mod
 script_name <- "scripts/31_construct_exact_kfold_DA.R"
 script_version <- "2026-06-19-v2-provenance-inclusion-gate"
 script_start_time <- Sys.time()
-mixture_seed <- accrual_seed("baseline")
 mixture_draws <- stacking_mixture_draws
 
 tables_dir <- file.path(output_root, "tables")
@@ -263,10 +262,13 @@ compute_exact_kfold_da <- function(df_sample, weights_df, source, target_space, 
   active <- clean_weights(weights_df, source, target_space)
   active$Draw_File <- vapply(seq_len(nrow(active)), function(i) draws_path_for(active[i, ], target_space), character(1))
   N <- nrow(df_sample)
+  mixture_rng_context <- paste0("exact_kfold_da_", source, "_", target_space)
+  mixture_rng_offset <- match(target_space, c("ex_post", "real_time"), nomatch = 10L) +
+    ifelse(identical(source, "exact_row_kfold"), 1000L, 0L)
+  mixture_rng_meta <- accrual_rng_metadata_list(mixture_rng_context, offset = mixture_rng_offset)
   set_accrual_seed(
-    paste0("exact_kfold_da_", source, "_", target_space),
-    offset = match(target_space, c("ex_post", "real_time"), nomatch = 10L) +
-      ifelse(identical(source, "exact_row_kfold"), 1000L, 0L)
+    mixture_rng_context,
+    offset = mixture_rng_offset
   )
   sampled_model_indices <- sample(seq_len(nrow(active)), size = mixture_draws, replace = TRUE, prob = active$Weight)
   stacked_epred <- matrix(NA_real_, nrow = mixture_draws, ncol = N)
@@ -332,7 +334,11 @@ compute_exact_kfold_da <- function(df_sample, weights_df, source, target_space, 
     DA_ppd_tail_prob_two_sided = DA_ppd_tail_prob_two_sided,
     DA_ppd_percentile = DA_ppd_percentile,
     N_Mixture_Draws = mixture_draws,
-    Mixture_Seed = mixture_seed,
+    RNG_Context = mixture_rng_meta$RNG_Context,
+    RNG_Offset = mixture_rng_meta$RNG_Offset,
+    Canonical_Seed = mixture_rng_meta$Canonical_Seed,
+    Mixture_Seed = mixture_rng_meta$Effective_Seed,
+    RNG_Source = mixture_rng_meta$RNG_Source,
     Script_Version = script_version,
     Primary_Inference_Allowed = TRUE,
     stringsAsFactors = FALSE
@@ -348,7 +354,11 @@ compute_exact_kfold_da <- function(df_sample, weights_df, source, target_space, 
         N_Models_Active = nrow(active),
         N_Draws_Per_Model_Available = draw_counts,
         N_Mixture_Draws = mixture_draws,
-        Mixture_Seed = mixture_seed,
+        RNG_Context = mixture_rng_meta$RNG_Context,
+        RNG_Offset = mixture_rng_meta$RNG_Offset,
+        Canonical_Seed = mixture_rng_meta$Canonical_Seed,
+        Mixture_Seed = mixture_rng_meta$Effective_Seed,
+        RNG_Source = mixture_rng_meta$RNG_Source,
         Script_Version = script_version,
         Primary_Inference_Allowed = TRUE
       )
@@ -426,7 +436,11 @@ source_manifest <- weight_audit %>%
     N_Models_Active = n(),
     N_Draws_Per_Model_Available = min(N_Draws_Per_Model_Available, na.rm = TRUE),
     N_Mixture_Draws = first(N_Mixture_Draws),
+    RNG_Context = first(RNG_Context),
+    RNG_Offset = first(RNG_Offset),
+    Canonical_Seed = first(Canonical_Seed),
     Mixture_Seed = first(Mixture_Seed),
+    RNG_Source = first(RNG_Source),
     Script_Version = first(Script_Version),
     Primary_Inference_Allowed = all(Primary_Inference_Allowed),
     .groups = "drop"
@@ -447,7 +461,8 @@ source_manifest <- weight_audit %>%
     Grouped_KFold_Run_Manifest, Row_KFold_Run_Manifest, Grouped_Weight_File,
     Row_Weight_File, Weight_File, Weight_File_Size, Weight_File_MTime, Weight_File_Hash,
     Draw_File_Count, Draw_File_Hash_Manifest, Weight_Sum, N_Models_Active,
-    N_Draws_Per_Model_Available, N_Mixture_Draws, Mixture_Seed, Script_Name,
+    N_Draws_Per_Model_Available, N_Mixture_Draws, RNG_Context, RNG_Offset,
+    Canonical_Seed, Mixture_Seed, RNG_Source, Script_Name,
     Script_Version, Primary_Inference_Allowed
   )
 

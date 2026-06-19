@@ -57,7 +57,7 @@ compute_stacked_accruals <- function(df_sample, weights_df, space_name, S = stac
     arrange(desc(Weight))
   if (nrow(active_weights) == 0) stop("[BLOCKER] No active stacking weights for ", space_name)
 
-  set_accrual_seed(paste0("baseline_construct_da_", space_name))
+  set_accrual_seed(paste0("baseline_construct_da_model_mix_", space_name))
   sampled_model_indices <- sample(seq_len(nrow(active_weights)), size = S, replace = TRUE, prob = active_weights$Weight)
   stacked_epred <- matrix(NA_real_, nrow = S, ncol = N)
   stacked_predict <- matrix(NA_real_, nrow = S, ncol = N)
@@ -74,6 +74,10 @@ compute_stacked_accruals <- function(df_sample, weights_df, space_name, S = stac
                    draws_path, N, ncol(draws$epred), ncol(draws$predict)))
     }
     draw_pool <- seq_len(nrow(draws$epred))
+    set_accrual_seed(
+      paste0("baseline_construct_da_draw_rows_", space_name, "_", row$Model_ID, "_", row$Heterogeneity_Variant),
+      offset = m
+    )
     selected_draws <- sample(draw_pool, size = length(mix_rows), replace = length(draw_pool) < length(mix_rows))
     message(sprintf("  %s %s weight=%.4f assigned_draws=%d",
                     row$Model_ID, row$Heterogeneity_Variant, row$Weight, length(mix_rows)))

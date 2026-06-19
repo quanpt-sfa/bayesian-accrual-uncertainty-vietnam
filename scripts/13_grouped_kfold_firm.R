@@ -34,7 +34,7 @@ iter <- kfold_cfg$iter
 warmup <- kfold_cfg$warmup
 adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
-seed <- kfold_cfg$seed
+grouped_run_rng_meta <- accrual_rng_metadata_list("grouped_kfold_run_manifest")
 
 run_id <- trimws(Sys.getenv("ACCRUAL_KFOLD_FIRM_RUN_ID", "default"))
 if (!nzchar(run_id)) run_id <- "default"
@@ -147,7 +147,11 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Max_Treedepth = max_treedepth,
     Sampler_Profile = kfold_cfg$sampler_profile,
     Config_Source = kfold_cfg$config_source,
-    Seed = accrual_seed("grouped_kfold"),
+    RNG_Context = grouped_run_rng_meta$RNG_Context,
+    RNG_Offset = grouped_run_rng_meta$RNG_Offset,
+    Canonical_Seed = grouped_run_rng_meta$Canonical_Seed,
+    Effective_Seed = grouped_run_rng_meta$Effective_Seed,
+    RNG_Source = grouped_run_rng_meta$RNG_Source,
     ExPost_N_Obs = exp_n,
     ExPost_N_Firms = exp_firms,
     NoLookahead_N_Obs = rt_n,
@@ -651,7 +655,19 @@ main <- function() {
         Prior_Set_ID = prior_set_id,
         Likelihood_Family = likelihood_family,
         Model_Structure = model_structure,
-        Seed = seed,
+        RNG_Context = paste0("grouped_kfold_refit_", Target_Space, "_", Model_ID, "_", Heterogeneity_Variant),
+        RNG_Offset = Fold_ID,
+        Canonical_Seed = accrual_base_seed(),
+        Effective_Seed = mapply(
+          function(target_space, model_id, heterogeneity_variant, fold_id) {
+            accrual_seed_for(
+              paste0("grouped_kfold_refit_", target_space, "_", model_id, "_", heterogeneity_variant),
+              offset = fold_id
+            )
+          },
+          Target_Space, Model_ID, Heterogeneity_Variant, Fold_ID
+        ),
+        RNG_Source = "scripts/00_helpers.R",
         Status = "PENDING",
         Started_At = NA_character_,
         Ended_At = NA_character_,
@@ -1594,7 +1610,11 @@ main <- function() {
     paste("Run_ID:", run_id),
     paste("Config_Tag:", config_tag),
     paste("Kfold_Run_Root:", kfold_run_root),
-    sprintf("Sampling settings: chains=%d iter=%d warmup=%d adapt_delta=%.2f max_treedepth=%d seed=%d", chains, iter, warmup, adapt_delta, max_treedepth, accrual_seed("grouped_kfold")),
+    sprintf(
+      "Sampling settings: chains=%d iter=%d warmup=%d adapt_delta=%.2f max_treedepth=%d canonical_seed=%d effective_seed=%d",
+      chains, iter, warmup, adapt_delta, max_treedepth,
+      grouped_run_rng_meta$Canonical_Seed, grouped_run_rng_meta$Effective_Seed
+    ),
     sprintf("Stratified_Grouped_KFold: %s (per-industry round-robin; every industry with >= K firms appears in every fold).", kfold_stratified_groups),
     sprintf("Ex-post observations=%d firms=%d.", nrow(df_ep), length(unique(df_ep$company))),
     sprintf("No-look-ahead observations=%d firms=%d.", nrow(df_rt), length(unique(df_rt$company))),
