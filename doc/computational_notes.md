@@ -6,11 +6,11 @@
 - Full Bayesian refits can be expensive because scripts `07` and `15` fit multiple `brms` models.
 - Exact grouped K-fold in script `13` and exact row-level K-fold in script `28` are computationally expensive and should be treated as intentional heavy steps.
 - Run manifests should record the actual sampler settings used by each branch.
-- Execution and reproducibility configuration is centralized in `scripts/00_helpers.R`. `ACCRUAL_SEED` is the one canonical seed across the pipeline, with default `42`; `accrual_base_seed()` and `accrual_seed()` return that same seed for baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context offsets from that one base seed; and `set_accrual_seed()` is the only helper that calls base `set.seed()`.
+- Execution and reproducibility configuration is centralized in `scripts/ma00_setup.R`. `ACCRUAL_SEED` is the one canonical seed across the pipeline, with default `42`; `accrual_base_seed()` and `accrual_seed()` return that same seed for baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context offsets from that one base seed; and `set_accrual_seed()` is the only helper that calls base `set.seed()`.
 - Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`, to avoid branch-specific tuning or cherry-picking concerns. Any deterministic branch-internal offsets must derive from the common base seed. `ACCRUAL_KFOLD_FIRM_K`, `ACCRUAL_ROW_KFOLD_K`, and `ACCRUAL_SENS_*` sampler env vars remain supported. The lightweight registry is written to `out/manifests/method_design/execution_config_registry.csv`.
 - Canonical primary model helpers return M01-M07 for ex-post and M01, M02, M03, M07, M09 for no-lookahead. M08/M10 remain secondary/robustness unless explicitly included through documented secondary flows, and M11/M12 remain excluded from active primary helpers.
 - `Rscript run.R` runs the main Chapter 3 pipeline by default. Use `Rscript run.R --dry-run` to print the ordered plan without running scripts.
-- The main target includes adjacent exact K-fold arms: `scripts/13_grouped_kfold_firm.R` followed immediately by `scripts/28_row_level_exact_kfold.R`.
+- The main target includes adjacent exact K-fold arms: `scripts/ma12_grouped_kfold_firm.R` followed immediately by `scripts/ma13_row_level_exact_kfold.R`.
 - Script `10_construct_uncertainty_adjusted_DA.R` is the PSIS/LOO secondary DA constructor. It is retained for secondary diagnostics and posterior predictive checks.
 - Script `21_validation_on_scaleaware_student_DA.R` uses `final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv` from script `31` as the primary validation input. PSIS/LOO DA from script `10` may be included only as a secondary validation panel with `Primary_Inference_Allowed = FALSE`.
 - Script `31_construct_exact_kfold_DA.R` is the primary exact-KFoldW DA constructor for RQ2. It uses `ACCRUAL_GROUPED_KFOLD_RUN_ROOT` and `ACCRUAL_ROW_KFOLD_RUN_ROOT` when set, otherwise the `LATEST_COMPLETED_RUN.txt` pins written by scripts `13` and `28`; primary inference does not use moving `LATEST_RUN.txt`.
@@ -23,9 +23,9 @@
 - Script `30_new_firm_predictive_integration_audit.R` is a hard new-firm tail suppression gate. `PRIMARY_SUPPRESSION_REQUIRED_FOR_UNVERIFIED_FIRMRE_OUT_OF_FIRM_QUANTITIES` blocks export unless `ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS=TRUE`, in which case affected tail quantities must remain labelled suppressed/non-primary.
 - `run.R` checks artifact dependencies before downstream consumers run, so skipped heavy steps must already have usable artifacts or the pipeline stops with a precise blocker.
 - LOFO is an opt-in robustness target, sensitivity and simulation are opt-in branches, and PSIS reliability is a secondary diagnostics target.
-- `scripts/30_new_firm_predictive_integration_audit.R` is a main reporting gate for Firm-RE out-of-firm posterior predictive tail flags and also remains callable through `Rscript run.R diagnostics`.
+- `scripts/diagnostics/di02_new_firm_predictive_integration_audit.R` is a main reporting gate for Firm-RE out-of-firm posterior predictive tail flags and also remains callable through `Rscript run.R diagnostics`.
 - `Rscript run.R all --dry-run` de-duplicates script `30`; the new-firm audit appears in main and is not repeated in the diagnostics branch of `all`.
-- Chapter 3 manuscript export uses `scripts/temp/22_chapter3_methods_tables.R`.
+- Chapter 3 manuscript export uses `scripts/ma17_export_tables_figures.R`.
 - Posterior draws, fitted objects, and diagnostic tables can become large.
 - Heavy outputs should not be committed. Keep them under `out/` and rely on the ignore rules. Heavy steps may be skipped only with explicit logged warnings.
 - The former top-level `R` helper folder was removed from the active repository after dependency checks found no active sourcing or call sites.
