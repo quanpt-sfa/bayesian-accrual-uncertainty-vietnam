@@ -62,6 +62,12 @@ same_normalized_path <- function(a, b) {
   identical(normalizePath(a, winslash = "/", mustWork = FALSE),
             normalizePath(b, winslash = "/", mustWork = FALSE))
 }
+manifest_seed <- function(manifest) {
+  if ("Seed" %in% names(manifest)) return(as.integer(manifest$Seed[1]))
+  if ("Canonical_Seed" %in% names(manifest)) return(as.integer(manifest$Canonical_Seed[1]))
+  if ("Effective_Seed" %in% names(manifest)) return(as.integer(manifest$Effective_Seed[1]))
+  NA_integer_
+}
 
 grouped_pin_path <- file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt")
 row_pin_path <- file.path(output_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt")
@@ -80,7 +86,7 @@ validate_grouped_run <- function(root) {
   }
   pin_ok <- isTRUE(as.logical(manifest$Completed_Run_Pin_Eligible[1]))
   K_manifest <- if ("K" %in% names(manifest)) as.integer(manifest$K[1]) else NA_integer_
-  seed_manifest <- if ("Seed" %in% names(manifest)) as.integer(manifest$Seed[1]) else NA_integer_
+  seed_manifest <- manifest_seed(manifest)
   if ("Kfold_Run_Root" %in% names(manifest) && !same_normalized_path(manifest$Kfold_Run_Root[1], root)) {
     stop("[BLOCKER] Grouped exact K-fold manifest root disagrees with selected root: ", root)
   }
@@ -103,7 +109,7 @@ validate_row_run <- function(root) {
   }
   pin_ok <- isTRUE(as.logical(manifest$Completed_Run_Pin_Eligible[1]))
   K_manifest <- if ("K" %in% names(manifest)) as.integer(manifest$K[1]) else NA_integer_
-  seed_manifest <- if ("Seed" %in% names(manifest)) as.integer(manifest$Seed[1]) else NA_integer_
+  seed_manifest <- manifest_seed(manifest)
   if ("Row_KFold_Root" %in% names(manifest) && !same_normalized_path(manifest$Row_KFold_Root[1], root)) {
     stop("[BLOCKER] Row exact K-fold manifest root disagrees with selected root: ", root)
   }
