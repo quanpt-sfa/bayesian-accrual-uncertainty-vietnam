@@ -16,8 +16,6 @@ script_start_time <- Sys.time()
 script_name <- "scripts/ma12_grouped_kfold_firm.R"
 script_version <- "2026-06-18-v3-reviewer-final-main-stack-ess-gate"
 
-options(mc.cores = 1)
-
 split_env <- function(name) {
   x <- trimws(Sys.getenv(name, ""))
   if (!nzchar(x)) return(character())
@@ -36,6 +34,16 @@ warmup <- kfold_cfg$warmup
 adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
 grouped_run_rng_meta <- accrual_rng_metadata_list("grouped_kfold_run_manifest")
+
+kfold_chain_cores <- as.integer(Sys.getenv(
+  "ACCRUAL_KFOLD_CHAIN_CORES",
+  Sys.getenv("ACCRUAL_BASELINE_CORES", "4")
+))
+if (is.na(kfold_chain_cores) || kfold_chain_cores < 1L) {
+  kfold_chain_cores <- 1L
+}
+kfold_chain_cores <- min(kfold_chain_cores, chains)
+options(mc.cores=kfold_chain_cores)
 
 run_id <- trimws(Sys.getenv("ACCRUAL_KFOLD_FIRM_RUN_ID", "default"))
 if (!nzchar(run_id)) run_id <- "default"
@@ -142,6 +150,7 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Config_Tag = config_tag,
     Kfold_Run_Root = kfold_run_root,
     Chains = chains,
+    Chain_Cores = kfold_chain_cores,
     Iter = iter,
     Warmup = warmup,
     Adapt_Delta = adapt_delta,
@@ -1006,6 +1015,7 @@ main <- function() {
           family = brms_family(),
           prior = fit_prior_list(task$Heterogeneity_Variant),
           chains = chains,
+          cores = kfold_chain_cores,
           iter = iter,
           warmup = warmup,
           control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),

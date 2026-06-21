@@ -38,6 +38,16 @@ adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
 row_run_rng_meta <- accrual_rng_metadata_list("row_kfold_run_manifest")
 
+row_kfold_chain_cores <- as.integer(Sys.getenv(
+  "ACCRUAL_ROW_KFOLD_CHAIN_CORES",
+  Sys.getenv("ACCRUAL_BASELINE_CORES", "4")
+))
+if (is.na(row_kfold_chain_cores) || row_kfold_chain_cores < 1L) {
+  row_kfold_chain_cores <- 1L
+}
+row_kfold_chain_cores <- min(row_kfold_chain_cores, chains)
+options(mc.cores=row_kfold_chain_cores)
+
 target_space_filter <- split_env("ACCRUAL_ROW_KFOLD_TARGET_SPACE")
 model_id_filter <- split_env("ACCRUAL_ROW_KFOLD_MODEL_IDS")
 fold_filter_raw <- split_env("ACCRUAL_ROW_KFOLD_FOLDS")
@@ -51,8 +61,6 @@ preflight_only <- env_flag("ACCRUAL_ROW_KFOLD_PREFLIGHT_ONLY")
 overwrite_outputs <- env_flag("ACCRUAL_ROW_KFOLD_OVERWRITE")
 force_resume <- env_flag("ACCRUAL_ROW_KFOLD_FORCE_RESUME")
 partial_run <- length(target_space_filter) > 0 || length(model_id_filter) > 0 || length(fold_filter) > 0
-
-options(mc.cores = 1)
 
 row_kfold_root <- file.path(output_root, "row_exact_kfold")
 tables_dir <- file.path(row_kfold_root, "tables")
@@ -449,6 +457,7 @@ write_manifest <- function(status, extra_note = NA_character_) {
     RNG_Source = row_run_rng_meta$RNG_Source,
     Run_Mode = run_mode,
     Chains = chains,
+    Chain_Cores = row_kfold_chain_cores,
     Iter = iter,
     Warmup = warmup,
     Adapt_Delta = adapt_delta,
@@ -623,6 +632,7 @@ score_task <- function(task) {
         family = brms_family(),
         prior = default_prior_list(task$Heterogeneity_Variant, model_structure = model_structure),
         chains = chains,
+        cores = row_kfold_chain_cores,
         iter = iter,
         warmup = warmup,
         control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
