@@ -102,16 +102,26 @@ audit_one_file <- function(path, source, primary_for_rq2) {
   if (length(present_primary) > 0) {
     row_flags <- apply(df[, present_primary, drop = FALSE], 1, function(z) any(!is.finite(as.numeric(z))))
   }
-  row_audit <- data.frame(
-    output_file = path,
-    DA_Source = source,
-    row_index = which(row_flags),
-    n_nonfinite_primary_columns = if (length(present_primary) > 0) {
-      rowSums(!is.finite(as.matrix(df[row_flags, present_primary, drop = FALSE])))
-    } else integer(0),
-    Primary_For_RQ2 = primary_for_rq2,
-    stringsAsFactors = FALSE
-  )
+  flagged_idx <- which(row_flags)
+  row_audit <- if (length(flagged_idx) == 0) {
+    data.frame(
+      output_file = character(0),
+      DA_Source = character(0),
+      row_index = integer(0),
+      n_nonfinite_primary_columns = integer(0),
+      Primary_For_RQ2 = logical(0),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    data.frame(
+      output_file = rep(path, length(flagged_idx)),
+      DA_Source = rep(source, length(flagged_idx)),
+      row_index = flagged_idx,
+      n_nonfinite_primary_columns = rowSums(!is.finite(as.matrix(df[flagged_idx, present_primary, drop = FALSE]))),
+      Primary_For_RQ2 = rep(primary_for_rq2, length(flagged_idx)),
+      stringsAsFactors = FALSE
+    )
+  }
   list(column = column_audit, row = row_audit)
 }
 
