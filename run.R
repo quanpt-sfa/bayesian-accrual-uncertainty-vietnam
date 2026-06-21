@@ -106,17 +106,25 @@ main_steps <- list(
        require_reason = "primary exact row-KFold DA plus finite DA and model inclusion gate decisions"),
   step("di02", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration reporting gate", gate = "new_firm_predictive",
        requires = c(
-         table_artifact("table_DA_finite_gate_decision.csv"),
-         table_artifact("table_DA_exact_kfold_source_manifest.csv")
+          table_artifact("table_DA_finite_gate_decision.csv"),
+          table_artifact("table_DA_exact_kfold_source_manifest.csv")
        ),
        require_reason = "finite DA gate and exact-KFold DA provenance manifest"),
-  step("ma17", "scripts/ma17_export_tables_figures.R", "Chapter 3 manuscript table export",
+  step("di03", "scripts/diagnostics/di03_exact_kfold_reclassification_audit.R", "Exact K-fold reclassification/Jaccard audit",
        requires = c(
-         table_artifact("table_DA_finite_gate_decision.csv"),
-         table_artifact("table_model_primary_inclusion_gate.csv"),
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv"),
          file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv")
        ),
-       require_reason = "finite DA, model inclusion, and new-firm predictive gate decisions")
+       require_reason = "exact-KFold grouped/row DA outputs and new-firm predictive gate decision"),
+  step("ma17", "scripts/ma17_export_tables_figures.R", "Chapter 3 manuscript table export",
+       requires = c(
+          table_artifact("table_DA_finite_gate_decision.csv"),
+          table_artifact("table_model_primary_inclusion_gate.csv"),
+          file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv"),
+          file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_decision.csv")
+       ),
+       require_reason = "finite DA, model inclusion, new-firm predictive, and exact-KFold reclassification decisions")
 )
 
 robustness_steps <- list(
@@ -142,7 +150,8 @@ simulation_steps <- list(
 
 diagnostics_steps <- list(
   step("di01", "scripts/diagnostics/di01_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics"),
-  step("di02", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration diagnostics", gate = "new_firm_predictive")
+  step("di02", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration diagnostics", gate = "new_firm_predictive"),
+  step("di03", "scripts/diagnostics/di03_exact_kfold_reclassification_audit.R", "Exact K-fold reclassification/Jaccard diagnostics")
 )
 
 diagnostics_steps_for_all <- list(

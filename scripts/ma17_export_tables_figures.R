@@ -62,8 +62,36 @@ new_firm_gate_path <- path_table(file.path("..", "new_firm_predictive_audit", "t
 if (!file.exists(new_firm_gate_path)) {
   new_firm_gate_path <- file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv")
 }
+exact_kfold_reclassification_decision_path <- file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_decision.csv")
+exact_kfold_reclassification_jaccard_path <- file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_jaccard.csv")
 DA_Finite_Gate_Decision <- read_required_gate(finite_gate_path, "gate_decision", "DA finite")
 New_Firm_Predictive_Gate_Decision <- read_required_gate(new_firm_gate_path, "audit_decision", "new-firm predictive")
+Exact_KFold_Reclassification_Decision_Table <- safe_read_csv(exact_kfold_reclassification_decision_path)
+Exact_KFold_Reclassification_Decision <- if (!is.null(Exact_KFold_Reclassification_Decision_Table) &&
+                                             "overall_reporting_decision" %in% names(Exact_KFold_Reclassification_Decision_Table) &&
+                                             nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
+  as.character(Exact_KFold_Reclassification_Decision_Table$overall_reporting_decision[[1]])
+} else if (!is.null(Exact_KFold_Reclassification_Decision_Table) &&
+           "audit_decision" %in% names(Exact_KFold_Reclassification_Decision_Table) &&
+           nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
+  as.character(Exact_KFold_Reclassification_Decision_Table$audit_decision[[1]])
+} else {
+  NA_character_
+}
+Primary_Magnitude_Reclassification_Decision <- if (!is.null(Exact_KFold_Reclassification_Decision_Table) &&
+                                                   "primary_magnitude_decision" %in% names(Exact_KFold_Reclassification_Decision_Table) &&
+                                                   nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
+  as.character(Exact_KFold_Reclassification_Decision_Table$primary_magnitude_decision[[1]])
+} else {
+  NA_character_
+}
+Tail_Reclassification_Reporting_Decision <- if (!is.null(Exact_KFold_Reclassification_Decision_Table) &&
+                                                "tail_reporting_decision" %in% names(Exact_KFold_Reclassification_Decision_Table) &&
+                                                nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
+  as.character(Exact_KFold_Reclassification_Decision_Table$tail_reporting_decision[[1]])
+} else {
+  NA_character_
+}
 allowed_finite_decisions <- c("PASS", "PASS_WITH_STRUCTURAL_NA_ONLY", "WARN_SECONDARY_NONFINITE_ONLY")
 if (!DA_Finite_Gate_Decision %in% allowed_finite_decisions) {
   stop("[GATE BLOCKER] DA finite gate is not passable for primary RQ2/export: ", DA_Finite_Gate_Decision)
@@ -626,6 +654,8 @@ manifest <- data.frame(
            "MCMC_chains", "iterations", "warmup", "seed", "adapt_delta", "max_treedepth",
            "validation_schemes_available", "DA_output_root", "timestamp", "git_commit_hash",
            "script_version_hash", "DA_Finite_Gate_Decision", "New_Firm_Predictive_Gate_Decision",
+           "Exact_KFold_Reclassification_Decision", "Primary_Magnitude_Reclassification_Decision",
+           "Tail_Reclassification_Reporting_Decision",
            "RQ2_Primary_Output_Allowed", "Model_Primary_Inclusion_Gate",
            "MCMC_REVIEW_Inclusion_Rule", "Suppression_Override_Used",
            "Tail_Flag_Primary_Status"),
@@ -657,6 +687,9 @@ manifest <- data.frame(
     script_hash,
     DA_Finite_Gate_Decision,
     New_Firm_Predictive_Gate_Decision,
+    Exact_KFold_Reclassification_Decision,
+    Primary_Magnitude_Reclassification_Decision,
+    Tail_Reclassification_Reporting_Decision,
     RQ2_Primary_Output_Allowed,
     path_table("table_model_primary_inclusion_gate.csv"),
     "PASS/OK included; FAIL/LOW_RELIABILITY excluded; REVIEW/CAUTION included only with MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS when exact-refit reliability is acceptable.",
@@ -667,6 +700,34 @@ manifest <- data.frame(
 )
 write_outputs(manifest, "table_3_11_code_manuscript_manifest", "Table 3.11 Code-Manuscript Manifest")
 
+exact_kfold_jaccard <- safe_read_csv(exact_kfold_reclassification_jaccard_path)
+table_3_12_available <- FALSE
+if (!is.null(exact_kfold_jaccard) && nrow(exact_kfold_jaccard) > 0) {
+  table_3_12_cols <- c(
+    "target_space",
+    "reported_score_variable",
+    "metric_class",
+    "N_joined",
+    "top_n",
+    "intersection_n",
+    "union_n",
+    "only_row_n",
+    "only_grouped_n",
+    "jaccard",
+    "switch_rate",
+    "spearman_rank_correlation",
+    "Primary_Inference_Allowed",
+    "interpretation"
+  )
+  table_3_12 <- exact_kfold_jaccard %>%
+    filter(metric_class %in% c("primary_magnitude_raw", "primary_magnitude_estimation_scaled")) %>%
+    select(any_of(table_3_12_cols))
+  if (nrow(table_3_12) > 0 && all(table_3_12_cols %in% names(table_3_12))) {
+    write_outputs(table_3_12, "table_3_12_exact_kfold_reclassification_jaccard", "Table 3.12 Exact K-Fold Reclassification Jaccard")
+    table_3_12_available <- TRUE
+  }
+}
+
 required_stems <- c(
   "table_3_1_sample_flow", "table_3_2_panel_coverage", "table_3_3_industry_year_cells",
   "table_3_4_zero_value_audit", "table_3_5_model_space_matrix",
@@ -675,6 +736,9 @@ required_stems <- c(
   "table_3_8_preprocessing_leakage_audit", "table_3_9_prior_predictive_diagnostics",
   "table_3_10_rq2_materiality_thresholds", "table_3_11_code_manuscript_manifest"
 )
+if (table_3_12_available) {
+  required_stems <- c(required_stems, "table_3_12_exact_kfold_reclassification_jaccard")
+}
 
 qc_rows <- list()
 add_qc <- function(id, name, status, details) {
