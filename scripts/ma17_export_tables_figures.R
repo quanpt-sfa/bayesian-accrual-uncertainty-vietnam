@@ -107,6 +107,32 @@ RQ2_Primary_Output_Allowed <- DA_Finite_Gate_Decision %in% allowed_finite_decisi
     "PASS_FOR_AVAILABLE_FIRMRE_OUT_OF_FIRM_QUANTITIES",
     "NO_FIRMRE_OUT_OF_FIRM_PRIMARY_QUANTITIES_DETECTED"
   )
+Tail_Flag_Primary_Output_Allowed <- RQ2_Primary_Output_Allowed
+ExactKFold_Magnitude_RQ2_Primary_Output_Allowed <- DA_Finite_Gate_Decision %in% allowed_finite_decisions &&
+  !is.na(Primary_Magnitude_Reclassification_Decision) &&
+  Primary_Magnitude_Reclassification_Decision %in% c(
+    "PASS_PRIMARY_MAGNITUDE_RECLASSIFICATION_AVAILABLE",
+    "WARN_PRIMARY_MAGNITUDE_JACCARD_MODERATE",
+    "WARN_PRIMARY_MAGNITUDE_JACCARD_LOW"
+  )
+Exact_KFold_Reclassification_Audit_Status <- if (!is.null(Exact_KFold_Reclassification_Decision_Table) &&
+                                                 nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
+  "available"
+} else {
+  "missing_or_unavailable"
+}
+Primary_Magnitude_Reclassification_Min_Jaccard <- if (!is.null(Exact_KFold_Reclassification_Decision_Table) &&
+                                                      "min_primary_magnitude_jaccard" %in% names(Exact_KFold_Reclassification_Decision_Table) &&
+                                                      nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
+  Exact_KFold_Reclassification_Decision_Table$min_primary_magnitude_jaccard[[1]]
+} else {
+  NA_real_
+}
+Tail_Reclassification_Primary_Status <- if (isTRUE(Tail_Flag_Primary_Output_Allowed)) {
+  "primary_allowed"
+} else {
+  "suppressed_or_non_primary"
+}
 
 safe_n <- function(x) if (is.null(x)) NA_integer_ else nrow(x)
 
@@ -654,8 +680,11 @@ manifest <- data.frame(
            "MCMC_chains", "iterations", "warmup", "seed", "adapt_delta", "max_treedepth",
            "validation_schemes_available", "DA_output_root", "timestamp", "git_commit_hash",
            "script_version_hash", "DA_Finite_Gate_Decision", "New_Firm_Predictive_Gate_Decision",
+           "Exact_KFold_Reclassification_Audit_Status",
            "Exact_KFold_Reclassification_Decision", "Primary_Magnitude_Reclassification_Decision",
-           "Tail_Reclassification_Reporting_Decision",
+           "Primary_Magnitude_Reclassification_Min_Jaccard", "Tail_Reclassification_Reporting_Decision",
+           "Tail_Reclassification_Primary_Status", "Di03_Output_Path",
+           "Tail_Flag_Primary_Output_Allowed", "ExactKFold_Magnitude_RQ2_Primary_Output_Allowed",
            "RQ2_Primary_Output_Allowed", "Model_Primary_Inclusion_Gate",
            "MCMC_REVIEW_Inclusion_Rule", "Suppression_Override_Used",
            "Tail_Flag_Primary_Status"),
@@ -687,9 +716,15 @@ manifest <- data.frame(
     script_hash,
     DA_Finite_Gate_Decision,
     New_Firm_Predictive_Gate_Decision,
+    Exact_KFold_Reclassification_Audit_Status,
     Exact_KFold_Reclassification_Decision,
     Primary_Magnitude_Reclassification_Decision,
+    Primary_Magnitude_Reclassification_Min_Jaccard,
     Tail_Reclassification_Reporting_Decision,
+    Tail_Reclassification_Primary_Status,
+    exact_kfold_reclassification_decision_path,
+    Tail_Flag_Primary_Output_Allowed,
+    ExactKFold_Magnitude_RQ2_Primary_Output_Allowed,
     RQ2_Primary_Output_Allowed,
     path_table("table_model_primary_inclusion_gate.csv"),
     "PASS/OK included; FAIL/LOW_RELIABILITY excluded; REVIEW/CAUTION included only with MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS when exact-refit reliability is acceptable.",
@@ -703,6 +738,12 @@ write_outputs(manifest, "table_3_11_code_manuscript_manifest", "Table 3.11 Code-
 exact_kfold_jaccard <- safe_read_csv(exact_kfold_reclassification_jaccard_path)
 table_3_12_available <- FALSE
 if (!is.null(exact_kfold_jaccard) && nrow(exact_kfold_jaccard) > 0) {
+  if (!"reported_score_variable" %in% names(exact_kfold_jaccard) && "score_variable" %in% names(exact_kfold_jaccard)) {
+    exact_kfold_jaccard$reported_score_variable <- exact_kfold_jaccard$score_variable
+  }
+  if (!"suppression_reason" %in% names(exact_kfold_jaccard)) {
+    exact_kfold_jaccard$suppression_reason <- NA_character_
+  }
   table_3_12_cols <- c(
     "target_space",
     "reported_score_variable",
@@ -717,6 +758,7 @@ if (!is.null(exact_kfold_jaccard) && nrow(exact_kfold_jaccard) > 0) {
     "switch_rate",
     "spearman_rank_correlation",
     "Primary_Inference_Allowed",
+    "suppression_reason",
     "interpretation"
   )
   table_3_12 <- exact_kfold_jaccard %>%
@@ -760,10 +802,13 @@ add_qc("QC11", "preprocessing leakage audit classifies every preprocessing step"
 add_qc("QC12", "prior predictive table exists if prior predictive outputs exist", ifelse(file.exists(path_table("table_prior_predictive_summary.csv")) && nrow(prior_diag) > 0, "PASS", "WARN"), "")
 add_qc("QC13", "materiality threshold table exists", ifelse(file.exists(file.path(report_dir, "table_3_10_rq2_materiality_thresholds.csv")), "PASS", "FAIL"), "")
 add_qc("QC14", "manifest table exists", ifelse(file.exists(file.path(report_dir, "table_3_11_code_manuscript_manifest.csv")), "PASS", "FAIL"), "")
+add_qc("QC15", "exact-KFold reclassification manuscript table available when di03 decision exists",
+       ifelse(file.exists(exact_kfold_reclassification_decision_path) && !table_3_12_available, "FAIL", "PASS"),
+       ifelse(file.exists(exact_kfold_reclassification_decision_path), file.path(report_dir, "table_3_12_exact_kfold_reclassification_jaccard.csv"), "di03 decision not present"))
 
 report_path <- file.path(report_dir, "chapter3_methods_tables_report.md")
 qc_path <- file.path(report_dir, "chapter3_methods_tables_qc.csv")
-add_qc("QC15", "master report exists", "PASS", report_path)
+add_qc("QC16", "master report exists", "PASS", report_path)
 qc <- bind_rows(qc_rows)
 write.csv(qc, qc_path, row.names = FALSE, fileEncoding = "UTF-8")
 generated_files <- unique(c(generated_files, qc_path, report_path))

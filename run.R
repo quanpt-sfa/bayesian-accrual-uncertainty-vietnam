@@ -155,7 +155,14 @@ diagnostics_steps <- list(
 )
 
 diagnostics_steps_for_all <- list(
-  step("di01", "scripts/diagnostics/di01_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics")
+  step("di01", "scripts/diagnostics/di01_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics"),
+  step("di03", "scripts/diagnostics/di03_exact_kfold_reclassification_audit.R", "Exact K-fold reclassification/Jaccard diagnostics",
+       requires = c(
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv"),
+         file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv")
+       ),
+       require_reason = "exact-KFold grouped/row DA outputs and new-firm predictive gate decision")
 )
 
 steps_for_target <- function(x) {
