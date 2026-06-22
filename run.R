@@ -25,9 +25,9 @@ if (!file.exists(file.path("scripts", "ma00_setup.R")) || !dir.exists(file.path(
 .raw_before <- .raw_snapshot()
 
 target <- if (length(args) == 0) "main" else tolower(args[[1]])
-valid_targets <- c("main", "robustness", "sensitivity", "simulation", "diagnostics", "all")
+valid_targets <- c("main", "robustness", "sensitivity", "simulation", "diagnostics", "reviewer", "all")
 if (!target %in% valid_targets) {
-  stop("Usage: Rscript run.R [main|robustness|sensitivity|simulation|diagnostics|all] [--dry-run]")
+  stop("Usage: Rscript run.R [main|robustness|sensitivity|simulation|diagnostics|reviewer|all] [--dry-run]")
 }
 
 run_heavy <- flag_from_env("ACCRUAL_RUN_HEAVY", FALSE)
@@ -148,6 +148,43 @@ simulation_steps <- list(
   step("si04", "scripts/simulation/si04_brms_parameter_recovery.R", "BRMS parameter recovery simulation", heavy = TRUE)
 )
 
+reviewer_steps <- list(
+  step("di04", "scripts/diagnostics/di04_full_vs_strict_model_space_stacking.R",
+       "Full vs strict model-space stacking diagnostic",
+       requires = c(
+         table_artifact("table_model_primary_inclusion_gate.csv"),
+         table_artifact("table_DA_exact_kfold_weight_audit.csv"),
+         table_artifact("table_mcmc_diagnostics_gate_winsor.csv")
+       ),
+       require_reason = "model inclusion gate, exact-KFold weight audit, and baseline MCMC diagnostics gate"),
+  step("di05", "scripts/diagnostics/di05_denominator_diagnostics_z_est.R",
+       "Denominator diagnostics for estimation-scaled DA",
+       requires = c(
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv"),
+         file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv")
+       ),
+       require_reason = "exact-KFold grouped/row DA outputs and di03 membership sets"),
+  step("di06", "scripts/diagnostics/di06_outcome_validation_top5_membership.R",
+       "Supplementary economic-validity validation for top-5 membership",
+       requires = c(
+         file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv")
+       ),
+       require_reason = "di03 membership sets"),
+  step("si05", "scripts/simulation/si05_lmer_temporal_dependence_run.R",
+       "LMER temporal-dependence persistent-shock simulation",
+       heavy = TRUE),
+  step("si06", "scripts/simulation/si06_lmer_temporal_dependence_report.R",
+       "Report temporal-dependence mechanism simulation",
+       requires = c(
+         file.path(output_root, "simulation", "lmer_temporal_dependence", "tables",
+                   "table_lmer_temporal_dependence_rep_results.csv")
+       ),
+       require_reason = "si05 temporal-dependence replication results"),
+  step("di07", "scripts/diagnostics/di07_section4_7_reviewer_package.R",
+       "Assemble Section 4.7 reviewer-required evidence package")
+)
+
 diagnostics_steps <- list(
   step("di01", "scripts/diagnostics/di01_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics"),
   step("di02", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration diagnostics", gate = "new_firm_predictive"),
@@ -173,7 +210,8 @@ steps_for_target <- function(x) {
     sensitivity = sensitivity_steps,
     simulation = simulation_steps,
     diagnostics = diagnostics_steps,
-    all = c(main_steps, diagnostics_steps_for_all, robustness_steps, sensitivity_steps, simulation_steps)
+    reviewer = reviewer_steps,
+    all = c(main_steps, diagnostics_steps_for_all, robustness_steps, sensitivity_steps, simulation_steps, reviewer_steps)
   )
 }
 
