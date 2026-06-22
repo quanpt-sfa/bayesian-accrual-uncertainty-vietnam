@@ -17,6 +17,7 @@ validate_final_analysis_config("ma07 baseline brms fit", final_mode = TRUE)
 backfill_diagnostics_only <- env_flag("ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY", "FALSE")
 remediation_targets_raw <- trimws(env_value("ACCRUAL_MCMC_REMEDIATION_TARGETS", ""))
 remediation_mode <- nzchar(remediation_targets_raw)
+ma07_strict_review_blocker <- env_flag("ACCRUAL_MA07_STRICT_REVIEW_BLOCKER", "FALSE")
 if (backfill_diagnostics_only && force_refit) {
   stop("[BLOCKER] ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE cannot be combined with ACCRUAL_FORCE_REFIT=TRUE.")
 }
@@ -87,6 +88,9 @@ diag_path <- if (run_varying_slope_models) {
 } else {
   file.path(phase_root, "tables", "table_brms_diagnostics_winsor.csv")
 }
+ma07_artifact_audit_path <- file.path(phase_root, "tables", "table_ma07_fit_draw_artifact_audit.csv")
+ma07_hard_gate_failures_path <- file.path(phase_root, "tables", "table_ma07_hard_gate_failures.csv")
+ma07_remediation_helper_path <- file.path(phase_root, "logs", "ma07_suggested_remediation_targets.ps1")
 coeff_path <- if (run_varying_slope_models) {
   file.path(phase_root, "tables", "table_varyslopes_coefficient_summary.csv")
 } else {
@@ -107,6 +111,7 @@ ensure_diag_columns <- function(df) {
     Fit_Status = character(),
     Rhat_Max = double(),
     ESS_Min = double(),
+    Min_Tail_ESS = double(),
     Divergences = integer(),
     converged = logical(),
     stacking_eligible = logical(),
@@ -230,6 +235,35 @@ diagnostic_key <- function(df) {
   paste(df$Model_ID, df$Target_Space, df$Sample_Group, df$Heterogeneity_Variant, sep = "|")
 }
 
+diagnostic_key_for_row <- function(row) {
+  paste(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, sep = "|")
+}
+
+classify_ma07_mcmc_gate <- function(max_rhat, divergences, min_bulk_ess, min_tail_ess) {
+  divergences <- suppressWarnings(as.numeric(divergences))
+  if (!is.finite(max_rhat) || max_rhat > 1.01) return("FAIL")
+  if (!is.finite(divergences) || divergences > 0) return("FAIL")
+  if (!is.finite(min_bulk_ess) || min_bulk_ess < 400) return("FAIL")
+  if (!is.finite(min_tail_ess) || min_tail_ess < 400) return("FAIL")
+  if (min_bulk_ess < 1000 || min_tail_ess < 1000) return("REVIEW")
+  "PASS"
+}
+
+ma07_mcmc_gate_reason <- function(max_rhat, divergences, min_bulk_ess, min_tail_ess) {
+  divergences <- suppressWarnings(as.numeric(divergences))
+  reasons <- c(
+    if (!is.finite(max_rhat)) "max_rhat is non-finite" else if (max_rhat > 1.01) sprintf("max_rhat %.6f > 1.01", max_rhat),
+    if (!is.finite(divergences)) "divergences is non-finite" else if (divergences > 0) sprintf("divergences=%d", as.integer(divergences)),
+    if (!is.finite(min_bulk_ess)) "min_bulk_ess is non-finite" else if (min_bulk_ess < 400) sprintf("min_bulk_ess %.2f < 400", min_bulk_ess),
+    if (!is.finite(min_tail_ess)) "min_tail_ess is non-finite" else if (min_tail_ess < 400) sprintf("min_tail_ess %.2f < 400", min_tail_ess),
+    if (is.finite(min_bulk_ess) && min_bulk_ess >= 400 && min_bulk_ess < 1000) sprintf("min_bulk_ess %.2f below strict marker 1000", min_bulk_ess),
+    if (is.finite(min_tail_ess) && min_tail_ess >= 400 && min_tail_ess < 1000) sprintf("min_tail_ess %.2f below strict marker 1000", min_tail_ess)
+  )
+  reasons <- reasons[!is.na(reasons) & nzchar(reasons)]
+  if (!length(reasons)) "MCMC diagnostics passed ma07 hard gate."
+  else paste(reasons, collapse = "; ")
+}
+
 parse_remediation_targets <- function(raw_value) {
   if (!nzchar(raw_value)) {
     return(character())
@@ -342,6 +376,209 @@ for (nm in names(metadata_columns())) {
 }
 if (!"save_pars_all" %in% names(diagnostics_df)) {
   diagnostics_df$save_pars_all <- FALSE
+}
+
+empty_ma07_artifact_audit <- function() {
+  data.frame(
+    Model_ID = character(),
+    Model_Name = character(),
+    Target_Space = character(),
+    Sample_Group = character(),
+    Heterogeneity_Variant = character(),
+    diagnostic_key = character(),
+    Main_Stack_Inclusion = logical(),
+    Secondary_Robustness = logical(),
+    fit_path = character(),
+    draws_path = character(),
+    fit_exists_before = logical(),
+    draws_exists_before = logical(),
+    fit_exists_after = logical(),
+    draws_exists_after = logical(),
+    Fit_Status = character(),
+    max_rhat = numeric(),
+    divergences = numeric(),
+    treedepth_warnings = numeric(),
+    min_bulk_ess = numeric(),
+    min_tail_ess = numeric(),
+    converged = logical(),
+    stacking_eligible = logical(),
+    draw_generation_attempted = logical(),
+    draw_generation_status = character(),
+    draw_generation_skip_reason = character(),
+    hard_gate_status = character(),
+    hard_gate_reason = character(),
+    recommended_remediation_key = character(),
+    timestamp = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+empty_ma07_hard_gate_failures <- function() {
+  data.frame(
+    diagnostic_key = character(),
+    Model_ID = character(),
+    Model_Name = character(),
+    Target_Space = character(),
+    Sample_Group = character(),
+    Heterogeneity_Variant = character(),
+    Main_Stack_Inclusion = logical(),
+    hard_gate_status = character(),
+    hard_gate_reason = character(),
+    max_rhat = numeric(),
+    divergences = numeric(),
+    min_bulk_ess = numeric(),
+    min_tail_ess = numeric(),
+    fit_path = character(),
+    draws_path = character(),
+    fit_exists_after = logical(),
+    draws_exists_after = logical(),
+    recommended_remediation_key = character(),
+    timestamp = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+ensure_columns_from_template <- function(df, template) {
+  for (nm in names(template)) {
+    if (!nm %in% names(df)) {
+      n_rows <- nrow(df)
+      proto <- template[[nm]]
+      if (is.logical(proto)) {
+        df[[nm]] <- rep(NA, n_rows)
+      } else if (is.numeric(proto)) {
+        df[[nm]] <- rep(NA_real_, n_rows)
+      } else {
+        df[[nm]] <- rep(NA_character_, n_rows)
+      }
+    }
+  }
+  df[names(template)]
+}
+
+ma07_artifact_audit <- if (file.exists(ma07_artifact_audit_path)) {
+  read.csv(ma07_artifact_audit_path, stringsAsFactors = FALSE, check.names = FALSE)
+} else {
+  empty_ma07_artifact_audit()
+}
+ma07_artifact_audit <- ensure_columns_from_template(ma07_artifact_audit, empty_ma07_artifact_audit())
+ma07_hard_gate_failures <- if (file.exists(ma07_hard_gate_failures_path)) {
+  read.csv(ma07_hard_gate_failures_path, stringsAsFactors = FALSE, check.names = FALSE)
+} else {
+  empty_ma07_hard_gate_failures()
+}
+ma07_hard_gate_failures <- ensure_columns_from_template(ma07_hard_gate_failures, empty_ma07_hard_gate_failures())
+
+write_ma07_artifact_audit <- function() {
+  write.csv(ma07_artifact_audit, ma07_artifact_audit_path, row.names = FALSE)
+}
+
+write_ma07_remediation_helper <- function() {
+  failed_main_keys <- unique(ma07_hard_gate_failures$recommended_remediation_key[
+    ma07_hard_gate_failures$Main_Stack_Inclusion %in% TRUE
+  ])
+  failed_main_keys <- failed_main_keys[!is.na(failed_main_keys) & nzchar(failed_main_keys)]
+  lines <- c(
+    "# Suggested ma07 remediation targets generated from hard-gate failures.",
+    paste0("$env:ACCRUAL_MCMC_REMEDIATION_TARGETS = \"", paste(failed_main_keys, collapse = ";"), "\""),
+    "Remove-Item Env:\\ACCRUAL_FORCE_REFIT -ErrorAction SilentlyContinue",
+    "Rscript .\\scripts\\ma07_fit_brms_named_models.R",
+    "Rscript .\\scripts\\ma08_mcmc_diagnostics.R"
+  )
+  writeLines(lines, con = ma07_remediation_helper_path, useBytes = TRUE)
+}
+
+write_ma07_hard_gate_failures <- function() {
+  write.csv(ma07_hard_gate_failures, ma07_hard_gate_failures_path, row.names = FALSE)
+  if (nrow(ma07_hard_gate_failures) > 0) write_ma07_remediation_helper()
+}
+
+upsert_ma07_artifact_audit <- function(audit_row) {
+  key <- audit_row$diagnostic_key[[1]]
+  ma07_artifact_audit <<- ma07_artifact_audit %>%
+    filter(.data$diagnostic_key != key) %>%
+    bind_rows(audit_row)
+  write_ma07_artifact_audit()
+}
+
+upsert_ma07_hard_gate_failure <- function(failure_row) {
+  key <- failure_row$diagnostic_key[[1]]
+  ma07_hard_gate_failures <<- ma07_hard_gate_failures %>%
+    filter(.data$diagnostic_key != key) %>%
+    bind_rows(failure_row)
+  write_ma07_hard_gate_failures()
+}
+
+make_ma07_artifact_audit_row <- function(row, model_filename, draws_filename,
+                                         fit_exists_before, draws_exists_before,
+                                         fit_exists_after, draws_exists_after,
+                                         fit_status = NA_character_,
+                                         max_rhat = NA_real_, divergences = NA_real_,
+                                         treedepth_warnings = NA_real_,
+                                         min_bulk_ess = NA_real_, min_tail_ess = NA_real_,
+                                         converged = NA, stacking_eligible = NA,
+                                         draw_generation_attempted = FALSE,
+                                         draw_generation_status = NA_character_,
+                                         draw_generation_skip_reason = NA_character_,
+                                         hard_gate_status = NA_character_,
+                                         hard_gate_reason = NA_character_) {
+  data.frame(
+    Model_ID = row$Model_ID,
+    Model_Name = row$Model_Name,
+    Target_Space = row$Target_Space,
+    Sample_Group = row$Sample_Group,
+    Heterogeneity_Variant = row$Heterogeneity_Variant,
+    diagnostic_key = diagnostic_key_for_row(row),
+    Main_Stack_Inclusion = isTRUE(row$Main_Stack_Inclusion),
+    Secondary_Robustness = isTRUE(row$Secondary_Robustness),
+    fit_path = model_filename,
+    draws_path = draws_filename,
+    fit_exists_before = isTRUE(fit_exists_before),
+    draws_exists_before = isTRUE(draws_exists_before),
+    fit_exists_after = isTRUE(fit_exists_after),
+    draws_exists_after = isTRUE(draws_exists_after),
+    Fit_Status = fit_status,
+    max_rhat = max_rhat,
+    divergences = divergences,
+    treedepth_warnings = treedepth_warnings,
+    min_bulk_ess = min_bulk_ess,
+    min_tail_ess = min_tail_ess,
+    converged = converged,
+    stacking_eligible = stacking_eligible,
+    draw_generation_attempted = isTRUE(draw_generation_attempted),
+    draw_generation_status = draw_generation_status,
+    draw_generation_skip_reason = ifelse(is.na(draw_generation_skip_reason), "", draw_generation_skip_reason),
+    hard_gate_status = hard_gate_status,
+    hard_gate_reason = hard_gate_reason,
+    recommended_remediation_key = diagnostic_key_for_row(row),
+    timestamp = as.character(Sys.time()),
+    stringsAsFactors = FALSE
+  )
+}
+
+record_ma07_failure <- function(row, audit_row) {
+  failure_row <- data.frame(
+    diagnostic_key = audit_row$diagnostic_key,
+    Model_ID = row$Model_ID,
+    Model_Name = row$Model_Name,
+    Target_Space = row$Target_Space,
+    Sample_Group = row$Sample_Group,
+    Heterogeneity_Variant = row$Heterogeneity_Variant,
+    Main_Stack_Inclusion = isTRUE(row$Main_Stack_Inclusion),
+    hard_gate_status = audit_row$hard_gate_status,
+    hard_gate_reason = audit_row$hard_gate_reason,
+    max_rhat = audit_row$max_rhat,
+    divergences = audit_row$divergences,
+    min_bulk_ess = audit_row$min_bulk_ess,
+    min_tail_ess = audit_row$min_tail_ess,
+    fit_path = audit_row$fit_path,
+    draws_path = audit_row$draws_path,
+    fit_exists_after = audit_row$fit_exists_after,
+    draws_exists_after = audit_row$draws_exists_after,
+    recommended_remediation_key = audit_row$recommended_remediation_key,
+    timestamp = as.character(Sys.time()),
+    stringsAsFactors = FALSE
+  )
+  upsert_ma07_hard_gate_failure(failure_row)
 }
 
 sampler_cfg <- accrual_sampler_config("baseline", varying_slopes = run_varying_slope_models)
@@ -474,13 +711,37 @@ for (i in seq_len(total_runs)) {
   row_target_key <- diagnostic_key(row)
   row_is_remediation_target <- row_target_key %in% remediation_targets
   active_sampler_controls <- if (row_is_remediation_target) remediation_sampler_controls else baseline_sampler_controls
+  fit_exists_before <- file.exists(model_filename)
+  draws_exists_before <- file.exists(draws_filename)
 
   message(sprintf("\n=== [%d/%d] Winsor model %s (%s) - %s ===",
                   i, total_runs, row$Model_Name, row$Target_Space, row$Heterogeneity_Variant))
+  upsert_ma07_artifact_audit(make_ma07_artifact_audit_row(
+    row, model_filename, draws_filename,
+    fit_exists_before = fit_exists_before,
+    draws_exists_before = draws_exists_before,
+    fit_exists_after = fit_exists_before,
+    draws_exists_after = draws_exists_before,
+    fit_status = "PENDING",
+    draw_generation_status = "PENDING",
+    draw_generation_skip_reason = "model not yet evaluated"
+  ))
 
   fit <- NULL
   sample_info <- tryCatch(load_step7_sample_info(row), error = function(e) {
     write_failure_diag(row, e$message, loo_warning_reason = paste0("diagnostics backfill failed before LOO: ", e$message))
+    upsert_ma07_artifact_audit(make_ma07_artifact_audit_row(
+      row, model_filename, draws_filename,
+      fit_exists_before = fit_exists_before,
+      draws_exists_before = draws_exists_before,
+      fit_exists_after = file.exists(model_filename),
+      draws_exists_after = file.exists(draws_filename),
+      fit_status = "FAILED",
+      draw_generation_status = "SKIPPED",
+      draw_generation_skip_reason = "sample loading failed before draw generation",
+      hard_gate_status = "FAIL",
+      hard_gate_reason = e$message
+    ))
     stop(e)
   })
   df_scaled <- sample_info$df_scaled
@@ -495,22 +756,52 @@ for (i in seq_len(total_runs)) {
     })
     if (file.exists(draws_filename)) {
       message("Draw file already exists; ma07 will not regenerate it unless ACCRUAL_FORCE_REFIT='TRUE': ", draws_filename)
+    } else if (!is.null(fit)) {
+      message("[MA07 ARTIFACT WARNING] Existing fit has no matching draws file: ", row_target_key, " -> ", draws_filename)
     }
   }
 
   if (remediation_mode && !row_is_remediation_target) {
     if (!file.exists(model_filename)) {
+      upsert_ma07_artifact_audit(make_ma07_artifact_audit_row(
+        row, model_filename, draws_filename,
+        fit_exists_before = fit_exists_before,
+        draws_exists_before = draws_exists_before,
+        fit_exists_after = file.exists(model_filename),
+        draws_exists_after = file.exists(draws_filename),
+        fit_status = "FAILED",
+        draw_generation_status = "SKIPPED",
+        draw_generation_skip_reason = "remediation mode blocks non-target regeneration",
+        hard_gate_status = "BLOCKED",
+        hard_gate_reason = "non-target remediation row is missing required fit"
+      ))
       stop(
         "[BLOCKER] Non-target remediation row is missing required fit .rds file: ",
         row_target_key, " -> ", model_filename,
-        ". Add this row to ACCRUAL_MCMC_REMEDIATION_TARGETS if it must be refit."
+        ". Current ACCRUAL_MCMC_REMEDIATION_TARGETS: ", paste(remediation_targets, collapse = "; "),
+        ". Either backfill missing artifacts without remediation mode, or add this exact key to ACCRUAL_MCMC_REMEDIATION_TARGETS: ",
+        row_target_key
       )
     }
     if (!file.exists(draws_filename)) {
+      upsert_ma07_artifact_audit(make_ma07_artifact_audit_row(
+        row, model_filename, draws_filename,
+        fit_exists_before = fit_exists_before,
+        draws_exists_before = draws_exists_before,
+        fit_exists_after = file.exists(model_filename),
+        draws_exists_after = file.exists(draws_filename),
+        fit_status = "SUCCESS",
+        draw_generation_status = "SKIPPED",
+        draw_generation_skip_reason = "remediation mode blocks non-target regeneration",
+        hard_gate_status = "BLOCKED",
+        hard_gate_reason = "non-target remediation row is missing required draws"
+      ))
       stop(
         "[BLOCKER] Non-target remediation row is missing required draws .rds file: ",
         row_target_key, " -> ", draws_filename,
-        ". Add this row to ACCRUAL_MCMC_REMEDIATION_TARGETS if draws must be regenerated."
+        ". Current ACCRUAL_MCMC_REMEDIATION_TARGETS: ", paste(remediation_targets, collapse = "; "),
+        ". Either backfill missing draws without remediation mode, or add this exact key to ACCRUAL_MCMC_REMEDIATION_TARGETS: ",
+        row_target_key
       )
     }
   }
@@ -527,6 +818,18 @@ for (i in seq_len(total_runs)) {
       n_firms_fit = n_firms_fit,
       loo_warning_reason = paste0("diagnostics backfill failed: missing or unreadable fit object at ", model_filename)
     )
+    upsert_ma07_artifact_audit(make_ma07_artifact_audit_row(
+      row, model_filename, draws_filename,
+      fit_exists_before = fit_exists_before,
+      draws_exists_before = draws_exists_before,
+      fit_exists_after = file.exists(model_filename),
+      draws_exists_after = file.exists(draws_filename),
+      fit_status = "FAILED",
+      draw_generation_status = "SKIPPED",
+      draw_generation_skip_reason = "diagnostics-only/backfill mode",
+      hard_gate_status = "FAIL",
+      hard_gate_reason = "missing or unreadable fit object in backfill mode"
+    ))
     stop(err_msg)
   }
 
@@ -574,7 +877,21 @@ for (i in seq_len(total_runs)) {
     })
 
     if (is.null(fit)) {
+      audit_row <- make_ma07_artifact_audit_row(
+        row, model_filename, draws_filename,
+        fit_exists_before = fit_exists_before,
+        draws_exists_before = draws_exists_before,
+        fit_exists_after = file.exists(model_filename),
+        draws_exists_after = file.exists(draws_filename),
+        fit_status = "FAILED",
+        draw_generation_status = "SKIPPED",
+        draw_generation_skip_reason = "fit failed before draw generation",
+        hard_gate_status = "FAIL",
+        hard_gate_reason = "fit object unavailable after brm() error"
+      )
+      upsert_ma07_artifact_audit(audit_row)
       if (isTRUE(row$Main_Stack_Inclusion)) {
+        record_ma07_failure(row, audit_row)
         stop("[BLOCKER] Required main-stack model failed: ", model_key)
       }
       next
@@ -591,23 +908,39 @@ for (i in seq_len(total_runs)) {
 
   post_summary <- summary(fit)
   rhats <- post_summary$fixed[, "Rhat"]
-  esses <- post_summary$fixed[, "Bulk_ESS"]
+  bulk_esses <- post_summary$fixed[, "Bulk_ESS"]
+  tail_esses <- if ("Tail_ESS" %in% colnames(post_summary$fixed)) post_summary$fixed[, "Tail_ESS"] else rep(NA_real_, length(bulk_esses))
   if ("random" %in% names(post_summary) && !is.null(post_summary$random)) {
     for (group in names(post_summary$random)) {
       rhats <- c(rhats, post_summary$random[[group]][, "Rhat"])
-      esses <- c(esses, post_summary$random[[group]][, "Bulk_ESS"])
+      bulk_esses <- c(bulk_esses, post_summary$random[[group]][, "Bulk_ESS"])
+      if ("Tail_ESS" %in% colnames(post_summary$random[[group]])) {
+        tail_esses <- c(tail_esses, post_summary$random[[group]][, "Tail_ESS"])
+      } else {
+        tail_esses <- c(tail_esses, rep(NA_real_, nrow(post_summary$random[[group]])))
+      }
     }
   }
   max_rhat <- suppressWarnings(max(rhats, na.rm = TRUE))
-  min_ess <- suppressWarnings(min(esses, na.rm = TRUE))
+  min_ess <- suppressWarnings(min(bulk_esses, na.rm = TRUE))
+  min_tail_ess <- suppressWarnings(min(tail_esses, na.rm = TRUE))
+  if (!is.finite(max_rhat)) max_rhat <- NA_real_
+  if (!is.finite(min_ess)) min_ess <- NA_real_
+  if (!is.finite(min_tail_ess)) min_tail_ess <- NA_real_
 
   np <- nuts_params(fit)
   divergences <- sum(subset(np, Parameter == "divergent__")$Value)
   treedepths <- subset(np, Parameter == "treedepth__")$Value
   treedepth_warnings <- sum(treedepths >= max_treedepth)
 
-  converged <- is.finite(max_rhat) && max_rhat <= 1.01 && divergences == 0
+  hard_gate_status <- classify_ma07_mcmc_gate(max_rhat, divergences, min_ess, min_tail_ess)
+  hard_gate_reason <- ma07_mcmc_gate_reason(max_rhat, divergences, min_ess, min_tail_ess)
+  converged <- hard_gate_status %in% c("PASS", "REVIEW")
   stacking_eligible <- converged
+  if (identical(hard_gate_status, "REVIEW")) {
+    message("[MA07 MCMC REVIEW] Model passed minimum MCMC thresholds but did not pass strict ESS marker: ",
+            row_target_key, ". Reason: ", hard_gate_reason)
+  }
 
   random_intercept_sd <- NA_real_
   if (grepl("Firm RE", row$Heterogeneity_Variant) && !is.null(post_summary$random$company)) {
@@ -638,6 +971,7 @@ for (i in seq_len(total_runs)) {
     Fit_Status = "SUCCESS",
     Rhat_Max = max_rhat,
     ESS_Min = min_ess,
+    Min_Tail_ESS = min_tail_ess,
     Divergences = divergences,
     converged = converged,
     stacking_eligible = stacking_eligible,
@@ -667,13 +1001,122 @@ for (i in seq_len(total_runs)) {
     bind_rows(diag_row)
   write.csv(diagnostics_df, diag_path, row.names = FALSE)
 
+  blocker_for_mcmc <- isTRUE(row$Main_Stack_Inclusion) &&
+    (identical(hard_gate_status, "FAIL") ||
+       (identical(hard_gate_status, "REVIEW") && isTRUE(ma07_strict_review_blocker)))
+  if (blocker_for_mcmc) {
+    audit_row <- make_ma07_artifact_audit_row(
+      row, model_filename, draws_filename,
+      fit_exists_before = fit_exists_before,
+      draws_exists_before = draws_exists_before,
+      fit_exists_after = file.exists(model_filename),
+      draws_exists_after = file.exists(draws_filename),
+      fit_status = "SUCCESS",
+      max_rhat = max_rhat,
+      divergences = divergences,
+      treedepth_warnings = treedepth_warnings,
+      min_bulk_ess = min_ess,
+      min_tail_ess = min_tail_ess,
+      converged = converged,
+      stacking_eligible = stacking_eligible,
+      draw_generation_attempted = FALSE,
+      draw_generation_status = "SKIPPED",
+      draw_generation_skip_reason = ifelse(identical(hard_gate_status, "FAIL"), "model is not stacking eligible", "strict review blocker enabled"),
+      hard_gate_status = hard_gate_status,
+      hard_gate_reason = hard_gate_reason
+    )
+    upsert_ma07_artifact_audit(audit_row)
+    record_ma07_failure(row, audit_row)
+    stop(
+      if (identical(hard_gate_status, "REVIEW")) "[MA07 HARD GATE BLOCKER] Main-stack model failed strict REVIEW diagnostics: " else "[MA07 HARD GATE BLOCKER] Main-stack model failed minimum MCMC diagnostics: ",
+      row_target_key,
+      ". max_rhat=", sprintf("%.6f", max_rhat),
+      ", divergences=", divergences,
+      ", min_bulk_ess=", sprintf("%.2f", min_ess),
+      ", min_tail_ess=", sprintf("%.2f", min_tail_ess),
+      ". fit_exists_after=", file.exists(model_filename),
+      ", draws_exists_after=", file.exists(draws_filename),
+      ". Add this exact key to ACCRUAL_MCMC_REMEDIATION_TARGETS and rerun ma07: ",
+      row_target_key
+    )
+  }
+
   regenerate_draws <- !backfill_diagnostics_only && stacking_eligible && (row_is_remediation_target || !file.exists(draws_filename) || force_refit)
+  draw_generation_attempted <- FALSE
+  draw_generation_status <- NA_character_
+  draw_generation_skip_reason <- NA_character_
   if (regenerate_draws) {
+    draw_generation_attempted <- TRUE
     message("Generating winsor posterior_epred and posterior_predict draws...")
-    ep_draws <- posterior_epred(fit)
-    pp_draws <- posterior_predict(fit)
-    saveRDS(list(epred = ep_draws, predict = pp_draws), draws_filename)
-    message("Saved winsor draws to: ", draws_filename)
+    draw_error <- tryCatch({
+      ep_draws <- posterior_epred(fit)
+      pp_draws <- posterior_predict(fit)
+      saveRDS(list(epred = ep_draws, predict = pp_draws), draws_filename)
+      NULL
+    }, error = function(e) conditionMessage(e))
+    if (is.null(draw_error) && file.exists(draws_filename)) {
+      message("Saved winsor draws to: ", draws_filename)
+      draw_generation_status <- "GENERATED"
+    } else {
+      draw_generation_status <- "FAILED"
+      draw_generation_skip_reason <- paste0("draw generation failed: ", draw_error)
+      message("[MA07 DRAW ERROR] ", row_target_key, ": ", draw_generation_skip_reason)
+    }
+  } else {
+    draw_generation_status <- "SKIPPED"
+    draw_generation_skip_reason <- if (file.exists(draws_filename)) {
+      "existing draws already present"
+    } else if (!stacking_eligible) {
+      "model is not stacking eligible"
+    } else if (backfill_diagnostics_only) {
+      "diagnostics-only/backfill mode"
+    } else if (!isTRUE(row$Main_Stack_Inclusion)) {
+      "model is not in active stacking space"
+    } else if (remediation_mode && !row_is_remediation_target) {
+      "remediation mode blocks non-target regeneration"
+    } else {
+      "draw generation not required by current mode"
+    }
+    message("[MA07 DRAW SKIP] ", row_target_key, ": ", draw_generation_skip_reason)
+  }
+
+  audit_row <- make_ma07_artifact_audit_row(
+    row, model_filename, draws_filename,
+    fit_exists_before = fit_exists_before,
+    draws_exists_before = draws_exists_before,
+    fit_exists_after = file.exists(model_filename),
+    draws_exists_after = file.exists(draws_filename),
+    fit_status = "SUCCESS",
+    max_rhat = max_rhat,
+    divergences = divergences,
+    treedepth_warnings = treedepth_warnings,
+    min_bulk_ess = min_ess,
+    min_tail_ess = min_tail_ess,
+    converged = converged,
+    stacking_eligible = stacking_eligible,
+    draw_generation_attempted = draw_generation_attempted,
+    draw_generation_status = draw_generation_status,
+    draw_generation_skip_reason = draw_generation_skip_reason,
+    hard_gate_status = hard_gate_status,
+    hard_gate_reason = hard_gate_reason
+  )
+  upsert_ma07_artifact_audit(audit_row)
+
+  missing_required_draws <- isTRUE(row$Main_Stack_Inclusion) &&
+    file.exists(model_filename) &&
+    hard_gate_status %in% c("PASS", "REVIEW") &&
+    !file.exists(draws_filename)
+  if (missing_required_draws) {
+    record_ma07_failure(row, audit_row)
+    stop(
+      "[MA07 DRAW ARTIFACT BLOCKER] Main-stack fit passed MCMC gate but expected draws are missing: ",
+      row_target_key,
+      ". fit_exists_after=", file.exists(model_filename),
+      ", draws_exists_after=", file.exists(draws_filename),
+      ", draws_path=", draws_filename,
+      ". Add this exact key to ACCRUAL_MCMC_REMEDIATION_TARGETS and rerun ma07: ",
+      row_target_key
+    )
   }
 }
 
@@ -738,7 +1181,7 @@ phase3_notes <- sprintf(
     "Likelihood_Family: %s.\n",
     "Model_Structure: %s.\n",
     "Varying slopes are written separately under ACCRUAL_OUTPUT_ROOT/varyslopes and are not mixed into baseline stacking weights.\n",
-    "Stacking eligibility requires max Rhat <= 1.01 and divergences == 0.\n",
+    "Stacking eligibility requires ma07 hard gate PASS or REVIEW: max Rhat <= 1.01, divergences == 0, min bulk ESS >= 400, and min tail ESS >= 400.\n",
     "Step 7 diagnostics are computed from the winsorized input samples plus fitted .rds objects.\n",
     "N_Firms is intentionally computed from the input sample rather than fit$data so pooled models retain correct firm counts.\n",
     "Pareto-k warnings do not fail Step 7; they are recorded as loo_status='PSIS_REVIEW_REQUIRED'.\n",
@@ -818,6 +1261,29 @@ write_run_manifest(
   rng_offset = baseline_rng_meta$RNG_Offset
 )
 message("Saved baseline manifest to: ", manifest_path)
+
+ma07_artifact_audit <- if (file.exists(ma07_artifact_audit_path)) {
+  read.csv(ma07_artifact_audit_path, stringsAsFactors = FALSE, check.names = FALSE)
+} else {
+  ma07_artifact_audit
+}
+processed_audit <- ma07_artifact_audit[!is.na(ma07_artifact_audit$Fit_Status) & ma07_artifact_audit$Fit_Status != "PENDING", , drop = FALSE]
+pass_count <- sum(processed_audit$hard_gate_status == "PASS", na.rm = TRUE)
+review_count <- sum(processed_audit$hard_gate_status == "REVIEW", na.rm = TRUE)
+fail_count <- sum(processed_audit$hard_gate_status == "FAIL", na.rm = TRUE)
+existing_fit_missing_draws <- sum(processed_audit$fit_exists_before %in% TRUE & processed_audit$draws_exists_before %in% FALSE, na.rm = TRUE)
+draws_generated <- sum(processed_audit$draw_generation_status == "GENERATED", na.rm = TRUE)
+draws_skipped <- sum(processed_audit$draw_generation_status == "SKIPPED", na.rm = TRUE)
+
+cat("\n[MA07 SUMMARY]\n")
+cat("Processed models: ", nrow(processed_audit), "\n", sep = "")
+cat("MCMC gate PASS: ", pass_count, " REVIEW: ", review_count, " FAIL: ", fail_count, "\n", sep = "")
+cat("Existing fits with missing draws before ma07: ", existing_fit_missing_draws, "\n", sep = "")
+cat("Draws generated: ", draws_generated, "\n", sep = "")
+cat("Draw generation skipped: ", draws_skipped, "\n", sep = "")
+cat("Artifact audit: ", ma07_artifact_audit_path, "\n", sep = "")
+cat("Hard-gate failures: ", ma07_hard_gate_failures_path, "\n", sep = "")
+cat("Suggested remediation helper: ", ma07_remediation_helper_path, "\n", sep = "")
 
 cat("\n[SUCCESS] ma07 winsorized model fitting completed.\n")
 phase_end("ma07", "Fit baseline brms models")
