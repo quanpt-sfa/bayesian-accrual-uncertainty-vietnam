@@ -16,11 +16,17 @@ if (!identical(thr$range_ratio_pass, 3.00)) stop("Chapter 3 prior predictive ran
 
 baseline_cfg <- accrual_sampler_config("baseline")
 if (!identical(baseline_cfg$chains, 4L) ||
+    !identical(baseline_cfg$cores, 4L) ||
     !identical(baseline_cfg$iter, 3000L) ||
     !identical(baseline_cfg$warmup, 1000L) ||
     !isTRUE(all.equal(baseline_cfg$adapt_delta, 0.95)) ||
     !identical(baseline_cfg$max_treedepth, 12L)) {
   stop("Baseline sampler defaults do not match Chapter 3 4/3000/1000/adapt_delta=.95/max_treedepth=12.")
+}
+
+remediation_cfg <- accrual_sampler_config("baseline_remediation")
+if (!"cores" %in% names(remediation_cfg) || !identical(remediation_cfg$cores, remediation_cfg$chains)) {
+  stop("Baseline remediation sampler config must expose cores defaulting to chains.")
 }
 
 grouped_cfg <- accrual_kfold_config("grouped_firm")
@@ -30,6 +36,7 @@ for (cfg_name in c("grouped_cfg", "row_cfg")) {
   if (!identical(cfg$K, 5L) ||
       !identical(cfg$seed, 42L) ||
       !identical(cfg$chains, 4L) ||
+      !identical(cfg$cores, 4L) ||
       !identical(cfg$iter, 3000L) ||
       !identical(cfg$warmup, 1000L)) {
     stop(cfg_name, " does not match Chapter 3 exact K-fold defaults.")
@@ -37,8 +44,85 @@ for (cfg_name in c("grouped_cfg", "row_cfg")) {
 }
 
 fast_cfg <- accrual_sampler_config("row_kfold", run_mode = "FAST_MODE")
-if (!identical(fast_cfg$chains, 2L) || !identical(fast_cfg$iter, 1000L) || !identical(fast_cfg$warmup, 500L)) {
+if (!identical(fast_cfg$chains, 2L) || !identical(fast_cfg$cores, 2L) ||
+    !identical(fast_cfg$iter, 1000L) || !identical(fast_cfg$warmup, 500L)) {
   stop("FAST_MODE defaults must remain 2 chains, 1000 iter, 500 warmup.")
+}
+
+sensitivity_cfg <- accrual_sampler_config("sensitivity")
+if (!"cores" %in% names(sensitivity_cfg) || !identical(sensitivity_cfg$cores, sensitivity_cfg$chains)) {
+  stop("Sensitivity sampler config must expose cores defaulting to chains.")
+}
+
+registry_path <- tempfile(fileext = ".csv")
+write_execution_config_registry(registry_path)
+registry <- read.csv(registry_path, stringsAsFactors = FALSE)
+required_core_scopes <- c(
+  "baseline",
+  "baseline_remediation",
+  "grouped_kfold_FULL_MODE",
+  "grouped_kfold_FAST_MODE",
+  "row_kfold_FULL_MODE",
+  "row_kfold_FAST_MODE",
+  "sensitivity"
+)
+missing_core_scopes <- required_core_scopes[
+  !vapply(required_core_scopes, function(scope) {
+    any(registry$Scope == scope & registry$Parameter == "cores")
+  }, logical(1))
+]
+if (length(missing_core_scopes)) {
+  stop("Execution config registry missing sampler cores rows for: ", paste(missing_core_scopes, collapse = ", "))
+}
+core_notes <- registry$Notes[registry$Parameter == "cores"]
+if (!any(grepl("rstan between-chain parallelization only", core_notes, fixed = TRUE))) {
+  stop("Execution config registry cores rows must document rstan between-chain parallelization.")
+}
+
+script_text <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
+ma07_text <- script_text("scripts/ma07_fit_brms_named_models.R")
+if (!grepl("cores\\s*=\\s*active_sampler_controls\\$cores", ma07_text, perl = TRUE)) {
+  stop("ma07 brm() call must pass cores = active_sampler_controls$cores.")
+}
+ma12_text <- script_text("scripts/ma12_grouped_kfold_firm.R")
+if (!grepl("cores\\s*=\\s*kfold_chain_cores", ma12_text, perl = TRUE) ||
+    !grepl("kfold_chain_cores\\s*<-\\s*kfold_cfg\\$cores", ma12_text, perl = TRUE)) {
+  stop("ma12 grouped K-fold brm() call must pass cores from accrual_kfold_config().")
+}
+ma13_text <- script_text("scripts/ma13_row_level_exact_kfold.R")
+if (!grepl("cores\\s*=\\s*row_kfold_chain_cores", ma13_text, perl = TRUE) ||
+    !grepl("row_kfold_chain_cores\\s*<-\\s*kfold_cfg\\$cores", ma13_text, perl = TRUE)) {
+  stop("ma13 row K-fold brm() call must pass cores from accrual_kfold_config().")
+}
+se02_text <- script_text("scripts/sensitivity/se02_refit_prior_scenarios.R")
+if (!grepl("cores\\s*=\\s*cores", se02_text, perl = TRUE) ||
+    !grepl("cores\\s*<-\\s*sampler_cfg\\$cores", se02_text, perl = TRUE)) {
+  stop("se02 sensitivity brm() call must pass cores from accrual_sampler_config().")
+}
+ma06_text <- script_text("scripts/ma06_prior_predictive_checks.R")
+if (!grepl("ACCRUAL_BASELINE_CORES", ma06_text, fixed = TRUE) ||
+    !grepl("cores\\s*=\\s*cores", ma06_text, perl = TRUE)) {
+  stop("ma06 prior predictive brm() call must pass explicit baseline cores.")
+}
+ma09_text <- script_text("scripts/ma09_loo_stacking.R")
+if (!grepl("cores\\s*<-\\s*sampler_cfg\\$cores", ma09_text, perl = TRUE) ||
+    !grepl("cores\\s*=\\s*cores", ma09_text, perl = TRUE)) {
+  stop("ma09 LOO refit brm() call must pass cores from accrual_sampler_config().")
+}
+se01_text <- script_text("scripts/sensitivity/se01_prior_predictive.R")
+if (!grepl("ACCRUAL_SENS_CORES", se01_text, fixed = TRUE) ||
+    !grepl("cores\\s*=\\s*cores", se01_text, perl = TRUE)) {
+  stop("se01 sensitivity prior predictive brm() call must pass explicit sensitivity cores.")
+}
+si03_text <- script_text("scripts/simulation/si03_brms_leakage_confirmation.R")
+if (!grepl("ACCRUAL_SIM_CORES", si03_text, fixed = TRUE) ||
+    !grepl("cores\\s*=\\s*cores", si03_text, perl = TRUE)) {
+  stop("si03 simulation brm() call must pass explicit simulation cores.")
+}
+si04_text <- script_text("scripts/simulation/si04_brms_parameter_recovery.R")
+if (!grepl("ACCRUAL_SIM_CORES", si04_text, fixed = TRUE) ||
+    !grepl("cores\\s*=\\s*cores", si04_text, perl = TRUE)) {
+  stop("si04 simulation brm() call must pass explicit simulation cores.")
 }
 
 di02 <- readLines("scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", warn = FALSE)

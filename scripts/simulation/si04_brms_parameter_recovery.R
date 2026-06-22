@@ -346,7 +346,13 @@ nu <- parse_num_env("ACCRUAL_SIM_RECOVERY_NU", 7)[1]
 chains <- parse_int_env("ACCRUAL_SIM_RECOVERY_CHAINS", 2)
 iter <- parse_int_env("ACCRUAL_SIM_RECOVERY_ITER", 1000)
 warmup <- parse_int_env("ACCRUAL_SIM_RECOVERY_WARMUP", 500)
-cores <- parse_int_env("ACCRUAL_SIM_RECOVERY_CORES", min(chains, 2))
+cores <- if (nzchar(trimws(Sys.getenv("ACCRUAL_SIM_RECOVERY_CORES", "")))) {
+  parse_int_env("ACCRUAL_SIM_RECOVERY_CORES", chains)
+} else {
+  env_int("ACCRUAL_SIM_CORES", chains, min = 1L)
+}
+validate_rstan_cores(cores, chains, "si04 brms parameter recovery")
+options(mc.cores = cores)
 adapt_delta <- parse_num_env("ACCRUAL_SIM_RECOVERY_ADAPT_DELTA", 0.95)[1]
 max_treedepth <- parse_int_env("ACCRUAL_SIM_RECOVERY_MAX_TREEDEPTH", 12)
 sd_zero_eps <- parse_num_env("ACCRUAL_SIM_RECOVERY_SD_ZERO_EPS", 0.01)[1]
@@ -360,6 +366,14 @@ diag_sum_path <- file.path(tables_dir, "table_brms_parameter_recovery_diagnostic
 manifest_path <- file.path(logs_dir, "brms_parameter_recovery_manifest.csv")
 
 message("Bayesian parameter recovery: ", nrow(grid), " MCMC fits. This can be slow. Role=auxiliary diagnostic.")
+message(
+  "brms/rstan sampler controls: chains=", chains,
+  ", cores=", cores,
+  ", iter=", iter,
+  ", warmup=", warmup,
+  ", adapt_delta=", adapt_delta,
+  ", max_treedepth=", max_treedepth
+)
 rec_out <- list()
 diag_out <- list()
 for (i in seq_len(nrow(grid))) {
@@ -428,6 +442,7 @@ manifest <- data.frame(
   sigma_eps = sigma_eps,
   nu = nu,
   chains = chains,
+  cores = cores,
   iter = iter,
   warmup = warmup,
   adapt_delta = adapt_delta,

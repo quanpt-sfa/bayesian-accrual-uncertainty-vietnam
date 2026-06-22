@@ -47,8 +47,6 @@ if (has_prior_pred_fail) {
   }
 }
 
-options(mc.cores = parallel::detectCores())
-
 run_varying_slope_models <- identical(model_structure, "breuer_varying_slopes")
 if (run_varying_slope_models && !run_varying_slopes) {
   stop("[BLOCKER] ACCRUAL_MODEL_STRUCTURE='breuer_varying_slopes' requires ACCRUAL_RUN_VARYING_SLOPES='TRUE'.")
@@ -587,9 +585,10 @@ iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
-baseline_sampler_controls <- sampler_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")]
+baseline_sampler_controls <- sampler_cfg[c("chains", "cores", "iter", "warmup", "adapt_delta", "max_treedepth")]
 remediation_cfg <- accrual_sampler_config("baseline_remediation")
-remediation_sampler_controls <- remediation_cfg[c("chains", "iter", "warmup", "adapt_delta", "max_treedepth")]
+remediation_sampler_controls <- remediation_cfg[c("chains", "cores", "iter", "warmup", "adapt_delta", "max_treedepth")]
+options(mc.cores = baseline_sampler_controls$cores)
 baseline_rng_meta <- accrual_rng_metadata_list("baseline_fit_brms_named_models")
 remediation_rng_meta <- accrual_rng_metadata_list("baseline_fit_brms_named_models_remediation")
 
@@ -624,6 +623,7 @@ if (length(remediation_targets) > 0) {
     paste0("Target keys: ", paste(remediation_targets, collapse = "; ")),
     paste0(
       "Baseline sampler controls: chains=", baseline_sampler_controls$chains,
+      "; cores=", baseline_sampler_controls$cores,
       "; iter=", baseline_sampler_controls$iter,
       "; warmup=", baseline_sampler_controls$warmup,
       "; adapt_delta=", baseline_sampler_controls$adapt_delta,
@@ -633,6 +633,7 @@ if (length(remediation_targets) > 0) {
     ),
     paste0(
       "Remediation sampler controls: chains=", remediation_sampler_controls$chains,
+      "; cores=", remediation_sampler_controls$cores,
       "; iter=", remediation_sampler_controls$iter,
       "; warmup=", remediation_sampler_controls$warmup,
       "; adapt_delta=", remediation_sampler_controls$adapt_delta,
@@ -840,6 +841,14 @@ for (i in seq_len(total_runs)) {
         row_target_key
       )
     }
+    message(
+      "brms/rstan sampler controls: chains=", active_sampler_controls$chains,
+      ", cores=", active_sampler_controls$cores,
+      ", iter=", active_sampler_controls$iter,
+      ", warmup=", active_sampler_controls$warmup,
+      ", adapt_delta=", active_sampler_controls$adapt_delta,
+      ", max_treedepth=", active_sampler_controls$max_treedepth
+    )
     if (run_varying_slope_models) {
       df_scaled <- prepare_varying_slope_data(df_scaled)
     }
@@ -856,6 +865,7 @@ for (i in seq_len(total_runs)) {
         family = brms_family(),
         prior = prior_list,
         chains = active_sampler_controls$chains,
+        cores = active_sampler_controls$cores,
         iter = active_sampler_controls$iter,
         warmup = active_sampler_controls$warmup,
         control = list(adapt_delta = active_sampler_controls$adapt_delta, max_treedepth = active_sampler_controls$max_treedepth),

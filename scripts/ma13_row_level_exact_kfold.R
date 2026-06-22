@@ -36,17 +36,9 @@ iter <- kfold_cfg$iter
 warmup <- kfold_cfg$warmup
 adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
+row_kfold_chain_cores <- kfold_cfg$cores
 row_run_rng_meta <- accrual_rng_metadata_list("row_kfold_run_manifest")
-
-row_kfold_chain_cores <- as.integer(Sys.getenv(
-  "ACCRUAL_ROW_KFOLD_CHAIN_CORES",
-  Sys.getenv("ACCRUAL_BASELINE_CORES", "4")
-))
-if (is.na(row_kfold_chain_cores) || row_kfold_chain_cores < 1L) {
-  row_kfold_chain_cores <- 1L
-}
-row_kfold_chain_cores <- min(row_kfold_chain_cores, chains)
-options(mc.cores=row_kfold_chain_cores)
+options(mc.cores = row_kfold_chain_cores)
 
 target_space_filter <- split_env("ACCRUAL_ROW_KFOLD_TARGET_SPACE")
 model_id_filter <- split_env("ACCRUAL_ROW_KFOLD_MODEL_IDS")
@@ -625,6 +617,14 @@ score_task <- function(task) {
   formula_str <- fix_formula(task$brms_Formula, prefactor = TRUE)
   fit <- if (file.exists(task$Fit_Path)) tryCatch(readRDS(task$Fit_Path), error = function(e) NULL) else NULL
   if (is.null(fit)) {
+    message(
+      "brms/rstan sampler controls: chains=", chains,
+      ", cores=", row_kfold_chain_cores,
+      ", iter=", iter,
+      ", warmup=", warmup,
+      ", adapt_delta=", adapt_delta,
+      ", max_treedepth=", max_treedepth
+    )
     fit <- tryCatch({
       brm(
         formula = bf(as.formula(formula_str)),

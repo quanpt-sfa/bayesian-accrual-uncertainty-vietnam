@@ -18,10 +18,12 @@ force_refit <- env_flag("ACCRUAL_FORCE_REFIT", "FALSE")
 include_secondary <- env_flag("ACCRUAL_SENS_INCLUDE_SECONDARY", "FALSE")
 sampler_cfg <- accrual_sampler_config("sensitivity")
 chains <- sampler_cfg$chains
+cores <- sampler_cfg$cores
 iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
+options(mc.cores = cores)
 
 scenarios <- selected_sensitivity_scenarios()
 formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
@@ -57,8 +59,8 @@ if (nrow(eligible_formulas) == 0) stop("[BLOCKER] No eligible formulas for sensi
 if (!dry_run && !requireNamespace("brms", quietly = TRUE)) stop("[BLOCKER] brms is required for non-dry-run sensitivity refits.")
 
 sampling_config <- sprintf(
-  "chains=%d; iter=%d; warmup=%d; adapt_delta=%.3f; max_treedepth=%d; canonical_seed=%d; dry_run=%s",
-  chains, iter, warmup, adapt_delta, max_treedepth, accrual_base_seed(), dry_run
+  "chains=%d; cores=%d; iter=%d; warmup=%d; adapt_delta=%.3f; max_treedepth=%d; canonical_seed=%d; dry_run=%s",
+  chains, cores, iter, warmup, adapt_delta, max_treedepth, accrual_base_seed(), dry_run
 )
 plan_rows <- list()
 diag_rows <- list()
@@ -127,6 +129,7 @@ for (sidx in seq_len(nrow(scenarios))) {
       target_sample = row$Target_Sample,
       brms_formula = row$brms_Formula,
       chains = chains,
+      cores = cores,
       iter = iter,
       warmup = warmup,
       adapt_delta = adapt_delta,
@@ -227,12 +230,21 @@ for (sidx in seq_len(nrow(scenarios))) {
     fit <- tryCatch({
       withCallingHandlers(
         {
+          message(
+            "brms/rstan sampler controls: chains=", chains,
+            ", cores=", cores,
+            ", iter=", iter,
+            ", warmup=", warmup,
+            ", adapt_delta=", adapt_delta,
+            ", max_treedepth=", max_treedepth
+          )
           brms::brm(
             formula = brms::bf(as.formula(formula_str)),
             data = df_scaled,
             family = brms_family(sc$Likelihood_Family),
             prior = prior_list,
             chains = chains,
+            cores = cores,
             iter = iter,
             warmup = warmup,
             control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),

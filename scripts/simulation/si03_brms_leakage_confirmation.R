@@ -370,7 +370,13 @@ if (!is.finite(dgp_nu) || dgp_nu <= 2) {
 chains <- parse_int_env("ACCRUAL_SIM_BRMS_CHAINS", 2)
 iter <- parse_int_env("ACCRUAL_SIM_BRMS_ITER", 1000)
 warmup <- parse_int_env("ACCRUAL_SIM_BRMS_WARMUP", 500)
-cores <- parse_int_env("ACCRUAL_SIM_BRMS_CORES", min(chains, 2))
+cores <- if (nzchar(trimws(Sys.getenv("ACCRUAL_SIM_BRMS_CORES", "")))) {
+  parse_int_env("ACCRUAL_SIM_BRMS_CORES", chains)
+} else {
+  env_int("ACCRUAL_SIM_CORES", chains, min = 1L)
+}
+validate_rstan_cores(cores, chains, "si03 brms leakage confirmation")
+options(mc.cores = cores)
 adapt_delta <- parse_num_env("ACCRUAL_SIM_BRMS_ADAPT_DELTA", 0.95)[1]
 max_treedepth <- parse_int_env("ACCRUAL_SIM_BRMS_MAX_TREEDEPTH", 12)
 
@@ -389,6 +395,14 @@ message(
   "Bayesian MCMC leakage confirmation: ", nrow(grid), " replications. ",
   "DGP=", dgp_family, ", prior_mode=", prior_mode,
   ", primary test quantity=weight_leakage_premium. This can be slow."
+)
+message(
+  "brms/rstan sampler controls: chains=", chains,
+  ", cores=", cores,
+  ", iter=", iter,
+  ", warmup=", warmup,
+  ", adapt_delta=", adapt_delta,
+  ", max_treedepth=", max_treedepth
 )
 
 out <- vector("list", nrow(grid))
@@ -439,6 +453,7 @@ manifest <- data.frame(
   test_quantity_primary = "weight_leakage_premium",
   test_quantity_secondary = "elpd_leakage_premium",
   chains = chains,
+  cores = cores,
   iter = iter,
   warmup = warmup,
   output_root = root,

@@ -41,6 +41,7 @@ calibration_targets <- unique(calibration_targets[nzchar(calibration_targets)])
 profile_grid <- data.frame(
   sampler_profile = c("baseline_current", "remediation_default", "longer_warmup", "very_long_if_needed"),
   chains = c(4L, 4L, 4L, 4L),
+  cores = c(4L, 4L, 4L, 4L),
   iter = c(3000L, 8000L, 12000L, 16000L),
   warmup = c(1000L, 2000L, 4000L, 6000L),
   adapt_delta = c(0.95, 0.99, 0.99, 0.99),
@@ -58,6 +59,17 @@ if (nzchar(profiles_raw)) {
   }
   profile_grid <- profile_grid[profile_grid$sampler_profile %in% requested_profiles, , drop = FALSE]
 }
+profile_grid$cores <- vapply(
+  profile_grid$chains,
+  function(chains) env_int("ACCRUAL_CALIBRATION_CORES", chains, min = 1L),
+  integer(1)
+)
+invisible(mapply(
+  validate_rstan_cores,
+  cores = profile_grid$cores,
+  chains = profile_grid$chains,
+  context = paste("di08", profile_grid$sampler_profile)
+))
 
 calibration_root <- Sys.getenv(
   "ACCRUAL_CALIBRATION_ROOT",
@@ -170,6 +182,7 @@ empty_results <- function() {
     Heterogeneity_Variant = character(),
     sampler_profile = character(),
     chains = integer(),
+    cores = integer(),
     iter = integer(),
     warmup = integer(),
     adapt_delta = numeric(),
@@ -274,6 +287,14 @@ for (target_index in seq_along(calibration_targets)) {
     dir.create(dirname(fit_path), recursive = TRUE, showWarnings = FALSE)
 
     message("[DI08] Calibrating ", target_key, " with profile ", prof$sampler_profile)
+    message(
+      "brms/rstan sampler controls: chains=", prof$chains,
+      ", cores=", prof$cores,
+      ", iter=", prof$iter,
+      ", warmup=", prof$warmup,
+      ", adapt_delta=", prof$adapt_delta,
+      ", max_treedepth=", prof$max_treedepth
+    )
     t0 <- Sys.time()
     err_msg <- NA_character_
     fit_status <- "SUCCESS"
@@ -286,6 +307,7 @@ for (target_index in seq_along(calibration_targets)) {
         family = brms_family(),
         prior = prior_list,
         chains = prof$chains,
+        cores = prof$cores,
         iter = prof$iter,
         warmup = prof$warmup,
         control = list(adapt_delta = prof$adapt_delta, max_treedepth = prof$max_treedepth),
@@ -332,6 +354,7 @@ for (target_index in seq_along(calibration_targets)) {
       Heterogeneity_Variant = row$Heterogeneity_Variant,
       sampler_profile = prof$sampler_profile,
       chains = prof$chains,
+      cores = prof$cores,
       iter = prof$iter,
       warmup = prof$warmup,
       adapt_delta = prof$adapt_delta,
@@ -370,7 +393,7 @@ recommend_one <- function(df) {
       recommendation_status = "NO_ACCEPTABLE_PROFILE",
       diagnostics_status = "FAIL",
       diagnostics_reason = paste(df$diagnostics_reason, collapse = " | "),
-      chains = NA_integer_, iter = NA_integer_, warmup = NA_integer_,
+      chains = NA_integer_, cores = NA_integer_, iter = NA_integer_, warmup = NA_integer_,
       adapt_delta = NA_real_, max_treedepth = NA_integer_,
       stringsAsFactors = FALSE
     ))
@@ -388,6 +411,7 @@ recommend_one <- function(df) {
     diagnostics_status = best$diagnostics_status,
     diagnostics_reason = best$diagnostics_reason,
     chains = best$chains,
+    cores = best$cores,
     iter = best$iter,
     warmup = best$warmup,
     adapt_delta = best$adapt_delta,
@@ -407,6 +431,7 @@ common_profile <- if (nrow(recommendations) && all(recommendations$recommendatio
 if (length(common_profile) == 1) {
   common_cfg <- profile_grid[profile_grid$sampler_profile == common_profile, , drop = FALSE][1, ]
   env_lines <- c(
+    paste0("$env:ACCRUAL_REMEDIATION_CORES = \"", common_cfg$cores, "\""),
     paste0("$env:ACCRUAL_REMEDIATION_ITER = \"", common_cfg$iter, "\""),
     paste0("$env:ACCRUAL_REMEDIATION_WARMUP = \"", common_cfg$warmup, "\""),
     paste0("$env:ACCRUAL_REMEDIATION_ADAPT_DELTA = \"", common_cfg$adapt_delta, "\""),
@@ -419,6 +444,7 @@ if (length(common_profile) == 1) {
     chosen <- conservative[which.max(rank_map), , drop = FALSE][1, ]
     env_lines <- c(
       "# WARNING: Targets require different recommended profiles; production remediation should use the most conservative profile that passes all targets.",
+      paste0("$env:ACCRUAL_REMEDIATION_CORES = \"", chosen$cores, "\""),
       paste0("$env:ACCRUAL_REMEDIATION_ITER = \"", chosen$iter, "\""),
       paste0("$env:ACCRUAL_REMEDIATION_WARMUP = \"", chosen$warmup, "\""),
       paste0("$env:ACCRUAL_REMEDIATION_ADAPT_DELTA = \"", chosen$adapt_delta, "\""),

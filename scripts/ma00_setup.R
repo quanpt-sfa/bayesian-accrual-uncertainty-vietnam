@@ -269,6 +269,31 @@ accrual_rng_metadata <- function(context = "global", offset = 0L) {
   as.data.frame(accrual_rng_metadata_list(context, offset), stringsAsFactors = FALSE)
 }
 
+validate_rstan_cores <- function(cores, chains, context = "unknown") {
+  if (length(cores) != 1L || is.na(cores) || !is.finite(cores) || as.integer(cores) < 1L) {
+    stop("[BLOCKER] rstan cores must be an integer >= 1 for ", context, ".")
+  }
+  if (length(chains) != 1L || is.na(chains) || !is.finite(chains) || as.integer(chains) < 1L) {
+    stop("[BLOCKER] brms chains must be an integer >= 1 for ", context, ".")
+  }
+  cores <- as.integer(cores)
+  chains <- as.integer(chains)
+  detected <- parallel::detectCores(logical = TRUE)
+  if (!is.na(detected) && cores > detected) {
+    stop(
+      "[BLOCKER] Requested rstan cores (", cores, ") exceed detected logical CPU cores (",
+      detected, ") for ", context, "."
+    )
+  }
+  if (cores > chains) {
+    warning(
+      "[WARNING] In the current rstan backend, brms parallelizes across chains. cores > chains may not improve speed.",
+      call. = FALSE
+    )
+  }
+  invisible(cores)
+}
+
 accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "baseline_remediation"),
                                    run_mode = "FULL_MODE", varying_slopes = FALSE) {
   kind <- match.arg(kind)
@@ -279,8 +304,10 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
 
   profile <- paste(kind, run_mode, sep = "_")
   if (identical(kind, "baseline")) {
+    chains <- env_int("ACCRUAL_BASELINE_CHAINS", 4L, min = 1L)
     cfg <- list(
-      chains = env_int("ACCRUAL_BASELINE_CHAINS", 4L, min = 1L),
+      chains = chains,
+      cores = env_int("ACCRUAL_BASELINE_CORES", chains, min = 1L),
       iter = env_int("ACCRUAL_BASELINE_ITER", 3000L, min = 1L),
       warmup = env_int("ACCRUAL_BASELINE_WARMUP", 1000L, min = 0L),
       adapt_delta = env_num("ACCRUAL_BASELINE_ADAPT_DELTA", if (varying_slopes) 0.99 else 0.95, min = 0),
@@ -290,8 +317,10 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
       config_source = "scripts/ma00_setup.R:accrual_sampler_config"
     )
   } else if (identical(kind, "baseline_remediation")) {
+    chains <- env_int("ACCRUAL_REMEDIATION_CHAINS", 4L, min = 1L)
     cfg <- list(
-      chains = env_int("ACCRUAL_REMEDIATION_CHAINS", 4L, min = 1L),
+      chains = chains,
+      cores = env_int("ACCRUAL_REMEDIATION_CORES", chains, min = 1L),
       iter = env_int("ACCRUAL_REMEDIATION_ITER", 8000L, min = 1L),
       warmup = env_int("ACCRUAL_REMEDIATION_WARMUP", 2000L, min = 0L),
       adapt_delta = env_num("ACCRUAL_REMEDIATION_ADAPT_DELTA", 0.99, min = 0),
@@ -303,8 +332,10 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
   } else if (kind %in% c("grouped_kfold", "row_kfold")) {
     prefix <- if (identical(kind, "grouped_kfold")) "ACCRUAL_KFOLD_FIRM" else "ACCRUAL_ROW_KFOLD"
     full_defaults <- run_mode == "FULL_MODE"
+    chains <- env_int(paste0(prefix, "_CHAINS"), if (full_defaults) 4L else 2L, min = 1L)
     cfg <- list(
-      chains = env_int(paste0(prefix, "_CHAINS"), if (full_defaults) 4L else 2L, min = 1L),
+      chains = chains,
+      cores = env_int(paste0(prefix, "_CORES"), chains, min = 1L),
       iter = env_int(paste0(prefix, "_ITER"), if (full_defaults) 3000L else 1000L, min = 1L),
       warmup = env_int(paste0(prefix, "_WARMUP"), if (full_defaults) 1000L else 500L, min = 0L),
       adapt_delta = env_num(paste0(prefix, "_ADAPT_DELTA"), 0.95, min = 0),
@@ -314,8 +345,10 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
       config_source = "scripts/ma00_setup.R:accrual_sampler_config"
     )
   } else {
+    chains <- env_int("ACCRUAL_SENS_CHAINS", 4L, min = 1L)
     cfg <- list(
-      chains = env_int("ACCRUAL_SENS_CHAINS", 4L, min = 1L),
+      chains = chains,
+      cores = env_int("ACCRUAL_SENS_CORES", chains, min = 1L),
       iter = env_int("ACCRUAL_SENS_ITER", 3000L, min = 1L),
       warmup = env_int("ACCRUAL_SENS_WARMUP", 1000L, min = 0L),
       adapt_delta = env_num("ACCRUAL_SENS_ADAPT_DELTA", 0.95, min = 0),
@@ -326,6 +359,7 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
     )
   }
   if (cfg$warmup >= cfg$iter) stop("[BLOCKER] warmup must be smaller than iter for ", kind, ".")
+  validate_rstan_cores(cfg$cores, cfg$chains, paste(kind, run_mode))
   cfg
 }
 
@@ -354,8 +388,10 @@ write_execution_config_registry <- function(path = file.path(method_design_root,
     )
   }
   sampler_rows <- function(scope, cfg) {
+    rstan_note <- paste(cfg$config_source, "rstan between-chain parallelization only; no cmdstanr/threading.")
     do.call(rbind, list(
       row(scope, "chains", cfg$chains, paste0("see_", cfg$sampler_profile), cfg$config_source),
+      row(scope, "cores", cfg$cores, paste0("see_", cfg$sampler_profile), rstan_note),
       row(scope, "iter", cfg$iter, paste0("see_", cfg$sampler_profile), cfg$config_source),
       row(scope, "warmup", cfg$warmup, paste0("see_", cfg$sampler_profile), cfg$config_source),
       row(scope, "adapt_delta", cfg$adapt_delta, paste0("see_", cfg$sampler_profile), cfg$config_source),
@@ -377,6 +413,7 @@ write_execution_config_registry <- function(path = file.path(method_design_root,
     ),
     list(
       sampler_rows("baseline", accrual_sampler_config("baseline")),
+      sampler_rows("baseline_remediation", accrual_sampler_config("baseline_remediation")),
       sampler_rows("grouped_kfold_FULL_MODE", accrual_sampler_config("grouped_kfold", "FULL_MODE")),
       sampler_rows("grouped_kfold_FAST_MODE", accrual_sampler_config("grouped_kfold", "FAST_MODE")),
       sampler_rows("row_kfold_FULL_MODE", accrual_sampler_config("row_kfold", "FULL_MODE")),

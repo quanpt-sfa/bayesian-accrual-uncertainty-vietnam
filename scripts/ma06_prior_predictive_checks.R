@@ -13,8 +13,6 @@ ensure_analysis_dirs()
 write_method_design_files()
 write_prior_registry()
 
-options(mc.cores = 1)
-
 mode <- prior_predictive_mode
 include_m10 <- identical(mode, "FULL") || identical(mode, "EXTENDED")
 
@@ -54,6 +52,9 @@ if (nrow(representative_rows) == 0) {
 chains <- 2
 iter <- prior_pred_n_draws
 warmup <- min(500L, floor(iter / 2))
+cores <- env_int("ACCRUAL_BASELINE_CORES", chains, min = 1L)
+validate_rstan_cores(cores, chains, "ma06 prior predictive")
+options(mc.cores = cores)
 
 summarize_quantiles <- function(x) {
   qs <- quantile(x, probs = c(0.01, 0.50, 0.99), na.rm = TRUE, names = FALSE, type = 7)
@@ -75,6 +76,12 @@ plausibility_flag <- function(share_gt_1, share_gt_2) {
 sample_prior_predictions <- function(row, rng_offset) {
   df_scaled <- read_winsor_sample(row$Target_Sample)
   formula_str <- fix_formula(row$brms_Formula)
+  message(
+    "brms/rstan sampler controls: chains=", chains,
+    ", cores=", cores,
+    ", iter=", iter,
+    ", warmup=", warmup
+  )
   fit_prior <- brm(
     formula = bf(as.formula(formula_str)),
     data = df_scaled,
@@ -82,6 +89,7 @@ sample_prior_predictions <- function(row, rng_offset) {
     prior = default_prior_list(row$Heterogeneity_Variant),
     sample_prior = "only",
     chains = chains,
+    cores = cores,
     iter = iter,
     warmup = warmup,
     seed = accrual_seed_for("baseline_prior_predictive_fit", offset = rng_offset),

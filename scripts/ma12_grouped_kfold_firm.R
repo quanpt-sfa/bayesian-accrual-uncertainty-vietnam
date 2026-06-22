@@ -33,17 +33,9 @@ iter <- kfold_cfg$iter
 warmup <- kfold_cfg$warmup
 adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
+kfold_chain_cores <- kfold_cfg$cores
 grouped_run_rng_meta <- accrual_rng_metadata_list("grouped_kfold_run_manifest")
-
-kfold_chain_cores <- as.integer(Sys.getenv(
-  "ACCRUAL_KFOLD_CHAIN_CORES",
-  Sys.getenv("ACCRUAL_BASELINE_CORES", "4")
-))
-if (is.na(kfold_chain_cores) || kfold_chain_cores < 1L) {
-  kfold_chain_cores <- 1L
-}
-kfold_chain_cores <- min(kfold_chain_cores, chains)
-options(mc.cores=kfold_chain_cores)
+options(mc.cores = kfold_chain_cores)
 
 run_id <- trimws(Sys.getenv("ACCRUAL_KFOLD_FIRM_RUN_ID", "default"))
 if (!nzchar(run_id)) run_id <- "default"
@@ -1008,6 +1000,14 @@ main <- function() {
       fit <- tryCatch(readRDS(fit_path), error = function(e) NULL)
     }
     if (is.null(fit)) {
+      message(
+        "brms/rstan sampler controls: chains=", chains,
+        ", cores=", kfold_chain_cores,
+        ", iter=", iter,
+        ", warmup=", warmup,
+        ", adapt_delta=", adapt_delta,
+        ", max_treedepth=", max_treedepth
+      )
       fit <- tryCatch({
         brm(
           formula = bf(as.formula(formula_str)),

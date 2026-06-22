@@ -73,10 +73,12 @@ if (nrow(eligible_models) == 0) {
 
 sampler_cfg <- accrual_sampler_config("baseline")
 chains <- sampler_cfg$chains
+cores <- sampler_cfg$cores
 iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
+options(mc.cores = cores)
 
 eligible_joined <- eligible_models %>%
   left_join(
@@ -162,6 +164,14 @@ for (i in seq_len(nrow(eligible_joined))) {
     df_scaled <- read_winsor_sample(row$Target_Sample, prefactor = TRUE)
     formula_str <- fix_formula(row$brms_Formula, prefactor = TRUE)
     message("  Formula: ", formula_str)
+    message(
+      "  brms/rstan sampler controls: chains=", chains,
+      ", cores=", cores,
+      ", iter=", iter,
+      ", warmup=", warmup,
+      ", adapt_delta=", adapt_delta,
+      ", max_treedepth=", max_treedepth
+    )
 
     prior_list <- default_prior_list(row$Heterogeneity_Variant)
 
@@ -172,6 +182,7 @@ for (i in seq_len(nrow(eligible_joined))) {
         family = brms_family(),
         prior = prior_list,
         chains = chains,
+        cores = cores,
         iter = iter,
         warmup = warmup,
         control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
