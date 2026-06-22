@@ -19,7 +19,7 @@ if (exists("ensure_analysis_dirs", mode = "function")) ensure_analysis_dirs()
 
 script_start <- Sys.time()
 script_name <- "scripts/diagnostics/di04_full_vs_strict_model_space_stacking.R"
-script_version <- "2026-06-22-v1-full-vs-strict-stacking"
+script_version <- "2026-06-22-v2-read-weight-audit"
 
 diagnostics_dir <- file.path(output_root, "diagnostics")
 dir.create(diagnostics_dir, recursive = TRUE, showWarnings = FALSE)
@@ -39,11 +39,6 @@ strict_min_ess <- as.numeric(Sys.getenv("ACCRUAL_STRICT_MODEL_MIN_ESS", "1000"))
 
 read_csv_required <- function(path, label) {
   if (!file.exists(path)) stop("[BLOCKER] Missing ", label, ": ", path)
-  read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
-}
-
-safe_read_csv <- function(path) {
-  if (!file.exists(path)) return(NULL)
   read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
@@ -91,29 +86,20 @@ mcmc_gate <- read_csv_required(mcmc_gate_path, "MCMC diagnostics gate")
 weight_audit <- read_csv_required(weight_audit_path, "exact-KFold DA weight audit")
 primary_gate <- read_csv_required(primary_gate_path, "model primary inclusion gate")
 
-paths_from_audit <- unique(na.omit(unlist(weight_audit[intersect(
-  names(weight_audit),
-  c("ep_weight_file", "rt_weight_file", "grouped_ep_weight_file", "grouped_rt_weight_file",
-    "row_ep_weight_file", "row_rt_weight_file")
-)])))
-paths_from_audit <- paths_from_audit[nzchar(paths_from_audit)]
-if (!length(paths_from_audit)) {
-  write_empty_outputs("No weight file paths were listed in table_DA_exact_kfold_weight_audit.csv.")
-}
-
-read_weight_file <- function(path) {
-  x <- safe_read_csv(path)
-  if (is.null(x) || !nrow(x)) return(NULL)
+read_weight_audit_rows <- function(x) {
   target_col <- first_existing_col(x, c("Target_Space", "target_space"))
-  weight_col <- first_existing_col(x, c("Weight_KFold", "weight", "stacking_weight", "Weight"))
+  source_col <- first_existing_col(x, c("DA_Source", "validation_source", "source"))
+  weight_col <- first_existing_col(x, c("Weight", "Exact_KFold_Weight", "Weight_KFold", "weight", "stacking_weight"))
   model_col <- first_existing_col(x, c("Model_ID", "model_id"))
   variant_col <- first_existing_col(x, c("Heterogeneity_Variant", "heterogeneity_variant"))
-  if (any(is.na(c(target_col, weight_col, model_col, variant_col)))) {
-    stop("[BLOCKER] Weight file lacks required model/target/variant/weight columns: ", path)
-  }
-  data.frame(
-    validation_source = ifelse(grepl("row", path, ignore.case = TRUE), "row_exact_kfold", "grouped_exact_kfold"),
-    source_path = path,
+  if (any(is.na(c(target_col, source_col, weight_col, model_col, variant_col)))) return(NULL)
+  out <- data.frame(
+    validation_source = dplyr::case_when(
+      grepl("row", as.character(x[[source_col]]), ignore.case = TRUE) ~ "row_exact_kfold",
+      grepl("group", as.character(x[[source_col]]), ignore.case = TRUE) ~ "grouped_exact_kfold",
+      TRUE ~ as.character(x[[source_col]])
+    ),
+    source_path = if ("Weight_File" %in% names(x)) as.character(x$Weight_File) else weight_audit_path,
     target_space = as.character(x[[target_col]]),
     model_id = as.character(x[[model_col]]),
     model_name = if ("Model_Name" %in% names(x)) as.character(x$Model_Name) else as.character(x[[model_col]]),
@@ -122,10 +108,13 @@ read_weight_file <- function(path) {
     original_weight = suppressWarnings(as.numeric(x[[weight_col]])),
     stringsAsFactors = FALSE
   )
+  out[is.finite(out$original_weight) & out$original_weight > 0, , drop = FALSE]
 }
 
-weights <- bind_rows(lapply(paths_from_audit, read_weight_file))
-if (!nrow(weights)) write_empty_outputs("No usable exact-KFold weight rows were available.")
+weights <- read_weight_audit_rows(weight_audit)
+if (is.null(weights) || !nrow(weights)) {
+  write_empty_outputs("No usable exact-KFold model weight rows were available in table_DA_exact_kfold_weight_audit.csv.")
+}
 
 mcmc_key_cols <- c("model_id", "target_space", "model_variant_class")
 mcmc_norm <- mcmc_gate %>%

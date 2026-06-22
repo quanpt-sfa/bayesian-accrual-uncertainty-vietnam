@@ -168,10 +168,14 @@ correlation <- joined %>%
     spearman_denominator = safe_cor(.data$denom_row, .data$denom_grouped, "spearman"),
     pearson_denominator = safe_cor(.data$denom_row, .data$denom_grouped, "pearson"),
     spearman_denominator_percentile = safe_cor(.data$denom_rank_pct_row, .data$denom_rank_pct_grouped, "spearman"),
-    pearson_denominator_ratio = safe_cor(.data$denom_row / .data$denom_grouped, rep(1, n()), "pearson"),
     spearman_abs_z_est = safe_cor(.data$abs_z_est_row, .data$abs_z_est_grouped, "spearman"),
     pearson_abs_z_est = safe_cor(.data$abs_z_est_row, .data$abs_z_est_grouped, "pearson"),
+    mean_denominator_ratio_row_over_grouped = mean(.data$denom_ratio_row_over_grouped, na.rm = TRUE),
     median_denominator_ratio_row_over_grouped = stats::median(.data$denom_ratio_row_over_grouped, na.rm = TRUE),
+    p5_denominator_ratio_row_over_grouped = quant(.data$denom_ratio_row_over_grouped, 0.05),
+    p95_denominator_ratio_row_over_grouped = quant(.data$denom_ratio_row_over_grouped, 0.95),
+    share_denominator_ratio_below_0_5 = mean(.data$denom_ratio_row_over_grouped < 0.5, na.rm = TRUE),
+    share_denominator_ratio_above_2 = mean(.data$denom_ratio_row_over_grouped > 2, na.rm = TRUE),
     .groups = "drop"
   )
 

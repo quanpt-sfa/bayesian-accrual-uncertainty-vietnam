@@ -76,7 +76,7 @@ if (!file.exists(raw_path)) stop("[BLOCKER] Raw data workbook missing: ", raw_pa
 raw <- readxl::read_excel(raw_path, sheet = "Sheet1")
 
 required_cols(sets, c("company", "year", "target_space", "membership_class"), "di03 sets")
-required_cols(sample_rt, c("company", "year", "industry", "Size", "ROA_curr", "revenue_growth", "A_lag"), "winsor no-lookahead sample")
+required_cols(sample_rt, c("company", "year", "industry", "Size", "ROA_curr", "revenue_growth", "A_lag", "TA_scaled"), "winsor no-lookahead sample")
 required_cols(raw, c("company", "year", "A", "NI", "ROA", "CFO"), "raw workbook")
 
 score_values <- c("abs(DA_raw_stacked)", "abs(DA_z_estimation_stacked)", "abs(DA_z_predictive_stacked)",
@@ -109,7 +109,6 @@ raw_leads <- raw %>%
     ROA_lead = get_lead(.data$ROA, .data$year),
     A_lead = get_lead(.data$A, .data$year),
     CFO_lead = get_lead(.data$CFO, .data$year),
-    TA_lead = if ("TA_scaled" %in% names(.)) get_lead(.data$TA_scaled, .data$year) else NA_real_,
     future_Earnings_persistence = .data$NI_lead / .data$A
   ) %>%
   ungroup() %>%
@@ -120,14 +119,26 @@ raw_leads <- raw %>%
     future_CFO = num(.data$CFO_lead) / num(.data$A),
     future_Earnings = num(.data$NI_lead) / num(.data$A),
     future_ROA = ifelse(num(.data$A_lead) > 0, num(.data$NI_lead) / num(.data$A_lead), NA_real_),
-    future_Earnings_persistence = num(.data$future_Earnings_persistence),
-    accrual_reversal = -num(.data$TA_lead)
+    future_Earnings_persistence = num(.data$future_Earnings_persistence)
+  )
+
+sample_rt_leads <- sample_rt %>%
+  mutate(company = as.character(.data$company), year = as.integer(.data$year)) %>%
+  arrange(.data$company, .data$year) %>%
+  group_by(.data$company) %>%
+  mutate(TA_scaled_lead = get_lead(.data$TA_scaled, .data$year)) %>%
+  ungroup() %>%
+  transmute(
+    company = as.character(.data$company),
+    year = as.integer(.data$year),
+    accrual_reversal = -num(.data$TA_scaled_lead)
   )
 
 analysis <- sample_rt %>%
   mutate(company = as.character(.data$company), year = as.integer(.data$year)) %>%
   select(company, year, industry, Size, ROA_curr, revenue_growth, A_lag) %>%
   inner_join(raw_leads, by = c("company", "year")) %>%
+  left_join(sample_rt_leads, by = c("company", "year")) %>%
   inner_join(sets_primary, by = c("company", "year"))
 
 if (!nrow(analysis)) stop("[BLOCKER] Outcome membership join produced zero rows.")
