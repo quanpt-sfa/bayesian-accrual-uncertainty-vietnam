@@ -82,12 +82,16 @@ Primary_Magnitude_Reclassification_Decision <- if (!is.null(Exact_KFold_Reclassi
                                                    "primary_magnitude_decision" %in% names(Exact_KFold_Reclassification_Decision_Table) &&
                                                    nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
   as.character(Exact_KFold_Reclassification_Decision_Table$primary_magnitude_decision[[1]])
+} else if (!is.na(Exact_KFold_Reclassification_Decision)) {
+  Exact_KFold_Reclassification_Decision
 } else {
   NA_character_
 }
-Tail_Reclassification_Reporting_Decision <- if (!is.null(Exact_KFold_Reclassification_Decision_Table) &&
-                                                "tail_reporting_decision" %in% names(Exact_KFold_Reclassification_Decision_Table) &&
-                                                nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
+Tail_Reclassification_Reporting_Decision <- if (identical(New_Firm_Predictive_Gate_Decision, "PRIMARY_SUPPRESSION_REQUIRED_FOR_UNVERIFIED_FIRMRE_OUT_OF_FIRM_QUANTITIES")) {
+  "SUPPRESSED_OR_NON_PRIMARY_BY_DI02"
+} else if (!is.null(Exact_KFold_Reclassification_Decision_Table) &&
+           "tail_reporting_decision" %in% names(Exact_KFold_Reclassification_Decision_Table) &&
+           nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
   as.character(Exact_KFold_Reclassification_Decision_Table$tail_reporting_decision[[1]])
 } else {
   NA_character_
@@ -107,14 +111,9 @@ RQ2_Primary_Output_Allowed <- DA_Finite_Gate_Decision %in% allowed_finite_decisi
     "PASS_FOR_AVAILABLE_FIRMRE_OUT_OF_FIRM_QUANTITIES",
     "NO_FIRMRE_OUT_OF_FIRM_PRIMARY_QUANTITIES_DETECTED"
   )
-Tail_Flag_Primary_Output_Allowed <- RQ2_Primary_Output_Allowed
-ExactKFold_Magnitude_RQ2_Primary_Output_Allowed <- DA_Finite_Gate_Decision %in% allowed_finite_decisions &&
-  !is.na(Primary_Magnitude_Reclassification_Decision) &&
-  Primary_Magnitude_Reclassification_Decision %in% c(
-    "PASS_PRIMARY_MAGNITUDE_RECLASSIFICATION_AVAILABLE",
-    "WARN_PRIMARY_MAGNITUDE_JACCARD_MODERATE",
-    "WARN_PRIMARY_MAGNITUDE_JACCARD_LOW"
-  )
+Tail_Flag_Primary_Output_Allowed <- !identical(New_Firm_Predictive_Gate_Decision, "PRIMARY_SUPPRESSION_REQUIRED_FOR_UNVERIFIED_FIRMRE_OUT_OF_FIRM_QUANTITIES") &&
+  RQ2_Primary_Output_Allowed
+ExactKFold_Magnitude_RQ2_Primary_Output_Allowed <- FALSE
 Exact_KFold_Reclassification_Audit_Status <- if (!is.null(Exact_KFold_Reclassification_Decision_Table) &&
                                                  nrow(Exact_KFold_Reclassification_Decision_Table) > 0) {
   "available"
@@ -666,6 +665,62 @@ materiality <- data.frame(
 )
 write_outputs(materiality, "table_3_10_rq2_materiality_thresholds", "Table 3.10 RQ2 Materiality Thresholds")
 
+exact_kfold_jaccard <- safe_read_csv(exact_kfold_reclassification_jaccard_path)
+table_3_12_available <- FALSE
+if (!is.null(exact_kfold_jaccard) && nrow(exact_kfold_jaccard) > 0) {
+  if (!"source_score_variable" %in% names(exact_kfold_jaccard) && "score_variable" %in% names(exact_kfold_jaccard)) {
+    exact_kfold_jaccard$source_score_variable <- exact_kfold_jaccard$score_variable
+  }
+  if (!"score_transform" %in% names(exact_kfold_jaccard)) {
+    exact_kfold_jaccard$score_transform <- dplyr::case_when(
+      exact_kfold_jaccard$metric_class %in% c("primary_magnitude_raw", "primary_magnitude_estimation_scaled", "secondary_predictive_scaled_magnitude") ~ "absolute_value",
+      exact_kfold_jaccard$metric_class == "supplementary_tail_based_or_posterior_predictive" ~ "inverse_tail_probability",
+      TRUE ~ "identity"
+    )
+  }
+  if (!"reported_score_variable" %in% names(exact_kfold_jaccard) && "score_variable" %in% names(exact_kfold_jaccard)) {
+    exact_kfold_jaccard$reported_score_variable <- exact_kfold_jaccard$score_variable
+  }
+  exact_kfold_jaccard$reported_score_variable <- dplyr::case_when(
+    exact_kfold_jaccard$metric_class == "primary_magnitude_raw" ~ "abs(DA_raw_stacked)",
+    exact_kfold_jaccard$metric_class == "primary_magnitude_estimation_scaled" ~ "abs(DA_z_estimation_stacked)",
+    exact_kfold_jaccard$score_transform == "absolute_value" & !grepl("^abs\\(", exact_kfold_jaccard$reported_score_variable) ~ paste0("abs(", exact_kfold_jaccard$source_score_variable, ")"),
+    TRUE ~ as.character(exact_kfold_jaccard$reported_score_variable)
+  )
+  if (!"suppression_reason" %in% names(exact_kfold_jaccard)) {
+    exact_kfold_jaccard$suppression_reason <- NA_character_
+  }
+  table_3_12_cols <- c(
+    "target_space",
+    "reported_score_variable",
+    "metric_class",
+    "N_joined",
+    "top_n",
+    "intersection_n",
+    "union_n",
+    "only_row_n",
+    "only_grouped_n",
+    "jaccard",
+    "switch_rate",
+    "spearman_rank_correlation",
+    "Primary_Inference_Allowed",
+    "suppression_reason",
+    "interpretation"
+  )
+  table_3_12 <- exact_kfold_jaccard %>%
+    filter(metric_class %in% c("primary_magnitude_raw", "primary_magnitude_estimation_scaled")) %>%
+    select(any_of(table_3_12_cols))
+  if (nrow(table_3_12) > 0 && all(table_3_12_cols %in% names(table_3_12))) {
+    write_outputs(table_3_12, "table_3_12_exact_kfold_reclassification_jaccard", "Table 3.12 Exact K-Fold Reclassification Jaccard")
+    table_3_12_available <- TRUE
+  }
+}
+ExactKFold_Magnitude_RQ2_Primary_Output_Allowed <- table_3_12_available &&
+  any(table_3_12$Primary_Inference_Allowed %in% TRUE &
+        grepl("^primary_magnitude", table_3_12$metric_class))
+RQ2_Magnitude_Primary_Output_Allowed <- ExactKFold_Magnitude_RQ2_Primary_Output_Allowed
+RQ2_Tail_Primary_Output_Allowed <- Tail_Flag_Primary_Output_Allowed
+
 git_hash <- tryCatch(system("git rev-parse HEAD", intern = TRUE), error = function(e) NA_character_)
 script_hash <- tryCatch(as.character(tools::md5sum("scripts/ma17_export_tables_figures.R")), error = function(e) NA_character_)
 diag <- safe_read_csv(path_table("table_brms_diagnostics_winsor.csv"))
@@ -685,7 +740,8 @@ manifest <- data.frame(
            "Primary_Magnitude_Reclassification_Min_Jaccard", "Tail_Reclassification_Reporting_Decision",
            "Tail_Reclassification_Primary_Status", "Di03_Output_Path",
            "Tail_Flag_Primary_Output_Allowed", "ExactKFold_Magnitude_RQ2_Primary_Output_Allowed",
-           "RQ2_Primary_Output_Allowed", "Model_Primary_Inclusion_Gate",
+           "RQ2_Magnitude_Primary_Output_Allowed", "RQ2_Tail_Primary_Output_Allowed",
+           "Model_Primary_Inclusion_Gate",
            "MCMC_REVIEW_Inclusion_Rule", "Suppression_Override_Used",
            "Tail_Flag_Primary_Status"),
   value = c(
@@ -725,50 +781,16 @@ manifest <- data.frame(
     exact_kfold_reclassification_decision_path,
     Tail_Flag_Primary_Output_Allowed,
     ExactKFold_Magnitude_RQ2_Primary_Output_Allowed,
-    RQ2_Primary_Output_Allowed,
+    RQ2_Magnitude_Primary_Output_Allowed,
+    RQ2_Tail_Primary_Output_Allowed,
     path_table("table_model_primary_inclusion_gate.csv"),
     "PASS/OK included; FAIL/LOW_RELIABILITY excluded; REVIEW/CAUTION included only with MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS when exact-refit reliability is acceptable.",
     allow_suppressed_tail_flags,
-    ifelse(RQ2_Primary_Output_Allowed, "primary_allowed", "suppressed_or_non_primary")
+    ifelse(Tail_Flag_Primary_Output_Allowed, "primary_allowed", "suppressed_or_non_primary")
   ),
   stringsAsFactors = FALSE
 )
 write_outputs(manifest, "table_3_11_code_manuscript_manifest", "Table 3.11 Code-Manuscript Manifest")
-
-exact_kfold_jaccard <- safe_read_csv(exact_kfold_reclassification_jaccard_path)
-table_3_12_available <- FALSE
-if (!is.null(exact_kfold_jaccard) && nrow(exact_kfold_jaccard) > 0) {
-  if (!"reported_score_variable" %in% names(exact_kfold_jaccard) && "score_variable" %in% names(exact_kfold_jaccard)) {
-    exact_kfold_jaccard$reported_score_variable <- exact_kfold_jaccard$score_variable
-  }
-  if (!"suppression_reason" %in% names(exact_kfold_jaccard)) {
-    exact_kfold_jaccard$suppression_reason <- NA_character_
-  }
-  table_3_12_cols <- c(
-    "target_space",
-    "reported_score_variable",
-    "metric_class",
-    "N_joined",
-    "top_n",
-    "intersection_n",
-    "union_n",
-    "only_row_n",
-    "only_grouped_n",
-    "jaccard",
-    "switch_rate",
-    "spearman_rank_correlation",
-    "Primary_Inference_Allowed",
-    "suppression_reason",
-    "interpretation"
-  )
-  table_3_12 <- exact_kfold_jaccard %>%
-    filter(metric_class %in% c("primary_magnitude_raw", "primary_magnitude_estimation_scaled")) %>%
-    select(any_of(table_3_12_cols))
-  if (nrow(table_3_12) > 0 && all(table_3_12_cols %in% names(table_3_12))) {
-    write_outputs(table_3_12, "table_3_12_exact_kfold_reclassification_jaccard", "Table 3.12 Exact K-Fold Reclassification Jaccard")
-    table_3_12_available <- TRUE
-  }
-}
 
 required_stems <- c(
   "table_3_1_sample_flow", "table_3_2_panel_coverage", "table_3_3_industry_year_cells",
