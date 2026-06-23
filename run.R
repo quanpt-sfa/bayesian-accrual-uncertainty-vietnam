@@ -58,7 +58,14 @@ main_steps <- list(
   step("ma04", "scripts/ma04_define_named_models.R", "Define named model formulas"),
   step("ma05", "scripts/ma05_winsorize_common_samples.R", "Winsorize common samples"),
   step("ma06", "scripts/ma06_prior_predictive_checks.R", "Prior predictive gate"),
-  step("ma07", "scripts/ma07_fit_brms_named_models.R", "Full-sample baseline brms fits", heavy = TRUE),
+  step("ma07a", "scripts/ma07a_fit_brms_named_models.R", "Full-sample baseline brms fit worker stage", heavy = TRUE),
+  step("ma07b", "scripts/ma07b_collect_brms_fit_outputs.R", "Collect baseline brms fit outputs",
+       requires = c(
+         table_artifact("table_ma07_fit_task_manifest.csv"),
+         table_artifact("table_ma07_fit_task_status.csv"),
+         file.path(output_root, "models")
+       ),
+       require_reason = "ma07a fit task manifest, task status, and fit artifacts"),
   step("ma08", "scripts/ma08_mcmc_diagnostics.R", "MCMC diagnostics for baseline fits",
        requires = c(table_artifact("table_brms_diagnostics_winsor.csv"), file.path(output_root, "models")),
        require_reason = "baseline fit diagnostics and model files from ma07"),

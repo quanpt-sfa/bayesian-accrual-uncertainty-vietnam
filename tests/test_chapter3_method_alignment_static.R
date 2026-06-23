@@ -80,9 +80,9 @@ if (!any(grepl("rstan between-chain parallelization only", core_notes, fixed = T
 }
 
 script_text <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
-ma07_text <- script_text("scripts/ma07_fit_brms_named_models.R")
-if (!grepl("cores\\s*=\\s*active_sampler_controls\\$cores", ma07_text, perl = TRUE)) {
-  stop("ma07 brm() call must pass cores = active_sampler_controls$cores.")
+ma07_text <- script_text("scripts/ma07a_fit_brms_named_models.R")
+if (!grepl("cores\\s*=\\s*task\\$cores", ma07_text, perl = TRUE)) {
+  stop("ma07a brms fit call must pass cores = task$cores.")
 }
 ma12_text <- script_text("scripts/ma12_grouped_kfold_firm.R")
 if (!grepl("cores\\s*=\\s*kfold_chain_cores", ma12_text, perl = TRUE) ||

@@ -294,6 +294,73 @@ validate_rstan_cores <- function(cores, chains, context = "unknown") {
   invisible(cores)
 }
 
+is_model_parallel_enabled <- function() {
+  env_flag("ACCRUAL_ENABLE_MODEL_PARALLEL", "FALSE")
+}
+
+stable_task_key <- function(...) {
+  parts <- vapply(list(...), as.character, character(1))
+  paste(parts, collapse = "|")
+}
+
+default_total_core_budget <- function() {
+  physical <- parallel::detectCores(logical = FALSE)
+  if (!is.na(physical) && is.finite(physical) && physical >= 1L) return(as.integer(physical))
+  logical <- parallel::detectCores(logical = TRUE)
+  if (!is.na(logical) && is.finite(logical) && logical >= 1L) return(as.integer(logical))
+  1L
+}
+
+validate_model_parallel_budget <- function(workers, cores_per_fit, total_core_budget, context = "unknown") {
+  workers <- as.integer(workers)
+  cores_per_fit <- as.integer(cores_per_fit)
+  total_core_budget <- as.integer(total_core_budget)
+  if (is.na(workers) || workers < 1L) stop("[BLOCKER] ACCRUAL_MODEL_PARALLEL_WORKERS must be >= 1 for ", context, ".")
+  if (is.na(cores_per_fit) || cores_per_fit < 1L) stop("[BLOCKER] cores_per_fit must be >= 1 for ", context, ".")
+  if (is.na(total_core_budget) || total_core_budget < 1L) stop("[BLOCKER] ACCRUAL_TOTAL_CORE_BUDGET must be >= 1 for ", context, ".")
+  requested <- workers * cores_per_fit
+  if (requested > total_core_budget) {
+    stop(
+      "[BLOCKER] Model-parallel core request exceeds budget for ", context, ": workers * cores_per_fit = ",
+      workers, " * ", cores_per_fit, " = ", requested, " > ACCRUAL_TOTAL_CORE_BUDGET=", total_core_budget, "."
+    )
+  }
+  logical <- parallel::detectCores(logical = TRUE)
+  if (!is.na(logical) && is.finite(logical) && requested >= 0.9 * logical) {
+    warning(
+      "[WARNING] Model-parallel core request is close to detected logical cores for ", context,
+      ": requested=", requested, ", logical_cores=", logical, ".",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+accrual_model_parallel_config <- function(cores_per_fit, context = "unknown") {
+  backend <- env_value("ACCRUAL_PARALLEL_BACKEND", "base_parallel")
+  if (!backend %in% c("base_parallel")) {
+    stop("[BLOCKER] ACCRUAL_PARALLEL_BACKEND must be one of: base_parallel.")
+  }
+  enabled <- is_model_parallel_enabled()
+  workers <- env_int("ACCRUAL_MODEL_PARALLEL_WORKERS", 1L, min = 1L)
+  if (!enabled) workers <- 1L
+  total_core_budget <- env_int("ACCRUAL_TOTAL_CORE_BUDGET", default_total_core_budget(), min = 1L)
+  validate_model_parallel_budget(workers, cores_per_fit, total_core_budget, context)
+  list(
+    enabled = enabled,
+    workers = workers,
+    cores_per_fit = as.integer(cores_per_fit),
+    total_core_budget = total_core_budget,
+    backend = backend,
+    retry_failed = env_flag("ACCRUAL_TASK_RETRY_FAILED", "FALSE")
+  )
+}
+
+split_tasks_for_workers <- function(tasks, workers) {
+  if (workers <= 1L) return(list(tasks))
+  split(tasks, rep(seq_len(workers), length.out = length(tasks)))
+}
+
 accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "baseline_remediation"),
                                    run_mode = "FULL_MODE", varying_slopes = FALSE) {
   kind <- match.arg(kind)
@@ -406,6 +473,11 @@ write_execution_config_registry <- function(path = file.path(method_design_root,
       row("row_kfold", "seed", accrual_seed("row_kfold"), c("ACCRUAL_SEED", "ACCRUAL_ROW_KFOLD_SEED"), seed_note),
       row("sensitivity", "seed", accrual_seed("sensitivity"), c("ACCRUAL_SEED", "ACCRUAL_SENS_SEED"), seed_note),
       row("simulation", "seed", accrual_seed("simulation"), c("ACCRUAL_SEED", "ACCRUAL_SIM_SEED"), seed_note),
+      row("model_parallel", "enabled", is_model_parallel_enabled(), "ACCRUAL_ENABLE_MODEL_PARALLEL", "Outer model-level worker pool; disabled by default."),
+      row("model_parallel", "workers", env_int("ACCRUAL_MODEL_PARALLEL_WORKERS", 1L, min = 1L), "ACCRUAL_MODEL_PARALLEL_WORKERS", "Number of independent model/fold/scenario fit workers."),
+      row("model_parallel", "total_core_budget", env_int("ACCRUAL_TOTAL_CORE_BUDGET", default_total_core_budget(), min = 1L), "ACCRUAL_TOTAL_CORE_BUDGET", "Budget checked against workers times cores_per_fit."),
+      row("model_parallel", "backend", env_value("ACCRUAL_PARALLEL_BACKEND", "base_parallel"), "ACCRUAL_PARALLEL_BACKEND", "Allowed backend: base_parallel."),
+      row("model_parallel", "retry_failed", env_flag("ACCRUAL_TASK_RETRY_FAILED", "FALSE"), "ACCRUAL_TASK_RETRY_FAILED", "Reserved task retry flag for split fit stages."),
       row("grouped_kfold", "K", accrual_kfold_config("grouped_firm")$K, "ACCRUAL_KFOLD_FIRM_K"),
       row("row_kfold", "K", accrual_kfold_config("row")$K, "ACCRUAL_ROW_KFOLD_K"),
       row("model_space", "ex_post_primary_models", main_model_ids_for_space("ex_post"), "", "M08/M10 secondary; M11/M12 excluded."),
@@ -832,7 +904,7 @@ write_run_manifest <- function(path, scenario, prior_set_id, family, model_struc
 write_pipeline_index <- function() {
   dir.create(method_design_root, recursive = TRUE, showWarnings = FALSE)
   pipeline <- data.frame(
-    Order = c(sprintf("ma%02d", 0:16), "di02", "ma17", "ro01", sprintf("se%02d", 1:7), sprintf("si%02d", 0:4), "di01"),
+    Order = c(sprintf("ma%02d", 0:6), "ma07a", "ma07b", sprintf("ma%02d", 8:16), "di02", "ma17", "ro01", sprintf("se%02d", 1:7), sprintf("si%02d", 0:4), "di01"),
     Script = c(
       "scripts/ma00_setup.R",
       "scripts/ma01_setup_and_registry.R",
@@ -841,7 +913,8 @@ write_pipeline_index <- function() {
       "scripts/ma04_define_named_models.R",
       "scripts/ma05_winsorize_common_samples.R",
       "scripts/ma06_prior_predictive_checks.R",
-      "scripts/ma07_fit_brms_named_models.R",
+      "scripts/ma07a_fit_brms_named_models.R",
+      "scripts/ma07b_collect_brms_fit_outputs.R",
       "scripts/ma08_mcmc_diagnostics.R",
       "scripts/ma09_loo_stacking.R",
       "scripts/ma10_construct_psis_loo_DA.R",
@@ -876,7 +949,8 @@ write_pipeline_index <- function() {
       "Define model formulas",
       "Winsorize common samples",
       "Baseline prior predictive checks",
-      "Baseline brms fits",
+      "Baseline brms fit worker stage",
+      "Collect baseline brms fit outputs",
       "Baseline MCMC diagnostics",
       "Baseline LOO stacking",
       "Secondary PSIS/LOO uncertainty-adjusted DA",

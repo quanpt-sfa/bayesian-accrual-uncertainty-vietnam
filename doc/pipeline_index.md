@@ -11,7 +11,8 @@ Active scripts use the ma/ro/se/si/di reorg prefixes. The execution order is def
 | ma04 | `scripts/ma04_define_named_models.R` | Define model formulas |
 | ma05 | `scripts/ma05_winsorize_common_samples.R` | Winsorize common samples |
 | ma06 | `scripts/ma06_prior_predictive_checks.R` | Baseline prior predictive checks |
-| ma07 | `scripts/ma07_fit_brms_named_models.R` | Baseline brms fits |
+| ma07a | `scripts/ma07a_fit_brms_named_models.R` | Baseline brms fit worker stage |
+| ma07b | `scripts/ma07b_collect_brms_fit_outputs.R` | Collect baseline brms fit outputs |
 | ma08 | `scripts/ma08_mcmc_diagnostics.R` | Baseline MCMC diagnostics |
 | ma09 | `scripts/ma09_loo_stacking.R` | Baseline LOO stacking |
 | ma10 | `scripts/ma10_construct_psis_loo_DA.R` | Secondary PSIS/LOO uncertainty-adjusted DA |
