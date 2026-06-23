@@ -234,7 +234,7 @@ top_extremes <- df_vars %>%
 write.csv(top_extremes, top_extremes_path, row.names = FALSE)
 
 old_compare_notes <- character()
-quarantine_path <- Sys.getenv("ACCRUAL_COGS_INV_QUARANTINE_PATH", unset = "")
+quarantine_path <- env_value("ACCRUAL_COGS_INV_QUARANTINE_PATH", "")
 latest_quarantine_path <- file.path("out", "logs", "latest_invalid_cogs_inv_quarantine.txt")
 if (quarantine_path == "" && file.exists(latest_quarantine_path)) {
   quarantine_path <- trimws(readLines(latest_quarantine_path, warn = FALSE)[1])

@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 15_sensitivity_refit_prior_scenarios.R
+# Script: se02_refit_prior_scenarios.R
 # Purpose: Full MCMC refits for baseline/tight/wide prior sensitivity scenarios.
 # -----------------------------------------------------------------------------
 

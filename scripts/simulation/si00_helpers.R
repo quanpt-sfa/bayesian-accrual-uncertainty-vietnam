@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 23_sim_lmer_leakage_pilot_helpers.R
+# Script: si00_helpers.R
 # Purpose: Helpers for lmer leakage-pilot simulation.
 # -----------------------------------------------------------------------------
 
@@ -7,22 +7,6 @@ check_sim_packages <- function(pkgs = c("lme4", "dplyr", "ggplot2")) {
   miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(miss)) stop("[BLOCKER] Install package(s): ", paste(miss, collapse = ", "))
   invisible(TRUE)
-}
-
-parse_num_env <- function(name, default) {
-  x <- trimws(Sys.getenv(name, ""))
-  if (!nzchar(x)) return(default)
-  y <- suppressWarnings(as.numeric(trimws(strsplit(x, ",", fixed = TRUE)[[1]])))
-  if (any(is.na(y))) stop("[BLOCKER] ", name, " must be comma-separated numeric values.")
-  y
-}
-
-parse_int_env <- function(name, default) {
-  x <- trimws(Sys.getenv(name, ""))
-  if (!nzchar(x)) return(as.integer(default))
-  y <- suppressWarnings(as.integer(x))
-  if (is.na(y) || y <= 0) stop("[BLOCKER] ", name, " must be a positive integer.")
-  y
 }
 
 sim_root <- function(root = output_root) file.path(root, "simulation", "lmer_leakage_pilot")

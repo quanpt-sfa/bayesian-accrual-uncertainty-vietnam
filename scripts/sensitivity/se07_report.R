@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 20_sensitivity_report.R
+# Script: se07_report.R
 # Purpose: Build sensitivity-analysis report and reproducibility bundle.
 # -----------------------------------------------------------------------------
 
@@ -33,14 +33,14 @@ read_sens_input <- function(path, label) {
     existing <- tryCatch(read.csv(path, stringsAsFactors = FALSE), error = function(e) NULL)
     if (!is.null(existing) && ncol(existing) > 0) return(existing)
   }
-  
+
   missing_inputs_log <<- rbind(missing_inputs_log, data.frame(
     Path = path,
     Label = label,
     Reason = paste0("Missing required sensitivity analysis input file: ", basename(path)),
     stringsAsFactors = FALSE
   ))
-  
+
   if (allow_partial_report) {
     return(data.frame(Status = "NOT_AVAILABLE_PARTIAL", stringsAsFactors = FALSE))
   } else {
@@ -59,9 +59,9 @@ if (nrow(missing_inputs_log) > 0) {
   logs_root <- file.path(sens_root, "logs")
   dir.create(logs_root, recursive = TRUE, showWarnings = FALSE)
   write.csv(missing_inputs_log, file.path(logs_root, "sensitivity_missing_inputs_log.csv"), row.names = FALSE)
-  
+
   if (!allow_partial_report) {
-    stop("[BLOCKER] Sensitivity report was stopped due to missing input files. Details written to '", 
+    stop("[BLOCKER] Sensitivity report was stopped due to missing input files. Details written to '",
          file.path(logs_root, "sensitivity_missing_inputs_log.csv"), "'. Set 'ACCRUAL_ALLOW_PARTIAL_REPORT=TRUE' if you want a partial report.")
   }
 }

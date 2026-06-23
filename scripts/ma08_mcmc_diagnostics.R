@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 08_mcmc_diagnostics.R
+# Script: ma08_mcmc_diagnostics.R
 # Purpose: Build a transparent MCMC diagnostics report from existing winsorized
 #          brms fit files without refitting any models.
 # -----------------------------------------------------------------------------

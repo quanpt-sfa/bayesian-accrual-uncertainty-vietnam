@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 09_loo_stacking.R
+# Script: ma09_loo_stacking.R
 # Purpose: Corrected LOO and stacking for winsorized models.
 # -----------------------------------------------------------------------------
 
@@ -13,9 +13,9 @@ ensure_analysis_dirs()
 write_prior_registry()
 validate_final_analysis_config("ma09 LOO stacking (secondary)", final_mode = TRUE)
 
-options(mc.cores = 1)
-
-compare_original_weights <- toupper(Sys.getenv("ACCRUAL_COMPARE_ORIGINAL_WEIGHTS", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
+loo_cfg <- accrual_loo_config()
+options(mc.cores = loo_cfg$mc_cores)
+compare_original_weights <- loo_cfg$compare_original_weights
 
 formulas_path <- file.path(output_root, "tables", "table_named_model_formulas_winsor.csv")
 if (!file.exists(formulas_path)) formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
@@ -71,14 +71,13 @@ if (nrow(eligible_models) == 0) {
   stop("[BLOCKER] No stacking-eligible winsor models found after filtering by MCMC diagnostics gate status.")
 }
 
-sampler_cfg <- accrual_sampler_config("baseline")
-chains <- sampler_cfg$chains
-cores <- sampler_cfg$cores
-iter <- sampler_cfg$iter
-warmup <- sampler_cfg$warmup
-adapt_delta <- sampler_cfg$adapt_delta
-max_treedepth <- sampler_cfg$max_treedepth
-refresh <- sampler_cfg$refresh
+chains <- loo_cfg$chains
+cores <- loo_cfg$cores
+iter <- loo_cfg$iter
+warmup <- loo_cfg$warmup
+adapt_delta <- loo_cfg$adapt_delta
+max_treedepth <- loo_cfg$max_treedepth
+refresh <- loo_cfg$refresh
 options(mc.cores = cores)
 
 eligible_joined <- eligible_models %>%

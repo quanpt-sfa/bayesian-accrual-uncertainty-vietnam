@@ -1,3 +1,7 @@
+# Artifact/post-run audit only. This check intentionally reads a completed
+# grouped K-fold run directory and is not a portable unit test. Portable stacking
+# solver behavior is covered in tests/test_behavioral_core_helpers.R.
+
 default_root <- file.path(
   "out",
   "interim",

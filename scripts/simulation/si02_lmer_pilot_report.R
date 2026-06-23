@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 25_sim_lmer_leakage_pilot_report.R
+# Script: si02_lmer_pilot_report.R
 # Purpose: Report lmer pilot results and PASS/STOP decision.
 # -----------------------------------------------------------------------------
 

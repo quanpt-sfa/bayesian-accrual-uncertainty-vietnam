@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 05_winsorize_common_samples.R
+# Script: ma05_winsorize_common_samples.R
 # Purpose: Winsorize common samples at 1st/99th percentiles before any
 #          z-standardization, and create winsorized formula/registry tables.
 # -----------------------------------------------------------------------------

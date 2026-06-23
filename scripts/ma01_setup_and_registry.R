@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
-# Script: 01_setup_and_registry.R
+# Script: ma01_setup_and_registry.R
 # Purpose: Create the accrual uncertainty pipeline structure and model registry.
-# Author: Antigravity
+# Maintainer: project team
 # Date: 2026-06-04
 # -----------------------------------------------------------------------------
 
@@ -16,27 +16,27 @@ registry_data <- data.frame(
     "M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08", "M09", "M10"
   ),
   Model_Name = c(
-    "Jones", 
-    "ModJones", 
-    "PerfModJones", 
-    "DD_TotalAccruals", 
-    "McNichols", 
-    "McNichols_Perf", 
-    "BallShivakumar_Style", 
-    "Extended_Perf_Vol", 
-    "RealTime_NoLead", 
+    "Jones",
+    "ModJones",
+    "PerfModJones",
+    "DD_TotalAccruals",
+    "McNichols",
+    "McNichols_Perf",
+    "BallShivakumar_Style",
+    "Extended_Perf_Vol",
+    "RealTime_NoLead",
     "OperatingCycle"
   ),
   Literature_Family = c(
-    "Jones (1991)", 
-    "Dechow et al. (1995)", 
-    "Kothari et al. (2005)", 
-    "Dechow & Dichev (2002) / Breuer-Schutt (2023)", 
-    "McNichols (2002)", 
-    "McNichols (2002) / Kothari et al. (2005)", 
-    "Ball & Shivakumar (2005)", 
-    "Extended Performance & Volatility", 
-    "Real-time No-lead", 
+    "Jones (1991)",
+    "Dechow et al. (1995)",
+    "Kothari et al. (2005)",
+    "Dechow & Dichev (2002) / Breuer-Schutt (2023)",
+    "McNichols (2002)",
+    "McNichols (2002) / Kothari et al. (2005)",
+    "Ball & Shivakumar (2005)",
+    "Extended Performance & Volatility",
+    "Real-time No-lead",
     "Operating-cycle Extended"
   ),
   Dependent_Variable = rep("TA_scaled", 10),
@@ -78,7 +78,7 @@ registry_data <- data.frame(
     "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE"
   ),
   Infeasible_Reason = c(
-    "", "", "", "", "", "", "", 
+    "", "", "", "", "", "", "",
     "", # Note: M08 has leverage omitted to make it feasible
     "", ""
   ),
@@ -133,7 +133,7 @@ registry_data$Main_Stack_Reason <- ifelse(
 # Save the registry to CSV
 registry_out <- baseline_table_path("table_model_registry.csv")
 write.csv(
-  registry_data, 
+  registry_data,
   file = registry_out,
   row.names = FALSE
 )
@@ -169,7 +169,7 @@ notes_content <- "==============================================================
 ma01 Registry Notes: Model Registry and Design Choices for accrual uncertainty pipeline
 =============================================================================
 Date: 2026-06-04
-Author: Antigravity
+Maintainer: project team
 
 (a) Why the unified accrual pipeline abandons separate TA/TCA BMA:
 - Under the BMA setup in v1/v2, running separate models for Total Accruals (TA) and Working
@@ -180,7 +180,7 @@ Author: Antigravity
   To obtain a single coherent uncertainty estimate and avoid mixing different dependent variables,
   all models in the unified model space must predict the EXACT same dependent variable: total accruals,
   TA_scaled.
-- Dechow-Dichev (2002) logic (mapping current, lagged, and future CFO) is elegantly absorbed 
+- Dechow-Dichev (2002) logic (mapping current, lagged, and future CFO) is elegantly absorbed
   directly into total-accrual models (e.g. McNichols 2002 specification), ensuring we keep the
   same dependent variable (TA_scaled) while preserving the cash-flow matching predictors.
 

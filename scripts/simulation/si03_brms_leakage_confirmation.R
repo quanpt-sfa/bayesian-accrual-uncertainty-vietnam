@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 26_sim_brms_leakage_confirmation.R
+# Script: si03_brms_leakage_confirmation.R
 # Purpose: Bayesian MCMC bridge check for the Firm-RE row-LOO leakage mechanism.
 # -----------------------------------------------------------------------------
 
@@ -24,16 +24,6 @@ ensure_brms_sim_dirs <- function(root = output_root) {
     dir.create(d, recursive = TRUE, showWarnings = FALSE)
   }
   r
-}
-
-parse_chr_env <- function(name, default, allowed = NULL) {
-  x <- trimws(Sys.getenv(name, ""))
-  if (!nzchar(x)) x <- default
-  x <- tolower(x)
-  if (!is.null(allowed) && !x %in% allowed) {
-    stop("[BLOCKER] ", name, " must be one of: ", paste(allowed, collapse = ", "))
-  }
-  x
 }
 
 log_mean_exp <- function(x) {
@@ -346,39 +336,24 @@ root <- ensure_brms_sim_dirs()
 tables_dir <- file.path(root, "tables")
 logs_dir <- file.path(root, "logs")
 
-t_grid <- parse_num_env("ACCRUAL_SIM_BRMS_T_GRID", c(3, 7, 15))
-sigma_grid <- parse_num_env("ACCRUAL_SIM_BRMS_SIGMA_FIRM_GRID", c(0, 0.10, 0.30))
-R <- parse_int_env("ACCRUAL_SIM_BRMS_REPLICATIONS", 2)
-K <- parse_int_env("ACCRUAL_SIM_BRMS_K", 3)
-n_firms <- parse_int_env("ACCRUAL_SIM_BRMS_N_FIRMS", 80)
-n_industries <- parse_int_env("ACCRUAL_SIM_BRMS_N_INDUSTRIES", 10)
-sigma_eps <- parse_num_env("ACCRUAL_SIM_BRMS_SIGMA_EPS", 0.08)[1]
-dgp_family <- parse_chr_env(
-  "ACCRUAL_SIM_BRMS_DGP_FAMILY",
-  "student",
-  allowed = c("gaussian", "student")
-)
-prior_mode <- parse_chr_env(
-  "ACCRUAL_SIM_BRMS_PRIOR_MODE",
-  "scale_aware",
-  allowed = c("fixed", "scale_aware")
-)
-dgp_nu <- parse_num_env("ACCRUAL_SIM_BRMS_DGP_NU", 7)[1]
-if (!is.finite(dgp_nu) || dgp_nu <= 2) {
-  stop("[BLOCKER] ACCRUAL_SIM_BRMS_DGP_NU must be finite and > 2.")
-}
-chains <- parse_int_env("ACCRUAL_SIM_BRMS_CHAINS", 2)
-iter <- parse_int_env("ACCRUAL_SIM_BRMS_ITER", 1000)
-warmup <- parse_int_env("ACCRUAL_SIM_BRMS_WARMUP", 500)
-cores <- if (nzchar(trimws(Sys.getenv("ACCRUAL_SIM_BRMS_CORES", "")))) {
-  parse_int_env("ACCRUAL_SIM_BRMS_CORES", chains)
-} else {
-  env_int("ACCRUAL_SIM_CORES", chains, min = 1L)
-}
-validate_rstan_cores(cores, chains, "si03 brms leakage confirmation")
+sim_cfg <- accrual_simulation_runtime_config("brms_leakage")
+t_grid <- sim_cfg$t_grid
+sigma_grid <- sim_cfg$sigma_grid
+R <- sim_cfg$R
+K <- sim_cfg$K
+n_firms <- sim_cfg$n_firms
+n_industries <- sim_cfg$n_industries
+sigma_eps <- sim_cfg$sigma_eps
+dgp_family <- sim_cfg$dgp_family
+prior_mode <- sim_cfg$prior_mode
+dgp_nu <- sim_cfg$dgp_nu
+chains <- sim_cfg$chains
+iter <- sim_cfg$iter
+warmup <- sim_cfg$warmup
+cores <- sim_cfg$cores
 options(mc.cores = cores)
-adapt_delta <- parse_num_env("ACCRUAL_SIM_BRMS_ADAPT_DELTA", 0.95)[1]
-max_treedepth <- parse_int_env("ACCRUAL_SIM_BRMS_MAX_TREEDEPTH", 12)
+adapt_delta <- sim_cfg$adapt_delta
+max_treedepth <- sim_cfg$max_treedepth
 
 grid <- expand.grid(
   T = as.integer(t_grid),

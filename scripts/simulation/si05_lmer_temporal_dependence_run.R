@@ -20,16 +20,17 @@ tables_dir <- file.path(root, "tables")
 logs_dir <- file.path(root, "logs")
 for (d in c(root, tables_dir, logs_dir)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
 
-t_grid <- parse_num_env("ACCRUAL_SIM_TEMPORAL_T_GRID", c(3, 7, 15))
-sigma_grid <- parse_num_env("ACCRUAL_SIM_TEMPORAL_SIGMA_FIRM_GRID", c(0, 0.10, 0.30))
-rho_grid <- parse_num_env("ACCRUAL_SIM_TEMPORAL_RHO_GRID", c(0, 0.30, 0.60))
-shock_duration_grid <- parse_num_env("ACCRUAL_SIM_TEMPORAL_SHOCK_DURATION_GRID", c(1, 2, 3))
-R <- parse_int_env("ACCRUAL_SIM_TEMPORAL_REPLICATIONS", 20)
-K <- parse_int_env("ACCRUAL_SIM_TEMPORAL_K", 5)
-n_firms <- parse_int_env("ACCRUAL_SIM_TEMPORAL_N_FIRMS", 200)
-n_industries <- parse_int_env("ACCRUAL_SIM_TEMPORAL_N_INDUSTRIES", 10)
-sigma_eps <- parse_num_env("ACCRUAL_SIM_TEMPORAL_SIGMA_EPS", 0.08)[1]
-shock_size <- parse_num_env("ACCRUAL_SIM_TEMPORAL_SHOCK_SIZE", 0.20)[1]
+sim_cfg <- accrual_simulation_runtime_config("lmer_temporal")
+t_grid <- sim_cfg$t_grid
+sigma_grid <- sim_cfg$sigma_grid
+rho_grid <- sim_cfg$rho_grid
+shock_duration_grid <- sim_cfg$shock_duration_grid
+R <- sim_cfg$R
+K <- sim_cfg$K
+n_firms <- sim_cfg$n_firms
+n_industries <- sim_cfg$n_industries
+sigma_eps <- sim_cfg$sigma_eps
+shock_size <- sim_cfg$shock_size
 
 safe_seed <- function(context, offset) {
   if (exists("set_accrual_seed", mode = "function")) {

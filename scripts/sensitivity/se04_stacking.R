@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 17_sensitivity_stacking.R
+# Script: se04_stacking.R
 # Purpose: Recompute LOO stacking weights separately for each sensitivity scenario.
 # -----------------------------------------------------------------------------
 

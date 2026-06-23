@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 12_lofo_stacking.R
+# Script: ro01_lofo_stacking.R
 # Purpose: Reviewer Priority 2 - grouped PSIS leave-one-firm-out stacking on
 #          already winsorized brms models.
 # -----------------------------------------------------------------------------

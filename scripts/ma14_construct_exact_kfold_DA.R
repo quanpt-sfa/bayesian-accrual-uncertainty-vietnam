@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 31_construct_exact_kfold_DA.R
+# Script: ma14_construct_exact_kfold_DA.R
 # Purpose: Construct exact-K-fold-weighted winsorized DA from pinned completed
 #          grouped and row exact K-fold runs. This is separate from ma10,
 #          which remains the secondary PSIS/LOO DA constructor.
@@ -33,7 +33,7 @@ tables_dir <- file.path(output_root, "tables")
 dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
 
 read_root_pin <- function(env_name, pin_path, label) {
-  env_root <- trimws(Sys.getenv(env_name, ""))
+  env_root <- trimws(env_value(env_name, ""))
   if (nzchar(env_root)) return(env_root)
   if (!file.exists(pin_path)) {
     stop("[BLOCKER] Missing completed-run pin for ", label, ": ", pin_path,

@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 16_sensitivity_mcmc_diagnostics.R
+# Script: se03_mcmc_diagnostics.R
 # Purpose: MCMC diagnostics gate for sensitivity refit scenarios.
 # -----------------------------------------------------------------------------
 

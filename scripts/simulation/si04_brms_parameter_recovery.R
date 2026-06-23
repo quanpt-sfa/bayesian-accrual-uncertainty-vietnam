@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 27_sim_brms_parameter_recovery.R
+# Script: si04_brms_parameter_recovery.R
 # Purpose: Auxiliary Bayesian MCMC parameter-recovery simulation for the Firm-RE
 #          Student-t accrual specification.
 #
@@ -336,27 +336,22 @@ tables_dir <- file.path(root, "tables")
 figures_dir <- file.path(root, "figures")
 logs_dir <- file.path(root, "logs")
 
-t_grid <- parse_num_env("ACCRUAL_SIM_RECOVERY_T_GRID", c(3, 7, 15))
-sigma_grid <- parse_num_env("ACCRUAL_SIM_RECOVERY_SIGMA_FIRM_GRID", c(0, 0.10, 0.30))
-R <- parse_int_env("ACCRUAL_SIM_RECOVERY_REPLICATIONS", 2)
-n_firms <- parse_int_env("ACCRUAL_SIM_RECOVERY_N_FIRMS", 80)
-n_industries <- parse_int_env("ACCRUAL_SIM_RECOVERY_N_INDUSTRIES", 10)
-sigma_eps <- parse_num_env("ACCRUAL_SIM_RECOVERY_SIGMA_EPS", 0.08)[1]
-nu <- parse_num_env("ACCRUAL_SIM_RECOVERY_NU", 7)[1]
-chains <- parse_int_env("ACCRUAL_SIM_RECOVERY_CHAINS", 2)
-iter <- parse_int_env("ACCRUAL_SIM_RECOVERY_ITER", 1000)
-warmup <- parse_int_env("ACCRUAL_SIM_RECOVERY_WARMUP", 500)
-cores <- if (nzchar(trimws(Sys.getenv("ACCRUAL_SIM_RECOVERY_CORES", "")))) {
-  parse_int_env("ACCRUAL_SIM_RECOVERY_CORES", chains)
-} else {
-  env_int("ACCRUAL_SIM_CORES", chains, min = 1L)
-}
-validate_rstan_cores(cores, chains, "si04 brms parameter recovery")
+sim_cfg <- accrual_simulation_runtime_config("brms_recovery")
+t_grid <- sim_cfg$t_grid
+sigma_grid <- sim_cfg$sigma_grid
+R <- sim_cfg$R
+n_firms <- sim_cfg$n_firms
+n_industries <- sim_cfg$n_industries
+sigma_eps <- sim_cfg$sigma_eps
+nu <- sim_cfg$nu
+chains <- sim_cfg$chains
+iter <- sim_cfg$iter
+warmup <- sim_cfg$warmup
+cores <- sim_cfg$cores
 options(mc.cores = cores)
-adapt_delta <- parse_num_env("ACCRUAL_SIM_RECOVERY_ADAPT_DELTA", 0.95)[1]
-max_treedepth <- parse_int_env("ACCRUAL_SIM_RECOVERY_MAX_TREEDEPTH", 12)
-sd_zero_eps <- parse_num_env("ACCRUAL_SIM_RECOVERY_SD_ZERO_EPS", 0.01)[1]
-if (!is.finite(sd_zero_eps) || sd_zero_eps <= 0) stop("[BLOCKER] ACCRUAL_SIM_RECOVERY_SD_ZERO_EPS must be positive.")
+adapt_delta <- sim_cfg$adapt_delta
+max_treedepth <- sim_cfg$max_treedepth
+sd_zero_eps <- sim_cfg$sd_zero_eps
 
 grid <- expand.grid(T = as.integer(t_grid), sigma_firm = sigma_grid, rep_id = seq_len(R), KEEP.OUT.ATTRS = FALSE)
 rep_path <- file.path(tables_dir, "table_brms_parameter_recovery_rep_results.csv")

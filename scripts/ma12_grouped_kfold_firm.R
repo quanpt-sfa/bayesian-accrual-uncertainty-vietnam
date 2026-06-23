@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 13_grouped_kfold_firm.R
+# Script: ma12_grouped_kfold_firm.R
 # Purpose: Reviewer Priority 2b - exact grouped K-fold cross-validation by firm
 #          on the winsorized accrual uncertainty pipeline, with cache-safe run roots.
 # -----------------------------------------------------------------------------
@@ -16,17 +16,9 @@ script_start_time <- Sys.time()
 script_name <- "scripts/ma12_grouped_kfold_firm.R"
 script_version <- "2026-06-18-v3-reviewer-final-main-stack-ess-gate"
 
-split_env <- function(name) {
-  x <- trimws(Sys.getenv(name, ""))
-  if (!nzchar(x)) return(character())
-  trimws(strsplit(x, ",", fixed = TRUE)[[1]])
-}
-
-run_mode <- toupper(env_value("ACCRUAL_KFOLD_FIRM_MODE", "FULL_MODE"))
-if (!run_mode %in% c("FULL_MODE", "FAST_MODE")) {
-  stop("[BLOCKER] ACCRUAL_KFOLD_FIRM_MODE must be FULL_MODE or FAST_MODE.")
-}
+run_mode <- env_choice("ACCRUAL_KFOLD_FIRM_MODE", "FULL_MODE", c("FULL_MODE", "FAST_MODE"), case = "upper")
 kfold_cfg <- accrual_kfold_config("grouped_firm", run_mode = run_mode)
+filter_cfg <- accrual_kfold_filter_config("grouped_firm")
 K <- kfold_cfg$K
 chains <- kfold_cfg$chains
 iter <- kfold_cfg$iter
@@ -38,7 +30,7 @@ kfold_chain_cores <- kfold_cfg$cores
 grouped_run_rng_meta <- accrual_rng_metadata_list("grouped_kfold_run_manifest")
 options(mc.cores = kfold_chain_cores)
 
-run_id <- trimws(Sys.getenv("ACCRUAL_KFOLD_FIRM_RUN_ID", "default"))
+run_id <- filter_cfg$run_id
 if (!nzchar(run_id)) run_id <- "default"
 run_id <- gsub("[^A-Za-z0-9_.-]", "_", run_id)
 
@@ -56,15 +48,11 @@ if (kfold_repeats > 1) {
   warning("[WARNING] ACCRUAL_KFOLD_REPEATS is recognized for future repeated grouped K-fold runs; this script currently executes one repeat per run_id. Use separate ACCRUAL_KFOLD_FIRM_RUN_ID values for repeated runs.")
 }
 
-target_space_filter <- split_env("ACCRUAL_KFOLD_TARGET_SPACE")
-model_id_filter <- split_env("ACCRUAL_KFOLD_MODEL_IDS")
-fold_filter_raw <- split_env("ACCRUAL_KFOLD_FOLDS")
-fold_filter <- if (length(fold_filter_raw) > 0) as.integer(fold_filter_raw) else integer()
-if (any(is.na(fold_filter))) stop("[BLOCKER] ACCRUAL_KFOLD_FOLDS must be comma-separated integers.")
-kfold_target_mode <- toupper(Sys.getenv("ACCRUAL_KFOLD_TARGET_MODE", "MAIN_STACK_FULL"))
-if (!kfold_target_mode %in% c("PARETO_PROBLEM_ONLY", "MAIN_STACK_FULL")) {
-  stop("[BLOCKER] ACCRUAL_KFOLD_TARGET_MODE must be PARETO_PROBLEM_ONLY or MAIN_STACK_FULL.")
-}
+target_space_filter <- filter_cfg$target_space_filter
+model_id_filter <- filter_cfg$model_id_filter
+fold_filter_raw <- filter_cfg$fold_filter_raw
+fold_filter <- filter_cfg$fold_filter
+kfold_target_mode <- filter_cfg$target_mode
 
 partial_run <- length(target_space_filter) > 0 || length(model_id_filter) > 0 || length(fold_filter) > 0
 
@@ -423,79 +411,6 @@ main <- function() {
   log_mean_exp <- function(x) {
     m <- max(x)
     m + log(mean(exp(x - m)))
-  }
-
-  softmax <- function(theta) {
-    z <- c(theta, 0)
-    z <- z - max(z)
-    exp(z) / sum(exp(z))
-  }
-
-  optimize_stacking_from_lpd <- function(lpd_matrix) {
-    lpd_matrix <- as.matrix(lpd_matrix)
-    if (is.null(colnames(lpd_matrix))) {
-      colnames(lpd_matrix) <- paste0("model_", seq_len(ncol(lpd_matrix)))
-    }
-
-    if (ncol(lpd_matrix) == 1) {
-      out <- 1
-      names(out) <- colnames(lpd_matrix)
-      return(out)
-    }
-
-    log_sum_exp <- function(vals) {
-      m <- max(vals)
-      m + log(sum(exp(vals - m)))
-    }
-
-    mixture_objective_value <- function(w) {
-      log_w <- log(pmax(w, .Machine$double.eps))
-      adjusted <- sweep(lpd_matrix, 2, log_w, "+")
-      sum(apply(adjusted, 1, log_sum_exp))
-    }
-
-    objective <- function(theta) {
-      -mixture_objective_value(softmax(theta))
-    }
-
-    singleton_elpd <- colSums(lpd_matrix)
-    best_singleton <- which.max(singleton_elpd)
-
-    starts <- list(rep(0, ncol(lpd_matrix) - 1))
-    for (j in seq_len(ncol(lpd_matrix))) {
-      z <- rep(-8, ncol(lpd_matrix))
-      z[j] <- 8
-      starts[[length(starts) + 1]] <- z[-ncol(lpd_matrix)]
-    }
-
-    fits <- lapply(starts, function(st) {
-      tryCatch(
-        optim(st, objective, method = "BFGS", control = list(maxit = 5000, reltol = 1e-12)),
-        error = function(e) NULL
-      )
-    })
-    fits <- Filter(Negate(is.null), fits)
-
-    singleton_w <- rep(0, ncol(lpd_matrix))
-    singleton_w[best_singleton] <- 1
-    names(singleton_w) <- colnames(lpd_matrix)
-
-    if (length(fits) == 0) {
-      warning("Stacking optimizer failed for all starts; falling back to best singleton elpd model.")
-      return(singleton_w)
-    }
-
-    vals <- vapply(fits, function(f) -f$value, numeric(1))
-    best_fit <- fits[[which.max(vals)]]
-    w <- softmax(best_fit$par)
-    names(w) <- colnames(lpd_matrix)
-
-    if (mixture_objective_value(w) + 1e-6 < mixture_objective_value(singleton_w)) {
-      warning("Stacking optimizer returned a solution worse than the best singleton; falling back to best singleton elpd model.")
-      return(singleton_w)
-    }
-
-    w
   }
 
   make_fold_assignment <- function(df_ep, df_rt) {
@@ -1001,6 +916,12 @@ main <- function() {
     }
 
     if (nrow(train_df) == 0 || nrow(test_df) == 0) return(finish_failure("Empty train or test split."))
+    assert_training_factor_level_coverage(
+      train_df,
+      test_df,
+      factor_cols = c("industry", "year"),
+      context = paste("ma12 grouped exact K-fold", task$Target_Space, task$Model_ID, "fold", fold_id)
+    )
 
     std <- standardize_fold_data(train_df, test_df)
     train_df <- std$train

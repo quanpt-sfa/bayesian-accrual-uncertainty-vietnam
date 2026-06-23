@@ -22,14 +22,13 @@ The pipeline reads `Sheet1` for firm-year observations and `Sheet2` for metadata
 
 ## Quick start
 
-1. Install required R packages used by the pipeline scripts, including at least `readxl`, `dplyr`, `brms`, `loo`, `sandwich`, and `lmtest`.
-2. Keep the raw workbook at `data/raw/data.xlsx`, or set `ACCRUAL_DATA_PATH` to another local path.
-3. Inspect the main Chapter 3 plan without running scripts:
+1. Install or restore the R dependencies used by the pipeline. If a project lockfile is available, restore from it; otherwise install the required packages used by the scripts, including at least `readxl`, `dplyr`, `brms`, `loo`, `sandwich`, and `lmtest`.
+2. Put the raw workbook at `data/raw/data.xlsx`, or set `ACCRUAL_DATA_PATH` to another local path.
+3. Inspect the main Chapter 3 plan without running model fits:
    `Rscript run.R --dry-run`
-4. Run the main Chapter 3 pipeline:
-   `Rscript run.R`
-5. Enable actual heavy computation only when ready:
+4. Run the main Chapter 3 pipeline. Heavy model-fitting steps require explicit opt-in:
    `ACCRUAL_RUN_HEAVY=TRUE Rscript run.R main`
+5. Principal outputs are written under `out/interim/winsor/tables/`, `out/interim/winsor/diagnostics/`, `accruals/`, and `reports/chapter3_methods_tables/`.
 
 ## Main Chapter 3 pipeline
 

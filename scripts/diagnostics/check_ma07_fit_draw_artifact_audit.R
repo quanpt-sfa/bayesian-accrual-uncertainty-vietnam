@@ -44,7 +44,7 @@ if (any(main_fail)) {
   }
 }
 
-strict_mode <- toupper(Sys.getenv("ACCRUAL_MA07_STRICT_REVIEW_BLOCKER", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
+strict_mode <- env_flag("ACCRUAL_MA07_STRICT_REVIEW_BLOCKER", "FALSE")
 main_review <- audit$Main_Stack_Inclusion %in% TRUE & audit$hard_gate_status == "REVIEW"
 if (strict_mode && any(main_review)) {
   if (!file.exists(failures_path) || !file.exists(helper_path)) {

@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
-# Script: 02_build_common_sample.R
+# Script: ma02_build_common_sample.R
 # Purpose: Clean raw data, construct variables, and build core common samples.
-# Author: Antigravity
+# Maintainer: project team
 # Date: 2026-06-04
 # -----------------------------------------------------------------------------
 
@@ -98,33 +98,18 @@ df_clean <- df_clean %>%
 df_clean <- df_clean %>%
   arrange(company, year)
 
-# Helper function to get correct lag/lead (ensures year continuity)
-get_lag <- function(x, yr, n = 1) {
-  # returns lagged value only if the lag year is exactly yr - n
-  lag_val <- dplyr::lag(x, n)
-  lag_yr <- dplyr::lag(yr, n)
-  ifelse(!is.na(lag_yr) & lag_yr == (yr - n), lag_val, NA)
-}
-
-get_lead <- function(x, yr, n = 1) {
-  # returns lead value only if the lead year is exactly yr + n
-  lead_val <- dplyr::lead(x, n)
-  lead_yr <- dplyr::lead(yr, n)
-  ifelse(!is.na(lead_yr) & lead_yr == (yr + n), lead_val, NA)
-}
-
 df_vars <- df_clean %>%
   group_by(company) %>%
   mutate(
     # Basic Lags
-    A_lag   = get_lag(A, year),
-    REV_lag = get_lag(REV, year),
-    REC_lag = get_lag(REC, year),
-    CFO_lag = get_lag(CFO, year),
-    ROA_lag = get_lag(ROA, year),
-    
+    A_lag   = get_lag_contiguous(A, year),
+    REV_lag = get_lag_contiguous(REV, year),
+    REC_lag = get_lag_contiguous(REC, year),
+    CFO_lag = get_lag_contiguous(CFO, year),
+    ROA_lag = get_lag_contiguous(ROA, year),
+
     # Lead
-    CFO_lead = get_lead(CFO, year)
+    CFO_lead = get_lead_contiguous(CFO, year)
   ) %>%
   ungroup()
 
@@ -139,29 +124,29 @@ df_vars <- df_vars %>%
   mutate(
     # Outcome
     TA_scaled = ifelse(has_valid_denominator, (NI - CFO) / A_lag, NA),
-    
+
     # Jones family
     inv_A_lag        = ifelse(has_valid_denominator, 1 / A_lag, NA),
     dREV_scaled      = ifelse(has_valid_denominator, (REV - REV_lag) / A_lag, NA),
     dREC_scaled      = ifelse(has_valid_denominator, (REC - REC_lag) / A_lag, NA),
     dREV_dREC_scaled = ifelse(has_valid_denominator, ((REV - REV_lag) - (REC - REC_lag)) / A_lag, NA),
     PPE_scaled       = ifelse(has_valid_denominator, PPE / A_lag, NA),
-    
+
     # Performance
     ROA_curr         = ROA,
-    
+
     # CFO mapping
     CFO_lag_scaled   = ifelse(has_valid_denominator, CFO_lag / A_lag, NA),
     CFO_curr_scaled  = ifelse(has_valid_denominator, CFO / A_lag, NA),
     CFO_lead_scaled  = ifelse(has_valid_denominator, CFO_lead / A_lag, NA),
-    
+
     # Asymmetry
     NEG_CFO          = ifelse(is.na(CFO_curr_scaled), NA, ifelse(CFO_curr_scaled < 0, 1, 0)),
     NEG_EARN         = ifelse(has_valid_denominator, ifelse((NI / A_lag) < 0, 1, 0), NA),
-    
+
     # Size
     Size             = log(A),
-    
+
     # Temporary columns for rolling SD
     REV_scaled_temp = ifelse(has_valid_denominator, REV / A_lag, NA),
     CFO_scaled_temp = ifelse(has_valid_denominator, CFO / A_lag, NA)
@@ -171,26 +156,8 @@ df_vars <- df_vars %>%
 df_vars <- df_vars %>%
   group_by(company) %>%
   mutate(
-    sd_REV = sapply(seq_along(year), function(i) {
-      if (i >= 3) {
-        yrs <- year[(i-2):i]
-        vals <- REV_scaled_temp[(i-2):i]
-        if (all(yrs == (year[i] - c(2, 1, 0))) && all(!is.na(vals))) {
-          return(sd(vals))
-        }
-      }
-      return(NA_real_)
-    }),
-    sd_CFO = sapply(seq_along(year), function(i) {
-      if (i >= 3) {
-        yrs <- year[(i-2):i]
-        vals <- CFO_scaled_temp[(i-2):i]
-        if (all(yrs == (year[i] - c(2, 1, 0))) && all(!is.na(vals))) {
-          return(sd(vals))
-        }
-      }
-      return(NA_real_)
-    })
+    sd_REV = rolling_sd_contiguous_3(REV_scaled_temp, year),
+    sd_CFO = rolling_sd_contiguous_3(CFO_scaled_temp, year)
   ) %>%
   ungroup()
 
@@ -339,14 +306,14 @@ model_availability <- data.frame(
 for (i in 1:nrow(feasible_models)) {
   m <- feasible_models[i, ]
   vars_needed <- trimws(unlist(strsplit(m$Required_Variables, ",")))
-  
+
   df_m <- df_vars %>% filter(!is.na(TA_scaled))
   for (v in vars_needed) {
     if (v %in% colnames(df_m)) {
       df_m <- df_m %>% filter(!is.na(.data[[v]]))
     }
   }
-  
+
   model_availability <- rbind(model_availability, data.frame(
     Model_ID = m$Model_ID,
     Model_Name = m$Model_Name,
@@ -405,7 +372,7 @@ phase1_notes <- sprintf("=======================================================
 ma02 Sample Construction Notes: Two-Tier Common Sample Structure
 =============================================================================
 Date: 2026-06-04
-Author: Antigravity
+Maintainer: project team
 
 [DECISION] Two-Tier Common Sample:
 - M08 requires 3-year rolling volatility (sd_REV, sd_CFO) which has low coverage (requires 3 continuous years of data)
@@ -439,7 +406,7 @@ Reason for Dropping rows (from Core Ex-Post):
 - lead_missing: rows with missing CFO_lead (mostly 2024 rows in ex-post sample)
 - model_variable_missing: missing sales growth
 - optional_variable_missing: missing rolling SDs (retained in core, only drops for M08)
-", n_raw_initial, n_drop_A_zero, n_drop_2015, 
+", n_raw_initial, n_drop_A_zero, n_drop_2015,
    nrow(final_ex_post), min(final_ex_post$year), max(final_ex_post$year),
    nrow(final_realtime), min(final_realtime$year), max(final_realtime$year),
    nrow(final_operating_cycle_ex_post), min(final_operating_cycle_ex_post$year), max(final_operating_cycle_ex_post$year),

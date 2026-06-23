@@ -1,11 +1,6 @@
 args <- commandArgs(trailingOnly = TRUE)
 
-flag_from_env <- function(name, default = FALSE) {
-  raw <- Sys.getenv(name, if (default) "TRUE" else "FALSE")
-  toupper(raw) %in% c("TRUE", "1", "YES", "Y")
-}
-
-dry_run <- "--dry-run" %in% args || flag_from_env("ACCRUAL_DRY_RUN", FALSE)
+cli_dry_run <- "--dry-run" %in% args
 args <- args[args != "--dry-run"]
 
 # --- Root-directory + raw-data safety assertions ---
@@ -13,6 +8,7 @@ if (!file.exists(file.path("scripts", "ma00_setup.R")) || !dir.exists(file.path(
   stop("[ROOT BLOCKER] run.R must be executed from the project root ",
        "(missing scripts/ma00_setup.R or data/raw/). Current working directory: ", getwd())
 }
+source("scripts/ma00_setup.R")
 .raw_dir <- file.path("data", "raw")
 .raw_snapshot <- function() {
   fs <- sort(list.files(.raw_dir, recursive = TRUE, full.names = TRUE))
@@ -30,11 +26,13 @@ if (!target %in% valid_targets) {
   stop("Usage: Rscript run.R [main|robustness|sensitivity|simulation|diagnostics|reviewer|all] [--dry-run]")
 }
 
-run_heavy <- flag_from_env("ACCRUAL_RUN_HEAVY", FALSE)
-allow_suppressed_tail_flags <- flag_from_env("ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS", FALSE)
-output_root <- Sys.getenv("ACCRUAL_OUTPUT_ROOT", file.path("out", "interim", "winsor"))
+orch_cfg <- accrual_orchestrator_config()
+dry_run <- cli_dry_run || isTRUE(orch_cfg$dry_run)
+run_heavy <- isTRUE(orch_cfg$run_heavy)
+allow_suppressed_tail_flags <- isTRUE(orch_cfg$allow_suppressed_tail_flags)
+output_root <- orch_cfg$output_root
 tables_root <- file.path(output_root, "tables")
-accruals_root <- Sys.getenv("ACCRUAL_ACCRUALS_ROOT", "accruals")
+accruals_root <- orch_cfg$accruals_root
 
 Sys.setenv(ACCRUAL_RUN_HEAVY = if (run_heavy) "TRUE" else "FALSE")
 Sys.setenv(ACCRUAL_DRY_RUN = if (dry_run) "TRUE" else "FALSE")
@@ -94,8 +92,8 @@ main_steps <- list(
   step("ma14", "scripts/ma14_construct_exact_kfold_DA.R", "Primary exact-KFoldW DA construction",
        requires = c(
          table_artifact("table_mcmc_diagnostics_gate_winsor.csv"),
-         if (!nzchar(Sys.getenv("ACCRUAL_GROUPED_KFOLD_RUN_ROOT", ""))) file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt") else character(),
-         if (!nzchar(Sys.getenv("ACCRUAL_ROW_KFOLD_RUN_ROOT", ""))) file.path(output_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt") else character()
+         if (!nzchar(orch_cfg$grouped_kfold_run_root)) file.path(output_root, "kfold_firm", "LATEST_COMPLETED_RUN.txt") else character(),
+         if (!nzchar(orch_cfg$row_kfold_run_root)) file.path(output_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt") else character()
        ),
        require_reason = "MCMC diagnostics gate and completed exact K-fold run pins from ma12 and ma13"),
   step("ma15", "scripts/ma15_audit_DA_finite_outputs.R", "Finite-output gate for exact-KFold DA", gate = "da_finite",
@@ -223,10 +221,8 @@ steps_for_target <- function(x) {
 }
 
 write_config_registry_if_available <- function() {
-  helper_env <- new.env(parent = globalenv())
-  sys.source("scripts/ma00_setup.R", envir = helper_env)
-  if (exists("write_execution_config_registry", envir = helper_env, inherits = FALSE)) {
-    helper_env$write_execution_config_registry()
+  if (exists("write_execution_config_registry", mode = "function")) {
+    write_execution_config_registry()
   }
 }
 
@@ -235,7 +231,7 @@ print_header <- function(steps) {
   cat("Target    :", target, "\n")
   cat("Dry run   :", dry_run, "\n")
   cat("Run heavy :", run_heavy, "\n")
-  cat("Data path :", Sys.getenv("ACCRUAL_DATA_PATH", "data/raw/data.xlsx"), "\n")
+  cat("Data path :", orch_cfg$data_path, "\n")
   cat("Plan:\n")
   for (i in seq_along(steps)) {
     s <- steps[[i]]

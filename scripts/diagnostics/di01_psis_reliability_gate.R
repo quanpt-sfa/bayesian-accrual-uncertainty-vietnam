@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 29_psis_reliability_gate.R
+# Script: di01_psis_reliability_gate.R
 # Purpose: Reviewer-final PSIS Pareto-k reliability gate for empirical row-LOO
 #          and optional BRMS simulation diagnostics.
 # -----------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 28_row_level_exact_kfold.R
+# Script: ma13_row_level_exact_kfold.R
 # Purpose: Reviewer-final method matching: exact row-level K-fold refits for the
 #          winsorized DA model stack, separated from firm-grouped Step 13 output.
 # -----------------------------------------------------------------------------
@@ -17,19 +17,11 @@ script_name <- "scripts/ma13_row_level_exact_kfold.R"
 script_version <- "2026-06-18-row-level-exact-kfold-v3-ess-diagnostics"
 script_start_time <- Sys.time()
 
-split_env <- function(name) {
-  x <- trimws(Sys.getenv(name, ""))
-  if (!nzchar(x)) return(character())
-  trimws(strsplit(x, ",", fixed = TRUE)[[1]])
-}
-
 format_time <- function(x) format(x, "%Y-%m-%d %H:%M:%S %Z")
 
-run_mode <- toupper(env_value("ACCRUAL_ROW_KFOLD_MODE", "FULL_MODE"))
-if (!run_mode %in% c("FULL_MODE", "FAST_MODE")) {
-  stop("[BLOCKER] ACCRUAL_ROW_KFOLD_MODE must be FULL_MODE or FAST_MODE.")
-}
+run_mode <- env_choice("ACCRUAL_ROW_KFOLD_MODE", "FULL_MODE", c("FULL_MODE", "FAST_MODE"), case = "upper")
 kfold_cfg <- accrual_kfold_config("row", run_mode = run_mode)
+filter_cfg <- accrual_kfold_filter_config("row")
 K <- kfold_cfg$K
 chains <- kfold_cfg$chains
 iter <- kfold_cfg$iter
@@ -41,11 +33,10 @@ row_kfold_chain_cores <- kfold_cfg$cores
 row_run_rng_meta <- accrual_rng_metadata_list("row_kfold_run_manifest")
 options(mc.cores = row_kfold_chain_cores)
 
-target_space_filter <- split_env("ACCRUAL_ROW_KFOLD_TARGET_SPACE")
-model_id_filter <- split_env("ACCRUAL_ROW_KFOLD_MODEL_IDS")
-fold_filter_raw <- split_env("ACCRUAL_ROW_KFOLD_FOLDS")
-fold_filter <- if (length(fold_filter_raw) > 0) as.integer(fold_filter_raw) else integer()
-if (any(is.na(fold_filter))) stop("[BLOCKER] ACCRUAL_ROW_KFOLD_FOLDS must be comma-separated integers.")
+target_space_filter <- filter_cfg$target_space_filter
+model_id_filter <- filter_cfg$model_id_filter
+fold_filter_raw <- filter_cfg$fold_filter_raw
+fold_filter <- filter_cfg$fold_filter
 if (length(fold_filter) > 0 && any(!fold_filter %in% seq_len(K))) {
   stop("[BLOCKER] ACCRUAL_ROW_KFOLD_FOLDS contains folds outside 1:K.")
 }
@@ -97,50 +88,6 @@ if (length(missing_inputs) > 0) {
 log_mean_exp <- function(x) {
   m <- max(x)
   m + log(mean(exp(x - m)))
-}
-
-softmax <- function(theta) {
-  z <- c(theta, 0)
-  z <- z - max(z)
-  exp(z) / sum(exp(z))
-}
-
-optimize_stacking_from_lpd <- function(lpd_matrix) {
-  lpd_matrix <- as.matrix(lpd_matrix)
-  if (ncol(lpd_matrix) == 1) {
-    out <- 1
-    names(out) <- colnames(lpd_matrix)
-    return(out)
-  }
-  log_sum_exp <- function(vals) {
-    m <- max(vals)
-    m + log(sum(exp(vals - m)))
-  }
-  mixture_objective_value <- function(w) {
-    adjusted <- sweep(lpd_matrix, 2, log(pmax(w, .Machine$double.eps)), "+")
-    sum(apply(adjusted, 1, log_sum_exp))
-  }
-  objective <- function(theta) -mixture_objective_value(softmax(theta))
-  starts <- list(rep(0, ncol(lpd_matrix) - 1))
-  for (j in seq_len(ncol(lpd_matrix))) {
-    z <- rep(-8, ncol(lpd_matrix))
-    z[j] <- 8
-    starts[[length(starts) + 1]] <- z[-ncol(lpd_matrix)]
-  }
-  fits <- lapply(starts, function(st) {
-    tryCatch(optim(st, objective, method = "BFGS", control = list(maxit = 5000, reltol = 1e-12)),
-             error = function(e) NULL)
-  })
-  fits <- Filter(Negate(is.null), fits)
-  singleton_elpd <- colSums(lpd_matrix)
-  singleton_w <- rep(0, ncol(lpd_matrix))
-  singleton_w[which.max(singleton_elpd)] <- 1
-  names(singleton_w) <- colnames(lpd_matrix)
-  if (length(fits) == 0) return(singleton_w)
-  best_fit <- fits[[which.max(vapply(fits, function(f) -f$value, numeric(1)))]]
-  w <- softmax(best_fit$par)
-  names(w) <- colnames(lpd_matrix)
-  if (mixture_objective_value(w) + 1e-6 < mixture_objective_value(singleton_w)) singleton_w else w
 }
 
 stable_hash <- function(x) {
@@ -624,6 +571,12 @@ score_task <- function(task) {
     base_diag$Failure_Reason <- "Empty train or test split."
     return(finish(base_diag))
   }
+  assert_training_factor_level_coverage(
+    train_df,
+    test_df,
+    factor_cols = c("industry", "year"),
+    context = paste("ma13 row-level exact K-fold", task$Target_Space, task$Model_ID, "fold", task$Fold_ID)
+  )
   std <- standardize_fold_data(train_df, test_df)
   train_df <- std$train
   test_df <- std$test

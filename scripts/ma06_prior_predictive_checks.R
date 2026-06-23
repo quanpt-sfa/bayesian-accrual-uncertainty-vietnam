@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 06_prior_predictive_checks.R
+# Script: ma06_prior_predictive_checks.R
 # Purpose: Document prior specification and run representative prior predictive
 #          checks for the corrected winsorized accrual uncertainty pipeline.
 # -----------------------------------------------------------------------------
@@ -64,12 +64,6 @@ summarize_quantiles <- function(x) {
     p99 = qs[3],
     max = max(x, na.rm = TRUE)
   )
-}
-
-plausibility_flag <- function(share_gt_1, share_gt_2) {
-  warning("plausibility_flag() is deprecated; use classify_chapter3_prior_predictive().", call. = FALSE)
-  out <- classify_chapter3_prior_predictive(share_gt_1, share_gt_2, 0, 1, 0, 1)
-  out$status
 }
 
 write_overlay_plot <- function(observed, simulated, figure_path, title_text) {

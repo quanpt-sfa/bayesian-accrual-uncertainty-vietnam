@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 19_sensitivity_validation.R
+# Script: se06_validation.R
 # Purpose: Outcome validation rerun for each sensitivity-scenario DA output.
 # -----------------------------------------------------------------------------
 

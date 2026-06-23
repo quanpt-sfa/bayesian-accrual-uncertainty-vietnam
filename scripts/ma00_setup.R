@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: ma00_setup.R  (renamed from 00_helpers.R)
+# Script: ma00_setup.R
 # Purpose: Shared setup/config + phase logging for the accrual uncertainty pipeline.
 # -----------------------------------------------------------------------------
 
@@ -10,6 +10,34 @@ env_value <- function(name, default) {
 
 env_flag <- function(name, default = "FALSE") {
   toupper(env_value(name, default)) %in% c("TRUE", "1", "YES", "Y")
+}
+
+env_list <- function(name, sep = ",", default = character()) {
+  raw <- trimws(env_value(name, ""))
+  if (!nzchar(raw)) return(default)
+  out <- trimws(strsplit(raw, sep, fixed = TRUE)[[1]])
+  out[nzchar(out)]
+}
+
+env_choice <- function(name, default, allowed, case = c("upper", "lower", "asis")) {
+  case <- match.arg(case)
+  value <- env_value(name, default)
+  value <- switch(
+    case,
+    upper = toupper(value),
+    lower = tolower(value),
+    asis = value
+  )
+  allowed_cmp <- switch(
+    case,
+    upper = toupper(allowed),
+    lower = tolower(allowed),
+    asis = allowed
+  )
+  if (!value %in% allowed_cmp) {
+    stop("[BLOCKER] ", name, " must be one of: ", paste(allowed_cmp, collapse = ", "), ".")
+  }
+  value
 }
 
 env_first <- function(names, default) {
@@ -73,6 +101,23 @@ env_num <- function(name, default, min = NULL, allow_na = FALSE) {
   if (!is.null(min) && out < min) {
     stop("[BLOCKER] Environment value for ", paste(name, collapse = "/"), " must be >= ", min, ". Got: ", out)
   }
+  out
+}
+
+env_num_list <- function(name, default, sep = ",") {
+  raw <- env_list(name, sep = sep, default = character())
+  if (!length(raw)) return(as.numeric(default))
+  out <- suppressWarnings(as.numeric(raw))
+  if (any(is.na(out))) stop("[BLOCKER] ", name, " must be ", sep, "-separated numeric values.")
+  out
+}
+
+env_int_list <- function(name, default, sep = ",", min = NULL) {
+  raw <- env_list(name, sep = sep, default = character())
+  if (!length(raw)) return(as.integer(default))
+  out <- suppressWarnings(as.integer(raw))
+  if (any(is.na(out))) stop("[BLOCKER] ", name, " must be ", sep, "-separated integer values.")
+  if (!is.null(min) && any(out < min)) stop("[BLOCKER] ", name, " values must be >= ", min, ".")
   out
 }
 
@@ -583,6 +628,166 @@ accrual_kfold_config <- function(kind = c("grouped_firm", "row"), run_mode = "FU
   }
 }
 
+accrual_orchestrator_config <- function() {
+  list(
+    dry_run = env_flag("ACCRUAL_DRY_RUN", "FALSE"),
+    run_heavy = env_flag("ACCRUAL_RUN_HEAVY", "FALSE"),
+    allow_suppressed_tail_flags = env_flag("ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS", "FALSE"),
+    data_path = env_value("ACCRUAL_DATA_PATH", data_path),
+    output_root = output_root,
+    accruals_root = accruals_root,
+    grouped_kfold_run_root = trimws(env_value("ACCRUAL_GROUPED_KFOLD_RUN_ROOT", "")),
+    row_kfold_run_root = trimws(env_value("ACCRUAL_ROW_KFOLD_RUN_ROOT", ""))
+  )
+}
+
+accrual_loo_config <- function() {
+  sampler <- accrual_sampler_config("baseline")
+  c(
+    list(
+      compare_original_weights = env_flag("ACCRUAL_COMPARE_ORIGINAL_WEIGHTS", "FALSE"),
+      mc_cores = 1L,
+      psis_role = "secondary_to_exact_kfold"
+    ),
+    sampler
+  )
+}
+
+accrual_kfold_filter_config <- function(kind = c("grouped_firm", "row")) {
+  kind <- match.arg(kind)
+  if (identical(kind, "grouped_firm")) {
+    fold_raw <- env_list("ACCRUAL_KFOLD_FOLDS")
+    fold_filter <- if (length(fold_raw)) suppressWarnings(as.integer(fold_raw)) else integer()
+    if (any(is.na(fold_filter))) stop("[BLOCKER] ACCRUAL_KFOLD_FOLDS must be comma-separated integers.")
+    target_mode <- env_choice(
+      "ACCRUAL_KFOLD_TARGET_MODE",
+      "MAIN_STACK_FULL",
+      c("PARETO_PROBLEM_ONLY", "MAIN_STACK_FULL"),
+      case = "upper"
+    )
+    list(
+      target_space_filter = env_list("ACCRUAL_KFOLD_TARGET_SPACE"),
+      model_id_filter = env_list("ACCRUAL_KFOLD_MODEL_IDS"),
+      fold_filter_raw = fold_raw,
+      fold_filter = fold_filter,
+      target_mode = target_mode,
+      run_id = gsub("[^A-Za-z0-9_.-]", "_", trimws(env_value("ACCRUAL_KFOLD_FIRM_RUN_ID", "default")))
+    )
+  } else {
+    fold_raw <- env_list("ACCRUAL_ROW_KFOLD_FOLDS")
+    fold_filter <- if (length(fold_raw)) suppressWarnings(as.integer(fold_raw)) else integer()
+    if (any(is.na(fold_filter))) stop("[BLOCKER] ACCRUAL_ROW_KFOLD_FOLDS must be comma-separated integers.")
+    list(
+      target_space_filter = env_list("ACCRUAL_ROW_KFOLD_TARGET_SPACE"),
+      model_id_filter = env_list("ACCRUAL_ROW_KFOLD_MODEL_IDS"),
+      fold_filter_raw = fold_raw,
+      fold_filter = fold_filter
+    )
+  }
+}
+
+accrual_simulation_runtime_config <- function(kind) {
+  kind <- match.arg(kind, c("lmer_pilot", "brms_leakage", "brms_recovery", "lmer_temporal"))
+  if (identical(kind, "lmer_pilot")) {
+    return(list(
+      t_grid = env_num_list("ACCRUAL_SIM_T_GRID", c(3, 7, 15)),
+      sigma_grid = env_num_list("ACCRUAL_SIM_SIGMA_FIRM_GRID", c(0, 0.10, 0.30)),
+      R = env_int("ACCRUAL_SIM_REPLICATIONS", 20L, min = 1L),
+      K = env_int("ACCRUAL_SIM_K", 5L, min = 1L),
+      n_firms = env_int("ACCRUAL_SIM_N_FIRMS", 200L, min = 1L),
+      n_industries = env_int("ACCRUAL_SIM_N_INDUSTRIES", 10L, min = 1L),
+      sigma_eps = env_num_list("ACCRUAL_SIM_SIGMA_EPS", 0.08)[1]
+    ))
+  }
+  if (identical(kind, "brms_leakage")) {
+    chains <- env_int("ACCRUAL_SIM_BRMS_CHAINS", 2L, min = 1L)
+    cores <- env_int(c("ACCRUAL_SIM_BRMS_CORES", "ACCRUAL_SIM_CORES"), chains, min = 1L)
+    cfg <- list(
+      t_grid = env_num_list("ACCRUAL_SIM_BRMS_T_GRID", c(3, 7, 15)),
+      sigma_grid = env_num_list("ACCRUAL_SIM_BRMS_SIGMA_FIRM_GRID", c(0, 0.10, 0.30)),
+      R = env_int("ACCRUAL_SIM_BRMS_REPLICATIONS", 2L, min = 1L),
+      K = env_int("ACCRUAL_SIM_BRMS_K", 3L, min = 1L),
+      n_firms = env_int("ACCRUAL_SIM_BRMS_N_FIRMS", 80L, min = 1L),
+      n_industries = env_int("ACCRUAL_SIM_BRMS_N_INDUSTRIES", 10L, min = 1L),
+      sigma_eps = env_num_list("ACCRUAL_SIM_BRMS_SIGMA_EPS", 0.08)[1],
+      dgp_family = env_choice("ACCRUAL_SIM_BRMS_DGP_FAMILY", "student", c("gaussian", "student"), case = "lower"),
+      prior_mode = env_choice("ACCRUAL_SIM_BRMS_PRIOR_MODE", "scale_aware", c("fixed", "scale_aware"), case = "lower"),
+      dgp_nu = env_num_list("ACCRUAL_SIM_BRMS_DGP_NU", 7)[1],
+      chains = chains,
+      cores = cores,
+      iter = env_int("ACCRUAL_SIM_BRMS_ITER", 1000L, min = 1L),
+      warmup = env_int("ACCRUAL_SIM_BRMS_WARMUP", 500L, min = 0L),
+      adapt_delta = env_num_list("ACCRUAL_SIM_BRMS_ADAPT_DELTA", 0.95)[1],
+      max_treedepth = env_int("ACCRUAL_SIM_BRMS_MAX_TREEDEPTH", 12L, min = 1L)
+    )
+    if (!is.finite(cfg$dgp_nu) || cfg$dgp_nu <= 2) stop("[BLOCKER] ACCRUAL_SIM_BRMS_DGP_NU must be finite and > 2.")
+    validate_rstan_cores(cfg$cores, cfg$chains, "si03 brms leakage confirmation")
+    return(cfg)
+  }
+  if (identical(kind, "brms_recovery")) {
+    chains <- env_int("ACCRUAL_SIM_RECOVERY_CHAINS", 2L, min = 1L)
+    cores <- env_int(c("ACCRUAL_SIM_RECOVERY_CORES", "ACCRUAL_SIM_CORES"), chains, min = 1L)
+    cfg <- list(
+      t_grid = env_num_list("ACCRUAL_SIM_RECOVERY_T_GRID", c(3, 7, 15)),
+      sigma_grid = env_num_list("ACCRUAL_SIM_RECOVERY_SIGMA_FIRM_GRID", c(0, 0.10, 0.30)),
+      R = env_int("ACCRUAL_SIM_RECOVERY_REPLICATIONS", 2L, min = 1L),
+      n_firms = env_int("ACCRUAL_SIM_RECOVERY_N_FIRMS", 80L, min = 1L),
+      n_industries = env_int("ACCRUAL_SIM_RECOVERY_N_INDUSTRIES", 10L, min = 1L),
+      sigma_eps = env_num_list("ACCRUAL_SIM_RECOVERY_SIGMA_EPS", 0.08)[1],
+      nu = env_num_list("ACCRUAL_SIM_RECOVERY_NU", 7)[1],
+      chains = chains,
+      cores = cores,
+      iter = env_int("ACCRUAL_SIM_RECOVERY_ITER", 1000L, min = 1L),
+      warmup = env_int("ACCRUAL_SIM_RECOVERY_WARMUP", 500L, min = 0L),
+      adapt_delta = env_num_list("ACCRUAL_SIM_RECOVERY_ADAPT_DELTA", 0.95)[1],
+      max_treedepth = env_int("ACCRUAL_SIM_RECOVERY_MAX_TREEDEPTH", 12L, min = 1L),
+      sd_zero_eps = env_num_list("ACCRUAL_SIM_RECOVERY_SD_ZERO_EPS", 0.01)[1]
+    )
+    if (!is.finite(cfg$sd_zero_eps) || cfg$sd_zero_eps <= 0) stop("[BLOCKER] ACCRUAL_SIM_RECOVERY_SD_ZERO_EPS must be positive.")
+    validate_rstan_cores(cfg$cores, cfg$chains, "si04 brms parameter recovery")
+    return(cfg)
+  }
+  list(
+    t_grid = env_num_list("ACCRUAL_SIM_TEMPORAL_T_GRID", c(3, 7, 15)),
+    sigma_grid = env_num_list("ACCRUAL_SIM_TEMPORAL_SIGMA_FIRM_GRID", c(0, 0.10, 0.30)),
+    rho_grid = env_num_list("ACCRUAL_SIM_TEMPORAL_RHO_GRID", c(0, 0.30, 0.60)),
+    shock_duration_grid = env_num_list("ACCRUAL_SIM_TEMPORAL_SHOCK_DURATION_GRID", c(1, 2, 3)),
+    R = env_int("ACCRUAL_SIM_TEMPORAL_REPLICATIONS", 20L, min = 1L),
+    K = env_int("ACCRUAL_SIM_TEMPORAL_K", 5L, min = 1L),
+    n_firms = env_int("ACCRUAL_SIM_TEMPORAL_N_FIRMS", 200L, min = 1L),
+    n_industries = env_int("ACCRUAL_SIM_TEMPORAL_N_INDUSTRIES", 10L, min = 1L),
+    sigma_eps = env_num_list("ACCRUAL_SIM_TEMPORAL_SIGMA_EPS", 0.08)[1],
+    shock_size = env_num_list("ACCRUAL_SIM_TEMPORAL_SHOCK_SIZE", 0.20)[1]
+  )
+}
+
+accrual_calibration_profile_grid <- function() {
+  grid <- data.frame(
+    sampler_profile = c("baseline_current", "remediation_default", "longer_warmup", "very_long_if_needed"),
+    chains = c(4L, 4L, 4L, 4L),
+    cores = c(4L, 4L, 4L, 4L),
+    iter = c(3000L, 8000L, 12000L, 16000L),
+    warmup = c(1000L, 2000L, 4000L, 6000L),
+    adapt_delta = c(0.95, 0.99, 0.99, 0.99),
+    max_treedepth = c(12L, 15L, 15L, 15L),
+    cost_order = c(0L, 1L, 2L, 3L),
+    stringsAsFactors = FALSE
+  )
+  requested_profiles <- env_list("ACCRUAL_CALIBRATION_PROFILES")
+  if (length(requested_profiles)) {
+    missing_profiles <- setdiff(requested_profiles, grid$sampler_profile)
+    if (length(missing_profiles)) {
+      stop("[DI08 INPUT BLOCKER] Unknown ACCRUAL_CALIBRATION_PROFILES value(s): ",
+           paste(missing_profiles, collapse = ", "))
+    }
+    grid <- grid[grid$sampler_profile %in% requested_profiles, , drop = FALSE]
+  }
+  grid$cores <- vapply(grid$chains, function(chains) env_int("ACCRUAL_CALIBRATION_CORES", chains, min = 1L), integer(1))
+  invisible(mapply(validate_rstan_cores, cores = grid$cores, chains = grid$chains,
+                   context = paste("di08", grid$sampler_profile)))
+  grid
+}
+
 write_execution_config_registry <- function(path = file.path(method_design_root, "execution_config_registry.csv")) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   seed_note <- "All branches use canonical ACCRUAL_SEED; branch-specific seed env vars are deprecated and blocked if different."
@@ -763,7 +968,7 @@ detect_column_from_candidates <- function(column_names, candidates, context_labe
 detect_metadata_company_column <- function(column_names) {
   candidates <- c(
     "company", "Company", "ticker", "Ticker", "symbol", "Symbol", "code", "Code",
-    "Ma", "Mã", "Mã CK", "Ma CK", "StockCode", "Stock_Code"
+    "Ma", "MÃ£", "MÃ£ CK", "Ma CK", "StockCode", "Stock_Code"
   )
   detect_column_from_candidates(
     column_names = column_names,
@@ -954,8 +1159,8 @@ metadata_columns <- function() {
 }
 
 validate_final_analysis_config <- function(context = "final analysis", final_mode = TRUE) {
-  is_invalid <- !identical(prior_set_id, "scale_aware_student_baseline_v1") || 
-                !identical(likelihood_family, "student") || 
+  is_invalid <- !identical(prior_set_id, "scale_aware_student_baseline_v1") ||
+                !identical(likelihood_family, "student") ||
                 !identical(model_structure, "pooled_random_intercept")
   if (!is_invalid) return(invisible(TRUE))
 
@@ -1166,9 +1371,127 @@ write_pipeline_index <- function() {
   invisible(pipeline)
 }
 
-winsorize_vec <- function(x, probs = c(0.01, 0.99)) {
-  qs <- quantile(x, probs = probs, na.rm = TRUE, names = FALSE, type = 7)
+get_lag_contiguous <- function(x, year, n = 1) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n) || n < 1L) stop("[BLOCKER] n must be a positive integer for get_lag_contiguous().")
+  if (length(x) != length(year)) stop("[BLOCKER] x and year must have equal length for get_lag_contiguous().")
+  if (n >= length(x)) return(rep(NA, length(x)))
+  lag_val <- c(rep(NA, n), head(x, -n))
+  lag_year <- c(rep(NA, n), head(year, -n))
+  ifelse(!is.na(lag_year) & lag_year == (year - n), lag_val, NA)
+}
+
+get_lead_contiguous <- function(x, year, n = 1) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n) || n < 1L) stop("[BLOCKER] n must be a positive integer for get_lead_contiguous().")
+  if (length(x) != length(year)) stop("[BLOCKER] x and year must have equal length for get_lead_contiguous().")
+  if (n >= length(x)) return(rep(NA, length(x)))
+  lead_val <- c(tail(x, -n), rep(NA, n))
+  lead_year <- c(tail(year, -n), rep(NA, n))
+  ifelse(!is.na(lead_year) & lead_year == (year + n), lead_val, NA)
+}
+
+rolling_sd_contiguous_3 <- function(x, year) {
+  out <- rep(NA_real_, length(x))
+  if (length(x) < 3L) return(out)
+  for (i in seq_along(x)) {
+    if (i >= 3L) {
+      idx <- (i - 2L):i
+      yrs <- year[idx]
+      vals <- x[idx]
+      if (all(yrs == (year[i] - c(2, 1, 0))) && all(is.finite(vals))) {
+        out[i] <- stats::sd(vals)
+      }
+    }
+  }
+  out
+}
+
+winsorize_vec <- function(x, probs = c(0.01, 0.99), na.rm = TRUE) {
+  qs <- stats::quantile(x, probs = probs, na.rm = na.rm, names = FALSE, type = 7)
   pmin(pmax(x, qs[1]), qs[2])
+}
+
+winsorize_with_cutoffs <- function(x, probs = c(0.01, 0.99), na.rm = TRUE) {
+  qs <- stats::quantile(x, probs = probs, na.rm = na.rm, names = FALSE, type = 7)
+  list(values = pmin(pmax(x, qs[1]), qs[2]), cutoffs = qs)
+}
+
+optimize_stacking_from_lpd <- function(lpd_matrix) {
+  lpd_matrix <- as.matrix(lpd_matrix)
+  if (is.null(colnames(lpd_matrix))) {
+    colnames(lpd_matrix) <- paste0("model_", seq_len(ncol(lpd_matrix)))
+  }
+  if (ncol(lpd_matrix) == 1) {
+    out <- 1
+    names(out) <- colnames(lpd_matrix)
+    return(out)
+  }
+
+  softmax <- function(theta) {
+    z <- c(theta, 0)
+    z <- z - max(z)
+    exp(z) / sum(exp(z))
+  }
+  log_sum_exp <- function(vals) {
+    m <- max(vals)
+    m + log(sum(exp(vals - m)))
+  }
+  mixture_objective_value <- function(w) {
+    log_w <- log(pmax(w, .Machine$double.eps))
+    adjusted <- sweep(lpd_matrix, 2, log_w, "+")
+    sum(apply(adjusted, 1, log_sum_exp))
+  }
+  objective <- function(theta) -mixture_objective_value(softmax(theta))
+
+  singleton_elpd <- colSums(lpd_matrix)
+  best_singleton <- which.max(singleton_elpd)
+  singleton_w <- rep(0, ncol(lpd_matrix))
+  singleton_w[best_singleton] <- 1
+  names(singleton_w) <- colnames(lpd_matrix)
+
+  starts <- list(rep(0, ncol(lpd_matrix) - 1))
+  for (j in seq_len(ncol(lpd_matrix))) {
+    z <- rep(-8, ncol(lpd_matrix))
+    z[j] <- 8
+    starts[[length(starts) + 1]] <- z[-ncol(lpd_matrix)]
+  }
+  fits <- lapply(starts, function(st) {
+    tryCatch(
+      stats::optim(st, objective, method = "BFGS", control = list(maxit = 5000, reltol = 1e-12)),
+      error = function(e) NULL
+    )
+  })
+  fits <- Filter(Negate(is.null), fits)
+  if (length(fits) == 0) {
+    warning("Stacking optimizer failed for all starts; falling back to best singleton elpd model.")
+    return(singleton_w)
+  }
+
+  vals <- vapply(fits, function(f) -f$value, numeric(1))
+  best_fit <- fits[[which.max(vals)]]
+  w <- softmax(best_fit$par)
+  names(w) <- colnames(lpd_matrix)
+  if (mixture_objective_value(w) + 1e-6 < mixture_objective_value(singleton_w)) {
+    warning("Stacking optimizer returned a solution worse than the best singleton; falling back to best singleton elpd model.")
+    return(singleton_w)
+  }
+  w
+}
+
+assert_training_factor_level_coverage <- function(train, test, factor_cols = c("industry", "year"), context = "unknown") {
+  for (col in factor_cols) {
+    if (col %in% names(train) && col %in% names(test)) {
+      train_levels <- unique(as.character(train[[col]][!is.na(train[[col]])]))
+      test_levels <- unique(as.character(test[[col]][!is.na(test[[col]])]))
+      missing_levels <- setdiff(test_levels, train_levels)
+      if (length(missing_levels)) {
+        stop("[BLOCKER] Missing training factor-level coverage for ", context,
+             "; column=", col, "; missing levels=", paste(missing_levels, collapse = ", "))
+      }
+    }
+  }
+  invisible(TRUE)
 }
 
 safe_variant_name <- function(x) {

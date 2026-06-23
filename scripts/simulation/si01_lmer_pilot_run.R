@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 24_sim_lmer_leakage_pilot_run.R
+# Script: si01_lmer_pilot_run.R
 # Purpose: Run lmer pilot grid for row-CV versus firm-CV validation.
 # -----------------------------------------------------------------------------
 
@@ -15,13 +15,14 @@ root <- ensure_sim_dirs()
 tables_dir <- file.path(root, "tables")
 logs_dir <- file.path(root, "logs")
 
-t_grid <- parse_num_env("ACCRUAL_SIM_T_GRID", c(3, 7, 15))
-sigma_grid <- parse_num_env("ACCRUAL_SIM_SIGMA_FIRM_GRID", c(0, 0.10, 0.30))
-R <- parse_int_env("ACCRUAL_SIM_REPLICATIONS", 20)
-K <- parse_int_env("ACCRUAL_SIM_K", 5)
-n_firms <- parse_int_env("ACCRUAL_SIM_N_FIRMS", 200)
-n_industries <- parse_int_env("ACCRUAL_SIM_N_INDUSTRIES", 10)
-sigma_eps <- parse_num_env("ACCRUAL_SIM_SIGMA_EPS", 0.08)[1]
+sim_cfg <- accrual_simulation_runtime_config("lmer_pilot")
+t_grid <- sim_cfg$t_grid
+sigma_grid <- sim_cfg$sigma_grid
+R <- sim_cfg$R
+K <- sim_cfg$K
+n_firms <- sim_cfg$n_firms
+n_industries <- sim_cfg$n_industries
+sigma_eps <- sim_cfg$sigma_eps
 
 grid <- expand.grid(T = as.integer(t_grid), sigma_firm = sigma_grid, rep_id = seq_len(R), KEEP.OUT.ATTRS = FALSE)
 rep_path <- file.path(tables_dir, "table_lmer_leakage_pilot_rep_results.csv")

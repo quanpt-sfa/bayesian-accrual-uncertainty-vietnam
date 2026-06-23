@@ -120,9 +120,10 @@ if (!grepl('accrual_sampler_config("prior_predictive")', ma06_text, fixed = TRUE
   stop("ma06 prior predictive brm() call must use centralized prior_predictive sampler cores.")
 }
 ma09_text <- script_text("scripts/ma09_loo_stacking.R")
-if (!grepl("cores\\s*<-\\s*sampler_cfg\\$cores", ma09_text, perl = TRUE) ||
+if (!grepl("loo_cfg\\s*<-\\s*accrual_loo_config\\(\\)", ma09_text, perl = TRUE) ||
+    !grepl("cores\\s*<-\\s*loo_cfg\\$cores", ma09_text, perl = TRUE) ||
     !grepl("cores\\s*=\\s*cores", ma09_text, perl = TRUE)) {
-  stop("ma09 LOO refit brm() call must pass cores from accrual_sampler_config().")
+  stop("ma09 LOO refit brm() call must pass cores from accrual_loo_config().")
 }
 se01_text <- script_text("scripts/sensitivity/se01_prior_predictive.R")
 if (!grepl('accrual_sampler_config("prior_predictive")', se01_text, fixed = TRUE) ||
@@ -130,14 +131,16 @@ if (!grepl('accrual_sampler_config("prior_predictive")', se01_text, fixed = TRUE
   stop("se01 sensitivity prior predictive brm() call must use centralized prior_predictive sampler cores.")
 }
 si03_text <- script_text("scripts/simulation/si03_brms_leakage_confirmation.R")
-if (!grepl("ACCRUAL_SIM_CORES", si03_text, fixed = TRUE) ||
+if (!grepl('accrual_simulation_runtime_config("brms_leakage")', si03_text, fixed = TRUE) ||
+    !grepl("cores\\s*<-\\s*sim_cfg\\$cores", si03_text, perl = TRUE) ||
     !grepl("cores\\s*=\\s*cores", si03_text, perl = TRUE)) {
-  stop("si03 simulation brm() call must pass explicit simulation cores.")
+  stop("si03 simulation brm() call must pass explicit simulation cores from accrual_simulation_runtime_config().")
 }
 si04_text <- script_text("scripts/simulation/si04_brms_parameter_recovery.R")
-if (!grepl("ACCRUAL_SIM_CORES", si04_text, fixed = TRUE) ||
+if (!grepl('accrual_simulation_runtime_config("brms_recovery")', si04_text, fixed = TRUE) ||
+    !grepl("cores\\s*<-\\s*sim_cfg\\$cores", si04_text, perl = TRUE) ||
     !grepl("cores\\s*=\\s*cores", si04_text, perl = TRUE)) {
-  stop("si04 simulation brm() call must pass explicit simulation cores.")
+  stop("si04 simulation brm() call must pass explicit simulation cores from accrual_simulation_runtime_config().")
 }
 
 di02 <- readLines("scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", warn = FALSE)

@@ -34,8 +34,8 @@ exclusions_out_path <- file.path(diagnostics_dir, "table_strict_model_exclusions
 figure_out_path <- file.path(diagnostics_dir, "figure_full_vs_strict_firmre_shift.png")
 note_out_path <- file.path(diagnostics_dir, "full_vs_strict_stacking_note.md")
 
-strict_max_rhat <- as.numeric(Sys.getenv("ACCRUAL_STRICT_MODEL_MAX_RHAT", "1.01"))
-strict_min_ess <- as.numeric(Sys.getenv("ACCRUAL_STRICT_MODEL_MIN_ESS", "1000"))
+strict_max_rhat <- env_num("ACCRUAL_STRICT_MODEL_MAX_RHAT", 1.01, min = 0)
+strict_min_ess <- env_num("ACCRUAL_STRICT_MODEL_MIN_ESS", 1000, min = 0)
 
 read_csv_required <- function(path, label) {
   if (!file.exists(path)) stop("[BLOCKER] Missing ", label, ": ", path)

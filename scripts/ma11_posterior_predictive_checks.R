@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 11_posterior_predictive_checks.R
+# Script: ma11_posterior_predictive_checks.R
 # Purpose: Evaluate whether the stacked winsorized posterior predictive
 #          distribution reproduces the observed TA_scaled distribution.
 # -----------------------------------------------------------------------------

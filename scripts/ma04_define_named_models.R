@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
-# Script: 04_define_named_models.R
+# Script: ma04_define_named_models.R
 # Purpose: Define formulas, stacking tiers, space memberships, and heterogeneity levels for the active models.
-# Author: Antigravity
+# Maintainer: project team
 # Date: 2026-06-04
 # -----------------------------------------------------------------------------
 
@@ -84,12 +84,12 @@ model_formulas_expanded <- data.frame(
 add_formula_entries <- function(m, space, sample_file) {
   base_form_str <- m$Formula
   predictors <- trimws(unlist(strsplit(base_form_str, "~")))[2]
-  
+
   # Pooled formula
   pooled_formula <- sprintf("TA_scaled ~ %s + factor(industry) + factor(year)", predictors)
   # Firm RE formula
   firm_re_formula <- sprintf("TA_scaled ~ %s + factor(year) + (1 | company)", predictors)
-  
+
   # Return data frame with the two heterogeneity variants
   data.frame(
     Model_ID = rep(m$Model_ID, 2),
@@ -114,7 +114,7 @@ add_formula_entries <- function(m, space, sample_file) {
 
 for (i in 1:nrow(feasible_models)) {
   m <- feasible_models[i, ]
-  
+
   # Ex-Post Space
   if (m$In_ExPost_Stack) {
     target_sample <- dplyr::case_when(
@@ -124,7 +124,7 @@ for (i in 1:nrow(feasible_models)) {
     )
     model_formulas_expanded <- rbind(model_formulas_expanded, add_formula_entries(m, "ex_post", target_sample))
   }
-  
+
   # Real-Time Space
   if (m$In_RealTime_Stack) {
     target_sample <- dplyr::case_when(
@@ -177,7 +177,7 @@ phase2_notes <- "===============================================================
 ma04 Model Space definition: Space Membership & Two-Tier Stacking
 =============================================================================
 Date: 2026-06-04
-Author: Antigravity
+Maintainer: project team
 
 Space Membership & Sample Routing:
 1. ex_post_measurement_space main stack (Target Sample: final_common_ex_post_sample.csv):
@@ -186,7 +186,7 @@ Space Membership & Sample Routing:
    - Robustness Model: M08 (secondary_volatility on final_M08_ex_post_subsample.csv).
    - Robustness Model: M10 (secondary_operating_cycle on final_secondary_operating_cycle_ex_post_sample.csv).
    - M09 is EXCLUDED (not CFO_lead-capable by design).
-   
+
 2. real_time_prediction_space main stack (Target Sample: final_common_realtime_sample.csv):
    - Feasible CORE models: M01, M02, M03, M07, M09.
    - M10 is excluded from the main stack because it requires operating_cycle.

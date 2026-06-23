@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 21_validation_on_scaleaware_student_DA.R
+# Script: ma16_validate_outcomes.R
 # Purpose: Rerun outcome validation on primary exact-KFold DA, with PSIS/LOO
 #          retained only as a secondary comparison panel.
 # -----------------------------------------------------------------------------

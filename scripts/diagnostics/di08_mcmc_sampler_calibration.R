@@ -30,48 +30,12 @@ default_targets <- c(
   "M09|real_time|main_common|Firm RE (Random Intercept + Year FE)",
   "M05|ex_post|main_common|Firm RE (Random Intercept + Year FE)"
 )
-targets_raw <- trimws(Sys.getenv("ACCRUAL_CALIBRATION_TARGETS", ""))
-calibration_targets <- if (nzchar(targets_raw)) {
-  trimws(unlist(strsplit(targets_raw, ";", fixed = TRUE)))
-} else {
-  default_targets
-}
+calibration_targets <- env_list("ACCRUAL_CALIBRATION_TARGETS", sep = ";", default = default_targets)
 calibration_targets <- unique(calibration_targets[nzchar(calibration_targets)])
 
-profile_grid <- data.frame(
-  sampler_profile = c("baseline_current", "remediation_default", "longer_warmup", "very_long_if_needed"),
-  chains = c(4L, 4L, 4L, 4L),
-  cores = c(4L, 4L, 4L, 4L),
-  iter = c(3000L, 8000L, 12000L, 16000L),
-  warmup = c(1000L, 2000L, 4000L, 6000L),
-  adapt_delta = c(0.95, 0.99, 0.99, 0.99),
-  max_treedepth = c(12L, 15L, 15L, 15L),
-  cost_order = c(0L, 1L, 2L, 3L),
-  stringsAsFactors = FALSE
-)
-profiles_raw <- trimws(Sys.getenv("ACCRUAL_CALIBRATION_PROFILES", ""))
-if (nzchar(profiles_raw)) {
-  requested_profiles <- trimws(unlist(strsplit(profiles_raw, ",", fixed = TRUE)))
-  missing_profiles <- setdiff(requested_profiles, profile_grid$sampler_profile)
-  if (length(missing_profiles)) {
-    stop("[DI08 INPUT BLOCKER] Unknown ACCRUAL_CALIBRATION_PROFILES value(s): ",
-         paste(missing_profiles, collapse = ", "))
-  }
-  profile_grid <- profile_grid[profile_grid$sampler_profile %in% requested_profiles, , drop = FALSE]
-}
-profile_grid$cores <- vapply(
-  profile_grid$chains,
-  function(chains) env_int("ACCRUAL_CALIBRATION_CORES", chains, min = 1L),
-  integer(1)
-)
-invisible(mapply(
-  validate_rstan_cores,
-  cores = profile_grid$cores,
-  chains = profile_grid$chains,
-  context = paste("di08", profile_grid$sampler_profile)
-))
+profile_grid <- accrual_calibration_profile_grid()
 
-calibration_root <- Sys.getenv(
+calibration_root <- env_value(
   "ACCRUAL_CALIBRATION_ROOT",
   file.path(output_root, "diagnostics", "mcmc_sampler_calibration")
 )

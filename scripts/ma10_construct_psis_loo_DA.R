@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 10_construct_uncertainty_adjusted_DA.R
+# Script: ma10_construct_psis_loo_DA.R
 # Purpose: Construct winsorized uncertainty-adjusted abnormal accruals.
 # -----------------------------------------------------------------------------
 
@@ -118,7 +118,7 @@ compute_stacked_accruals <- function(df_sample, weights_df, space_name, S = stac
     if (is.na(iqr_x) || iqr_x <= 0) iqr_x <- sd_x
     h <- 0.9 * min(sd_x, iqr_x / 1.34) * (length(x_draws)^(-0.2))
     if (is.na(h) || h <= 0) h <- 1e-4
-    
+
     u <- (y_val - x_draws) / h
     mean(dnorm(u)) / h
   }

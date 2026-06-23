@@ -38,20 +38,15 @@ logs_dir <- file.path(audit_root, "logs")
 dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(logs_dir, recursive = TRUE, showWarnings = FALSE)
 
-env_flag_local <- function(name, default = "FALSE") {
-  raw <- Sys.getenv(name, default)
-  toupper(raw) %in% c("TRUE", "1", "YES", "Y")
-}
-
 # strict_mode=TRUE makes ambiguous stacked predictive/tail quantities fail-safe:
 # they are treated as potentially Firm-RE out-of-firm quantities unless their own
 # source verifies u_new integration.
-strict_mode <- env_flag_local("ACCRUAL_NEW_FIRM_AUDIT_STRICT", "TRUE")
+strict_mode <- env_flag("ACCRUAL_NEW_FIRM_AUDIT_STRICT", "TRUE")
 
 # allow_uncertainty_mode controls whether brms sample_new_levels="uncertainty"
 # qualifies as verified integration over new group effects. gaussian always
 # qualifies; old_levels never qualifies for new-firm integration.
-allow_uncertainty_mode <- env_flag_local("ACCRUAL_NEW_FIRM_ALLOW_BRMS_UNCERTAINTY", "TRUE")
+allow_uncertainty_mode <- env_flag("ACCRUAL_NEW_FIRM_ALLOW_BRMS_UNCERTAINTY", "TRUE")
 
 read_text_if_exists <- function(path) {
   if (!file.exists(path)) return(character())

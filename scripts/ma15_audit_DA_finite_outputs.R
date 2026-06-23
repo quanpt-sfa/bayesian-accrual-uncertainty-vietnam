@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 32_audit_DA_finite_outputs.R
+# Script: ma15_audit_DA_finite_outputs.R
 # Purpose: Gate DA outputs for finite/numeric validity before RQ2/export.
 # -----------------------------------------------------------------------------
 
@@ -22,7 +22,7 @@ ensure_analysis_dirs()
 script_name <- "scripts/ma15_audit_DA_finite_outputs.R"
 script_version <- "2026-06-18-v1-finite-da-gate"
 script_start_time <- Sys.time()
-strict_gate <- toupper(Sys.getenv("ACCRUAL_DA_FINITE_GATE_STRICT", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
+strict_gate <- env_flag("ACCRUAL_DA_FINITE_GATE_STRICT", "FALSE")
 
 tables_dir <- file.path(output_root, "tables")
 dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)

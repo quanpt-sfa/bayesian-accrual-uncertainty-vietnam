@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 22_chapter3_methods_tables.R
+# Script: ma17_export_tables_figures.R
 # Purpose: Generate manuscript-ready Chapter 3 methods/audit tables from existing
 #          pipeline outputs without refitting Bayesian models.
 #
@@ -18,9 +18,9 @@ suppressPackageStartupMessages({
 })
 
 chapter3_prior_thresholds <- chapter3_prior_predictive_thresholds()
-PRIOR_MAX_MASS_ABS_GT_1 <- as.numeric(Sys.getenv("PRIOR_MAX_MASS_ABS_GT_1", as.character(chapter3_prior_thresholds$abs_gt_1_pass)))
-PRIOR_MAX_MASS_ABS_GT_2 <- as.numeric(Sys.getenv("PRIOR_MAX_MASS_ABS_GT_2", as.character(chapter3_prior_thresholds$abs_gt_2_pass)))
-PRIOR_MAX_RANGE_RATIO <- as.numeric(Sys.getenv("PRIOR_MAX_RANGE_RATIO", as.character(chapter3_prior_thresholds$range_ratio_pass)))
+PRIOR_MAX_MASS_ABS_GT_1 <- env_num("PRIOR_MAX_MASS_ABS_GT_1", chapter3_prior_thresholds$abs_gt_1_pass, min = 0)
+PRIOR_MAX_MASS_ABS_GT_2 <- env_num("PRIOR_MAX_MASS_ABS_GT_2", chapter3_prior_thresholds$abs_gt_2_pass, min = 0)
+PRIOR_MAX_RANGE_RATIO <- env_num("PRIOR_MAX_RANGE_RATIO", chapter3_prior_thresholds$range_ratio_pass, min = 0)
 
 RQ2_SPEARMAN_MODERATE <- 0.95
 RQ2_SPEARMAN_HIGH <- 0.90
@@ -29,7 +29,7 @@ RQ2_TOP5_JACCARD_HIGH <- 0.60
 RQ2_FLAG_SWITCH_MODERATE <- 0.05
 RQ2_FLAG_SWITCH_HIGH <- 0.10
 RQ2_FLAG_COUNT_REL_CHANGE_MATERIAL <- 0.25
-MIN_FIRMS_PER_FOLD_STABLE <- as.integer(Sys.getenv("ACCRUAL_METHODS_MIN_FIRMS_PER_FOLD_STABLE", "30"))
+MIN_FIRMS_PER_FOLD_STABLE <- env_int("ACCRUAL_METHODS_MIN_FIRMS_PER_FOLD_STABLE", 30L, min = 1L)
 
 report_dir <- file.path("reports", "chapter3_methods_tables")
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
@@ -100,7 +100,7 @@ allowed_finite_decisions <- c("PASS", "PASS_WITH_STRUCTURAL_NA_ONLY", "WARN_SECO
 if (!DA_Finite_Gate_Decision %in% allowed_finite_decisions) {
   stop("[GATE BLOCKER] DA finite gate is not passable for primary RQ2/export: ", DA_Finite_Gate_Decision)
 }
-allow_suppressed_tail_flags <- toupper(Sys.getenv("ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS", "FALSE")) %in% c("TRUE", "1", "YES", "Y")
+allow_suppressed_tail_flags <- env_flag("ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS", "FALSE")
 if (identical(New_Firm_Predictive_Gate_Decision, "PRIMARY_SUPPRESSION_REQUIRED_FOR_UNVERIFIED_FIRMRE_OUT_OF_FIRM_QUANTITIES") &&
     !allow_suppressed_tail_flags) {
   stop("[GATE BLOCKER] New-firm predictive audit requires tail-flag suppression/non-primary treatment. ",

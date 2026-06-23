@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Script: 14_sensitivity_prior_predictive.R
+# Script: se01_prior_predictive.R
 # Purpose: Prior predictive gate for the full-refit sensitivity scenarios.
 # -----------------------------------------------------------------------------
 
