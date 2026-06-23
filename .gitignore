@@ -10,8 +10,33 @@ out/**
 !out/**/.gitkeep
 
 # Legacy generated outputs
+/accruals/
 /outputs/
-/reports/
+!/reports/
+/reports/*
+!/reports/gitignore_artifact_hygiene.md
+
+# Clean-run output roots
+/out/runs/
+
+# Local scratch/debug/benchmark scripts at repo root
+/audit_mcmc_gate.R
+/benchmark.R
+/check_m05_diag.R
+
+# Local benchmark/result folders
+/brms_rstan_benchmark_results/
+
+# Local console/log captures
+/si03_sigma0_console_log.txt
+*_console_log.txt
+*.out
+*.err
+
+# Local temporary diagnostics
+/tmp/
+/temp/
+/scratch/
 
 /scripts/temp/
 /scripts/archive/
