@@ -1,10 +1,14 @@
 txt <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
 normalize_path <- function(path) gsub("\\\\", "/", path)
 
-audit_path <- "reports/brms_worker_refactor_audit.md"
-plan_path <- "reports/brms_worker_refactor_plan.md"
+audit_path <- file.path("doc", "audits", "brms_worker_refactor_audit.md")
+plan_path <- file.path("doc", "audits", "brms_worker_refactor_plan.md")
 if (!file.exists(audit_path)) stop("Missing brms worker refactor audit report.")
 if (!file.exists(plan_path)) stop("Missing brms worker refactor plan report.")
+this_test <- txt("tests/test_brms_worker_refactor_static.R")
+if (grepl(paste0("reports", "/"), this_test, fixed = TRUE)) {
+  stop("test_brms_worker_refactor_static.R must not require generated reports.")
+}
 
 audit <- txt(audit_path)
 plan <- txt(plan_path)

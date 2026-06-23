@@ -205,7 +205,7 @@ chapter3_prior_predictive_thresholds <- function() {
     abs_gt_1_review = 0.15,
     abs_gt_2_review = 0.02,
     range_ratio_review = 5.00,
-    source = "reports/chapter_3_method_only_reviewer_final_journal_style_transitions.md"
+    source = "doc/method_authority/chapter_3_method_authority.md"
   )
 }
 
@@ -346,6 +346,100 @@ is_model_parallel_enabled <- function() {
 stable_task_key <- function(...) {
   parts <- vapply(list(...), as.character, character(1))
   paste(parts, collapse = "|")
+}
+
+accrual_run_profile_config <- function(profile = "full_clean_production_5w4c") {
+  profile <- match.arg(profile, c("full_clean_production_5w4c"))
+  c(
+    ACCRUAL_ENABLE_MODEL_PARALLEL = "TRUE",
+    ACCRUAL_MODEL_PARALLEL_WORKERS = "5",
+    ACCRUAL_TOTAL_CORE_BUDGET = "20",
+    ACCRUAL_ALLOW_NESTED_RSTAN_CORES = "TRUE",
+    ACCRUAL_PRIOR_PRED_CHAINS = "4",
+    ACCRUAL_PRIOR_PRED_CORES = "4",
+    ACCRUAL_PRIOR_PRED_ITER = "1000",
+    ACCRUAL_PRIOR_PRED_WARMUP = "500",
+    ACCRUAL_PRIOR_PRED_REFRESH = "0",
+    ACCRUAL_BASELINE_CHAINS = "4",
+    ACCRUAL_BASELINE_CORES = "4",
+    ACCRUAL_BASELINE_ITER = "12000",
+    ACCRUAL_BASELINE_WARMUP = "4000",
+    ACCRUAL_BASELINE_ADAPT_DELTA = "0.99",
+    ACCRUAL_BASELINE_MAX_TREEDEPTH = "15",
+    ACCRUAL_BASELINE_REFRESH = "500",
+    ACCRUAL_REMEDIATION_CHAINS = "4",
+    ACCRUAL_REMEDIATION_CORES = "4",
+    ACCRUAL_REMEDIATION_ITER = "16000",
+    ACCRUAL_REMEDIATION_WARMUP = "6000",
+    ACCRUAL_REMEDIATION_ADAPT_DELTA = "0.99",
+    ACCRUAL_REMEDIATION_MAX_TREEDEPTH = "15",
+    ACCRUAL_REMEDIATION_REFRESH = "500",
+    ACCRUAL_KFOLD_FIRM_MODE = "FULL_MODE",
+    ACCRUAL_KFOLD_FIRM_K = "5",
+    ACCRUAL_KFOLD_FIRM_CHAINS = "4",
+    ACCRUAL_KFOLD_FIRM_CORES = "4",
+    ACCRUAL_KFOLD_FIRM_ITER = "12000",
+    ACCRUAL_KFOLD_FIRM_WARMUP = "4000",
+    ACCRUAL_KFOLD_FIRM_ADAPT_DELTA = "0.99",
+    ACCRUAL_KFOLD_FIRM_MAX_TREEDEPTH = "15",
+    ACCRUAL_KFOLD_FIRM_REFRESH = "500",
+    ACCRUAL_KFOLD_FIRM_OVERWRITE = "TRUE",
+    ACCRUAL_ROW_KFOLD_MODE = "FULL_MODE",
+    ACCRUAL_ROW_KFOLD_K = "5",
+    ACCRUAL_ROW_KFOLD_CHAINS = "4",
+    ACCRUAL_ROW_KFOLD_CORES = "4",
+    ACCRUAL_ROW_KFOLD_ITER = "12000",
+    ACCRUAL_ROW_KFOLD_WARMUP = "4000",
+    ACCRUAL_ROW_KFOLD_ADAPT_DELTA = "0.99",
+    ACCRUAL_ROW_KFOLD_MAX_TREEDEPTH = "15",
+    ACCRUAL_ROW_KFOLD_REFRESH = "500",
+    ACCRUAL_ROW_KFOLD_OVERWRITE = "TRUE",
+    ACCRUAL_SENS_CHAINS = "4",
+    ACCRUAL_SENS_CORES = "4",
+    ACCRUAL_SENS_ITER = "12000",
+    ACCRUAL_SENS_WARMUP = "4000",
+    ACCRUAL_SENS_ADAPT_DELTA = "0.99",
+    ACCRUAL_SENS_MAX_TREEDEPTH = "15",
+    ACCRUAL_SENS_REFRESH = "500",
+    ACCRUAL_SIM_REPLICATIONS = "500",
+    ACCRUAL_SIM_TEMPORAL_REPLICATIONS = "500",
+    ACCRUAL_SIM_BRMS_REPLICATIONS = "30",
+    ACCRUAL_SIM_BRMS_CHAINS = "4",
+    ACCRUAL_SIM_BRMS_CORES = "4",
+    ACCRUAL_SIM_BRMS_ITER = "4000",
+    ACCRUAL_SIM_BRMS_WARMUP = "1500",
+    ACCRUAL_SIM_BRMS_ADAPT_DELTA = "0.99",
+    ACCRUAL_SIM_BRMS_MAX_TREEDEPTH = "15",
+    ACCRUAL_SIM_RECOVERY_REPLICATIONS = "30",
+    ACCRUAL_SIM_RECOVERY_CHAINS = "4",
+    ACCRUAL_SIM_RECOVERY_CORES = "4",
+    ACCRUAL_SIM_RECOVERY_ITER = "4000",
+    ACCRUAL_SIM_RECOVERY_WARMUP = "1500",
+    ACCRUAL_SIM_RECOVERY_ADAPT_DELTA = "0.99",
+    ACCRUAL_SIM_RECOVERY_MAX_TREEDEPTH = "15"
+  )
+}
+
+accrual_test_parallel_scenarios <- function() {
+  list(
+    valid_budget = list(
+      env = c(
+        ACCRUAL_ENABLE_MODEL_PARALLEL = "TRUE",
+        ACCRUAL_MODEL_PARALLEL_WORKERS = "2",
+        ACCRUAL_TOTAL_CORE_BUDGET = "4",
+        ACCRUAL_BASELINE_CORES = "2",
+        ACCRUAL_ALLOW_NESTED_RSTAN_CORES = "TRUE"
+      ),
+      cores_per_fit = 2L
+    ),
+    over_budget = list(
+      env = c(
+        ACCRUAL_MODEL_PARALLEL_WORKERS = "3",
+        ACCRUAL_TOTAL_CORE_BUDGET = "4"
+      ),
+      cores_per_fit = 2L
+    )
+  )
 }
 
 default_total_core_budget <- function() {

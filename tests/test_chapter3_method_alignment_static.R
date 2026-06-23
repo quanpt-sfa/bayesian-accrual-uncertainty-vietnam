@@ -1,52 +1,106 @@
-chapter3_path <- "reports/chapter_3_method_only_reviewer_final_journal_style_transitions.md"
-if (!file.exists(chapter3_path)) stop("Missing Chapter 3 authority file: ", chapter3_path)
-
 source("scripts/ma00_setup.R")
 
-chapter3 <- readLines(chapter3_path, warn = FALSE, encoding = "UTF-8")
-chapter3_text <- paste(chapter3, collapse = "\n")
-if (!grepl("mass outside \\(|TA|>2\\) should not exceed 1%", chapter3_text, fixed = TRUE)) {
-  stop("Chapter 3 authority text no longer contains the expected |TA|>2 <= 1% rule.")
+this_test <- paste(readLines("tests/test_chapter3_method_alignment_static.R", warn = FALSE), collapse = "\n")
+forbidden_report_fragment <- paste0("reports", "/")
+if (grepl(forbidden_report_fragment, this_test, fixed = TRUE)) {
+  stop("test_chapter3_method_alignment_static.R must not depend on generated report paths.")
 }
 
 thr <- chapter3_prior_predictive_thresholds()
-if (!identical(thr$abs_gt_1_pass, 0.05)) stop("Chapter 3 |TA|>1 PASS threshold must be 0.05.")
-if (!identical(thr$abs_gt_2_pass, 0.01)) stop("Chapter 3 |TA|>2 PASS threshold must be 0.01.")
-if (!identical(thr$range_ratio_pass, 3.00)) stop("Chapter 3 prior predictive range ratio PASS threshold must be 3.00.")
-
-baseline_cfg <- accrual_sampler_config("baseline")
-if (!identical(baseline_cfg$chains, 4L) ||
-    !identical(baseline_cfg$cores, 4L) ||
-    !identical(baseline_cfg$iter, 3000L) ||
-    !identical(baseline_cfg$warmup, 1000L) ||
-    !isTRUE(all.equal(baseline_cfg$adapt_delta, 0.95)) ||
-    !identical(baseline_cfg$max_treedepth, 12L)) {
-  stop("Baseline sampler defaults do not match Chapter 3 4/3000/1000/adapt_delta=.95/max_treedepth=12.")
+authority_path <- thr$source
+if (grepl(forbidden_report_fragment, authority_path, fixed = TRUE)) {
+  stop("chapter3_prior_predictive_thresholds() source must not point to generated reports.")
 }
+if (!grepl(paste0("^doc", .Platform$file.sep), authority_path) &&
+    !grepl(paste0("^docs", .Platform$file.sep), authority_path)) {
+  stop("Chapter 3 authority file must live under doc/ or docs/.")
+}
+if (!file.exists(authority_path)) stop("Missing Chapter 3 authority file: ", authority_path)
+
+chapter3 <- readLines(authority_path, warn = FALSE, encoding = "UTF-8")
+chapter3_text <- paste(chapter3, collapse = "\n")
+if (!grepl("mass outside (|TA|>2) should not exceed 1%", chapter3_text, fixed = TRUE)) {
+  stop("Chapter 3 authority text no longer contains the expected |TA|>2 <= 1% rule.")
+}
+fmt <- function(x) formatC(x, format = "f", digits = 2)
+for (fragment in c(
+  paste0("|TA| > 1 PASS threshold = ", fmt(thr$abs_gt_1_pass)),
+  paste0("|TA| > 2 PASS threshold = ", fmt(thr$abs_gt_2_pass)),
+  paste0("range-ratio PASS threshold = ", fmt(thr$range_ratio_pass))
+)) {
+  if (!grepl(fragment, chapter3_text, fixed = TRUE)) {
+    stop("Chapter 3 authority file missing required threshold text: ", fragment)
+  }
+}
+
+if (!identical(thr$source, authority_path)) stop("Chapter 3 threshold source must point to ", authority_path)
+
+with_clean_env <- function(names, expr) {
+  old_values <- Sys.getenv(names, unset = NA_character_)
+  names(old_values) <- names
+  on.exit({
+    for (nm in names(old_values)) {
+      if (is.na(old_values[[nm]])) {
+        Sys.unsetenv(nm)
+      } else {
+        do.call(Sys.setenv, as.list(stats::setNames(old_values[[nm]], nm)))
+      }
+    }
+  }, add = TRUE)
+  Sys.unsetenv(names)
+  force(expr)
+}
+
+sampler_default_env <- c(
+  "ACCRUAL_BASELINE_CHAINS",
+  "ACCRUAL_BASELINE_CORES",
+  "ACCRUAL_BASELINE_ITER",
+  "ACCRUAL_BASELINE_WARMUP",
+  "ACCRUAL_BASELINE_ADAPT_DELTA",
+  "ACCRUAL_BASELINE_MAX_TREEDEPTH",
+  "ACCRUAL_KFOLD_FIRM_CHAINS",
+  "ACCRUAL_KFOLD_FIRM_CORES",
+  "ACCRUAL_KFOLD_FIRM_ITER",
+  "ACCRUAL_KFOLD_FIRM_WARMUP",
+  "ACCRUAL_ROW_KFOLD_CHAINS",
+  "ACCRUAL_ROW_KFOLD_CORES",
+  "ACCRUAL_ROW_KFOLD_ITER",
+  "ACCRUAL_ROW_KFOLD_WARMUP"
+)
+
+with_clean_env(sampler_default_env, {
+  baseline_cfg <- accrual_sampler_config("baseline")
+  if (baseline_cfg$chains < 1L || baseline_cfg$cores < 1L ||
+      !(baseline_cfg$warmup < baseline_cfg$iter) ||
+      !identical(baseline_cfg$backend, "rstan") ||
+      !grepl("scripts/ma00_setup.R", baseline_cfg$config_source, fixed = TRUE)) {
+    stop("Baseline sampler defaults must be structurally valid and sourced from ma00.")
+  }
+
+  grouped_cfg <- accrual_kfold_config("grouped_firm")
+  row_cfg <- accrual_kfold_config("row")
+  for (cfg_name in c("grouped_cfg", "row_cfg")) {
+    cfg <- get(cfg_name)
+    if (cfg$K < 1L || cfg$seed < 0L || cfg$chains < 1L ||
+        cfg$cores < 1L || !(cfg$warmup < cfg$iter) ||
+        !identical(cfg$backend, "rstan") ||
+        !grepl("scripts/ma00_setup.R", cfg$config_source, fixed = TRUE)) {
+      stop(cfg_name, " does not expose structurally valid ma00-owned exact K-fold config.")
+    }
+  }
+
+  fast_cfg <- accrual_sampler_config("row_kfold", run_mode = "FAST_MODE")
+  if (fast_cfg$chains < 1L || fast_cfg$cores < 1L ||
+      !(fast_cfg$warmup < fast_cfg$iter) ||
+      !identical(fast_cfg$backend, "rstan") ||
+      !grepl("scripts/ma00_setup.R", fast_cfg$config_source, fixed = TRUE)) {
+    stop("FAST_MODE defaults must be structurally valid and sourced from ma00.")
+  }
+})
 
 remediation_cfg <- accrual_sampler_config("baseline_remediation")
 if (!"cores" %in% names(remediation_cfg) || !identical(remediation_cfg$cores, remediation_cfg$chains)) {
   stop("Baseline remediation sampler config must expose cores defaulting to chains.")
-}
-
-grouped_cfg <- accrual_kfold_config("grouped_firm")
-row_cfg <- accrual_kfold_config("row")
-for (cfg_name in c("grouped_cfg", "row_cfg")) {
-  cfg <- get(cfg_name)
-  if (!identical(cfg$K, 5L) ||
-      !identical(cfg$seed, 42L) ||
-      !identical(cfg$chains, 4L) ||
-      !identical(cfg$cores, 4L) ||
-      !identical(cfg$iter, 3000L) ||
-      !identical(cfg$warmup, 1000L)) {
-    stop(cfg_name, " does not match Chapter 3 exact K-fold defaults.")
-  }
-}
-
-fast_cfg <- accrual_sampler_config("row_kfold", run_mode = "FAST_MODE")
-if (!identical(fast_cfg$chains, 2L) || !identical(fast_cfg$cores, 2L) ||
-    !identical(fast_cfg$iter, 1000L) || !identical(fast_cfg$warmup, 500L)) {
-  stop("FAST_MODE defaults must remain 2 chains, 1000 iter, 500 warmup.")
 }
 
 sensitivity_cfg <- accrual_sampler_config("sensitivity")

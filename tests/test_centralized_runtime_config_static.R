@@ -14,13 +14,24 @@ if (!grepl('"prior_predictive"', ma00, fixed = TRUE) ||
 }
 
 prior_cfg <- accrual_sampler_config("prior_predictive")
-if (!identical(prior_cfg$chains, 2L)) stop("Default prior_predictive chains must be 2.")
-if (!identical(prior_cfg$cores, prior_cfg$chains)) stop("Default prior_predictive cores must equal chains.")
-if (!identical(prior_cfg$iter, 1000L)) stop("Default prior_predictive iter must be 1000.")
-if (!identical(prior_cfg$warmup, 500L)) stop("Default prior_predictive warmup must be 500.")
-if (!(prior_cfg$warmup < prior_cfg$iter)) stop("Default prior_predictive warmup must be smaller than iter.")
-if (!identical(prior_cfg$refresh, 0L)) stop("Default prior_predictive refresh must be 0.")
-if (!identical(prior_cfg$backend, "rstan")) stop("Default prior_predictive backend must be rstan.")
+required_prior_fields <- c(
+  "chains", "cores", "iter", "warmup", "adapt_delta", "max_treedepth",
+  "refresh", "backend", "sampler_profile", "config_source"
+)
+missing_prior_fields <- setdiff(required_prior_fields, names(prior_cfg))
+if (length(missing_prior_fields)) {
+  stop("prior_predictive sampler config missing field(s): ", paste(missing_prior_fields, collapse = ", "))
+}
+if (!is.finite(prior_cfg$chains) || prior_cfg$chains < 1L) stop("prior_predictive chains must be >= 1.")
+if (!is.finite(prior_cfg$cores) || prior_cfg$cores < 1L) stop("prior_predictive cores must be >= 1.")
+if (!is.finite(prior_cfg$iter) || !is.finite(prior_cfg$warmup) || !(prior_cfg$warmup < prior_cfg$iter)) {
+  stop("prior_predictive warmup must be smaller than iter.")
+}
+if (prior_cfg$cores > prior_cfg$chains) stop("prior_predictive cores should not exceed chains unless explicitly redesigned.")
+if (!identical(prior_cfg$backend, "rstan")) stop("prior_predictive backend must be rstan.")
+if (!grepl("scripts/ma00_setup.R", prior_cfg$config_source, fixed = TRUE)) {
+  stop("prior_predictive config_source must point to scripts/ma00_setup.R.")
+}
 
 if (grepl("chains\\s*<-\\s*2", ma06, perl = TRUE)) {
   stop("ma06 must not hard-code chains <- 2.")

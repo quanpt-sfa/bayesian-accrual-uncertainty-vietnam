@@ -118,27 +118,24 @@ if (!grepl("posterior_epred", ma07b, fixed = TRUE) ||
   stop("ma07b must preserve downstream draw artifact generation.")
 }
 
-old_env <- Sys.getenv(c("ACCRUAL_ENABLE_MODEL_PARALLEL", "ACCRUAL_MODEL_PARALLEL_WORKERS", "ACCRUAL_TOTAL_CORE_BUDGET", "ACCRUAL_BASELINE_CORES"))
+parallel_scenarios <- accrual_test_parallel_scenarios()
+scenario_env_names <- unique(unlist(lapply(parallel_scenarios, function(x) names(x$env)), use.names = FALSE))
+old_env <- Sys.getenv(scenario_env_names, unset = NA_character_)
 on.exit({
   for (nm in names(old_env)) {
-    if (!nzchar(old_env[[nm]])) Sys.unsetenv(nm) else do.call(Sys.setenv, as.list(stats::setNames(old_env[[nm]], nm)))
+    if (is.na(old_env[[nm]])) Sys.unsetenv(nm) else do.call(Sys.setenv, as.list(stats::setNames(old_env[[nm]], nm)))
   }
-  Sys.unsetenv("ACCRUAL_ALLOW_NESTED_RSTAN_CORES")
 }, add = TRUE)
-Sys.setenv(
-  ACCRUAL_ENABLE_MODEL_PARALLEL = "TRUE",
-  ACCRUAL_MODEL_PARALLEL_WORKERS = "2",
-  ACCRUAL_TOTAL_CORE_BUDGET = "4",
-  ACCRUAL_BASELINE_CORES = "2",
-  ACCRUAL_ALLOW_NESTED_RSTAN_CORES = "TRUE"
-)
-cfg <- accrual_model_parallel_config(cores_per_fit = 2L, context = "static test")
-if (!isTRUE(cfg$enabled) || !identical(cfg$workers, 2L) || !identical(cfg$total_core_budget, 4L)) {
+do.call(Sys.setenv, as.list(parallel_scenarios$valid_budget$env))
+cfg <- accrual_model_parallel_config(cores_per_fit = parallel_scenarios$valid_budget$cores_per_fit, context = "static test")
+if (!isTRUE(cfg$enabled) ||
+    !identical(as.character(cfg$workers), parallel_scenarios$valid_budget$env[["ACCRUAL_MODEL_PARALLEL_WORKERS"]]) ||
+    !identical(as.character(cfg$total_core_budget), parallel_scenarios$valid_budget$env[["ACCRUAL_TOTAL_CORE_BUDGET"]])) {
   stop("accrual_model_parallel_config did not parse enabled worker config as expected.")
 }
-Sys.setenv(ACCRUAL_MODEL_PARALLEL_WORKERS = "3", ACCRUAL_TOTAL_CORE_BUDGET = "4")
+do.call(Sys.setenv, as.list(parallel_scenarios$over_budget$env))
 blocked <- tryCatch({
-  accrual_model_parallel_config(cores_per_fit = 2L, context = "static overbudget test")
+  accrual_model_parallel_config(cores_per_fit = parallel_scenarios$over_budget$cores_per_fit, context = "static overbudget test")
   FALSE
 }, error = function(e) grepl("[BLOCKER]", conditionMessage(e), fixed = TRUE))
 if (!isTRUE(blocked)) {
