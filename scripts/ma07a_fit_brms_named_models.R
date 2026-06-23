@@ -337,8 +337,9 @@ if (parallel_cfg$enabled && parallel_cfg$workers > 1L) {
   on.exit(parallel::stopCluster(cl), add = TRUE)
   parallel::clusterExport(
     cl,
-    varlist = c("fit_ma07a_task_worker", "metadata_matches_file", "write_metadata_file",
-                "force_refit", "remediation_mode", "backfill_diagnostics_only"),
+    varlist = c("fit_ma07a_task_worker", "metadata_matches_file", "metadata_state_file",
+                "write_metadata_file", "force_refit", "remediation_mode",
+                "backfill_diagnostics_only", "adopt_legacy_ma07_fits"),
     envir = environment()
   )
   statuses <- parallel::parLapplyLB(cl, task_list, fit_ma07a_task_worker)

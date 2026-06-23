@@ -79,6 +79,27 @@ for (fragment in c(
 if (!grepl("write_metadata_file\\(task\\$metadata_path, expected_meta\\)", ma07a)) {
   stop("ma07a must be able to adopt legacy ma07 fits by writing metadata without refitting.")
 }
+cluster_export_match <- regmatches(
+  ma07a,
+  regexpr("parallel::clusterExport\\([\\s\\S]*?\\n\\s*\\)", ma07a, perl = TRUE)
+)
+if (!length(cluster_export_match) || !nzchar(cluster_export_match)) {
+  stop("ma07a must explicitly export worker dependencies with parallel::clusterExport().")
+}
+for (symbol in c(
+  "fit_ma07a_task_worker",
+  "metadata_matches_file",
+  "metadata_state_file",
+  "write_metadata_file",
+  "force_refit",
+  "remediation_mode",
+  "backfill_diagnostics_only",
+  "adopt_legacy_ma07_fits"
+)) {
+  if (!grepl(symbol, cluster_export_match, fixed = TRUE)) {
+    stop("ma07a clusterExport() missing worker dependency: ", symbol)
+  }
+}
 
 if (grepl("\\bbrm\\s*\\(", ma07b, perl = TRUE)) {
   stop("ma07b must not contain a brm() fitting call.")
