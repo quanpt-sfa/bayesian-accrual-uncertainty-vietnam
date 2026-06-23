@@ -20,6 +20,7 @@ validate_final_analysis_config("ma07a baseline brms fit", final_mode = TRUE)
 backfill_diagnostics_only <- env_flag("ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY", "FALSE")
 remediation_targets_raw <- trimws(env_value("ACCRUAL_MCMC_REMEDIATION_TARGETS", ""))
 remediation_mode <- nzchar(remediation_targets_raw)
+adopt_legacy_ma07_fits <- env_flag("ACCRUAL_ADOPT_LEGACY_MA07_FITS", "FALSE")
 if (backfill_diagnostics_only && force_refit) {
   stop("[BLOCKER] ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE cannot be combined with ACCRUAL_FORCE_REFIT=TRUE.")
 }
@@ -66,6 +67,12 @@ metadata_matches_file <- function(path, expected) {
     if (!identical(as.character(old[[nm]][1]), as.character(expected[[nm]][1]))) return(FALSE)
   }
   TRUE
+}
+
+metadata_state_file <- function(path, expected) {
+  if (!file.exists(path)) return("legacy_metadata_missing")
+  if (metadata_matches_file(path, expected)) return("metadata_matched")
+  "metadata_mismatch"
 }
 
 write_metadata_file <- function(path, expected) {
@@ -197,6 +204,7 @@ fit_ma07a_task_worker <- function(task) {
   source("scripts/ma00_setup.R")
   status <- "FAILED"
   error_message <- ""
+  metadata_status <- NA_character_
   started_at <- as.character(Sys.time())
   fit_exists_before <- file.exists(task$fit_path)
   metadata_matches <- FALSE
@@ -219,9 +227,27 @@ fit_ma07a_task_worker <- function(task) {
   )
 
   result <- tryCatch({
-    metadata_matches <- metadata_matches_file(task$metadata_path, expected_meta)
+    metadata_status <- metadata_state_file(task$metadata_path, expected_meta)
+    metadata_matches <- identical(metadata_status, "metadata_matched")
     if (file.exists(task$fit_path) && metadata_matches && !force_refit && !isTRUE(task$row_is_remediation_target)) {
       status <- "SKIPPED_EXISTING_MATCHED_FIT"
+    } else if (file.exists(task$fit_path) &&
+               identical(metadata_status, "legacy_metadata_missing") &&
+               backfill_diagnostics_only &&
+               !force_refit) {
+      status <- "SKIPPED_BACKFILL_EXISTING_FIT"
+    } else if (file.exists(task$fit_path) &&
+               identical(metadata_status, "legacy_metadata_missing") &&
+               adopt_legacy_ma07_fits &&
+               !force_refit) {
+      write_metadata_file(task$metadata_path, expected_meta)
+      metadata_status <- "legacy_metadata_adopted"
+      status <- "SKIPPED_ADOPTED_LEGACY_FIT"
+    } else if (file.exists(task$fit_path) &&
+               identical(metadata_status, "legacy_metadata_missing") &&
+               !force_refit) {
+      status <- "BLOCKED_METADATA_MISSING"
+      stop("[BLOCKER] Existing ma07 fit is missing metadata. Set ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE for diagnostics-only backfill or ACCRUAL_ADOPT_LEGACY_MA07_FITS=TRUE to adopt the legacy fit without refitting: ", task$fit_path)
     } else if (file.exists(task$fit_path) && !metadata_matches && !force_refit && !isTRUE(task$row_is_remediation_target)) {
       status <- "BLOCKED_METADATA_MISMATCH"
       stop("[BLOCKER] Existing ma07 fit metadata does not match requested configuration: ", task$fit_path)
@@ -261,6 +287,7 @@ fit_ma07a_task_worker <- function(task) {
       )
       saveRDS(fit, task$fit_path)
       write_metadata_file(task$metadata_path, expected_meta)
+      metadata_status <- "metadata_written"
       status <- "SUCCESS"
     }
     NULL
@@ -271,7 +298,8 @@ fit_ma07a_task_worker <- function(task) {
   invisible(result)
 
   ended_at <- as.character(Sys.time())
-  log_lines <- c(log_lines, paste0("Ended: ", ended_at), paste0("Status: ", status), paste0("Error: ", error_message))
+  log_lines <- c(log_lines, paste0("Ended: ", ended_at), paste0("Status: ", status),
+                 paste0("Metadata status: ", metadata_status), paste0("Error: ", error_message))
   writeLines(log_lines, task$log_path, useBytes = TRUE)
   data.frame(
     task_index = task$task_index,
@@ -293,6 +321,7 @@ fit_ma07a_task_worker <- function(task) {
     fit_exists_before = fit_exists_before,
     fit_exists_after = file.exists(task$fit_path),
     metadata_matches_before = metadata_matches,
+    metadata_status = metadata_status,
     started_at = started_at,
     ended_at = ended_at,
     stringsAsFactors = FALSE
@@ -322,7 +351,7 @@ status_df <- bind_rows(statuses) %>% arrange(task_index)
 write.csv(status_df, status_path, row.names = FALSE)
 
 blocking <- status_df %>%
-  filter(.data$status %in% c("FAILED", "BLOCKED_METADATA_MISMATCH", "BLOCKED_MISSING_NON_TARGET_FIT", "BLOCKED_BACKFILL_MISSING_FIT"))
+  filter(.data$status %in% c("FAILED", "BLOCKED_METADATA_MISSING", "BLOCKED_METADATA_MISMATCH", "BLOCKED_MISSING_NON_TARGET_FIT", "BLOCKED_BACKFILL_MISSING_FIT"))
 if (nrow(blocking) && any(blocking$Main_Stack_Inclusion %in% TRUE)) {
   stop("[BLOCKER] Required main-stack ma07a fit task failed or was blocked: ",
        paste(blocking$task_key[blocking$Main_Stack_Inclusion %in% TRUE], collapse = "; "))

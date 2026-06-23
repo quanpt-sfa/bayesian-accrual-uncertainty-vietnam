@@ -27,6 +27,9 @@ if (!grepl("ACCRUAL_TOTAL_CORE_BUDGET", ma00, fixed = TRUE) ||
     !grepl("ACCRUAL_MODEL_PARALLEL_WORKERS", ma00, fixed = TRUE)) {
   stop("ma00 is missing model-parallel environment variable handling.")
 }
+if (grepl("split_tasks_for_workers", ma00, fixed = TRUE)) {
+  stop("ma00 should not expose split_tasks_for_workers while ma07a uses parLapplyLB scheduling.")
+}
 
 blocked_shared_outputs <- c(
   "table_brms_diagnostics_winsor.csv",
@@ -59,6 +62,22 @@ if (!grepl("seed\\s*=\\s*task\\$Effective_Seed", ma07a)) {
 }
 if (!grepl("cores\\s*=\\s*task\\$cores", ma07a)) {
   stop("ma07a must pass explicit cores into the brms fit call.")
+}
+for (fragment in c(
+  "ACCRUAL_ADOPT_LEGACY_MA07_FITS",
+  "metadata_state_file",
+  "legacy_metadata_missing",
+  "SKIPPED_BACKFILL_EXISTING_FIT",
+  "SKIPPED_ADOPTED_LEGACY_FIT",
+  "BLOCKED_METADATA_MISSING",
+  "metadata_status"
+)) {
+  if (!grepl(fragment, ma07a, fixed = TRUE)) {
+    stop("ma07a missing legacy metadata handling fragment: ", fragment)
+  }
+}
+if (!grepl("write_metadata_file\\(task\\$metadata_path, expected_meta\\)", ma07a)) {
+  stop("ma07a must be able to adopt legacy ma07 fits by writing metadata without refitting.")
 }
 
 if (grepl("\\bbrm\\s*\\(", ma07b, perl = TRUE)) {

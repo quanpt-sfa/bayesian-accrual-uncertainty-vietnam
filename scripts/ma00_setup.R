@@ -356,11 +356,6 @@ accrual_model_parallel_config <- function(cores_per_fit, context = "unknown") {
   )
 }
 
-split_tasks_for_workers <- function(tasks, workers) {
-  if (workers <= 1L) return(list(tasks))
-  split(tasks, rep(seq_len(workers), length.out = length(tasks)))
-}
-
 accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "baseline_remediation"),
                                    run_mode = "FULL_MODE", varying_slopes = FALSE) {
   kind <- match.arg(kind)
@@ -478,6 +473,7 @@ write_execution_config_registry <- function(path = file.path(method_design_root,
       row("model_parallel", "total_core_budget", env_int("ACCRUAL_TOTAL_CORE_BUDGET", default_total_core_budget(), min = 1L), "ACCRUAL_TOTAL_CORE_BUDGET", "Budget checked against workers times cores_per_fit."),
       row("model_parallel", "backend", env_value("ACCRUAL_PARALLEL_BACKEND", "base_parallel"), "ACCRUAL_PARALLEL_BACKEND", "Allowed backend: base_parallel."),
       row("model_parallel", "retry_failed", env_flag("ACCRUAL_TASK_RETRY_FAILED", "FALSE"), "ACCRUAL_TASK_RETRY_FAILED", "Reserved task retry flag for split fit stages."),
+      row("ma07_legacy_fit_adoption", "enabled", env_flag("ACCRUAL_ADOPT_LEGACY_MA07_FITS", "FALSE"), "ACCRUAL_ADOPT_LEGACY_MA07_FITS", "If TRUE, ma07a writes metadata for legacy fit artifacts with missing metadata without refitting."),
       row("grouped_kfold", "K", accrual_kfold_config("grouped_firm")$K, "ACCRUAL_KFOLD_FIRM_K"),
       row("row_kfold", "K", accrual_kfold_config("row")$K, "ACCRUAL_ROW_KFOLD_K"),
       row("model_space", "ex_post_primary_models", main_model_ids_for_space("ex_post"), "", "M08/M10 secondary; M11/M12 excluded."),

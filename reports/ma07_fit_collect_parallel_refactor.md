@@ -54,6 +54,8 @@ Concurrent worker writes to shared CSVs can corrupt files or create nondetermini
 
 Each fit task has a metadata CSV. If `fit_<model_key>.rds` and matching metadata exist, `ma07a` marks the task `SKIPPED_EXISTING_MATCHED_FIT`. If metadata mismatches and `ACCRUAL_FORCE_REFIT` is not true, the task is blocked. If `ACCRUAL_FORCE_REFIT=TRUE`, the task intentionally refits.
 
+Legacy fit artifacts from before the metadata split are handled explicitly. If a fit exists but metadata is missing, `ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE` allows `SKIPPED_BACKFILL_EXISTING_FIT` with `metadata_status = legacy_metadata_missing`. If `ACCRUAL_ADOPT_LEGACY_MA07_FITS=TRUE`, `ma07a` writes metadata from the current task manifest and marks the task `SKIPPED_ADOPTED_LEGACY_FIT` without refitting. Otherwise, missing metadata remains a blocker.
+
 Seeds remain deterministic by task identity and original row index. Worker IDs are not used in RNG contexts or offsets.
 
 ## Phase 2 plan
