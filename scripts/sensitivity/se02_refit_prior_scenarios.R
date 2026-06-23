@@ -134,6 +134,7 @@ for (sidx in seq_len(nrow(scenarios))) {
       warmup = warmup,
       adapt_delta = adapt_delta,
       max_treedepth = max_treedepth,
+      backend = "rstan",
       RNG_Context = fit_rng_meta$RNG_Context,
       RNG_Offset = fit_rng_meta$RNG_Offset,
       Canonical_Seed = fit_rng_meta$Canonical_Seed,

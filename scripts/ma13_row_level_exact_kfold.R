@@ -418,6 +418,13 @@ planned_tasks <- do.call(rbind, lapply(seq_len(nrow(eligible)), function(i) {
       Model_Key = model_key,
       Fit_Path = file.path(models_dir, paste0("fit_", model_key, ".rds")),
       Score_Cache_Path = file.path(cache_dir, paste0("score_", model_key, ".rds")),
+      Chains = chains,
+      Cores = row_kfold_chain_cores,
+      Iter = iter,
+      Warmup = warmup,
+      Adapt_Delta = adapt_delta,
+      Max_Treedepth = max_treedepth,
+      Backend = "rstan",
       Status = "PLANNED",
       Completed = FALSE,
       Failure_Reason = NA_character_,
@@ -449,11 +456,13 @@ write_manifest <- function(status, extra_note = NA_character_) {
     RNG_Source = row_run_rng_meta$RNG_Source,
     Run_Mode = run_mode,
     Chains = chains,
+    Cores = row_kfold_chain_cores,
     Chain_Cores = row_kfold_chain_cores,
     Iter = iter,
     Warmup = warmup,
     Adapt_Delta = adapt_delta,
     Max_Treedepth = max_treedepth,
+    Backend = "rstan",
     Sampler_Profile = kfold_cfg$sampler_profile,
     Config_Source = kfold_cfg$config_source,
     Target_Space_Filter = paste(target_space_filter, collapse = ","),
@@ -552,6 +561,15 @@ score_task <- function(task) {
     train_hash = stable_hash(train_df$observation_id),
     test_hash = stable_hash(test_df$observation_id)
   )
+  sampler_provenance <- list(
+    chains = chains,
+    cores = row_kfold_chain_cores,
+    iter = iter,
+    warmup = warmup,
+    adapt_delta = adapt_delta,
+    max_treedepth = max_treedepth,
+    backend = "rstan"
+  )
   cache_ok <- FALSE
   if (file.exists(task$Score_Cache_Path)) {
     cached <- tryCatch(readRDS(task$Score_Cache_Path), error = function(e) NULL)
@@ -593,7 +611,8 @@ score_task <- function(task) {
   finish <- function(diag, obs = data.frame(), audit = data.frame()) {
     diag$Ended_At <- format_time(Sys.time())
     diag$Runtime_Seconds <- as.numeric(difftime(Sys.time(), task_start, units = "secs"))
-    result <- list(cache_meta = expected_meta, fold_diag = diag, obs_scores = obs, standardization_audit = audit)
+    result <- list(cache_meta = expected_meta, sampler_provenance = sampler_provenance,
+                   fold_diag = diag, obs_scores = obs, standardization_audit = audit)
     saveRDS(result, task$Score_Cache_Path)
     result
   }

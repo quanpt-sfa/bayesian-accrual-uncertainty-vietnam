@@ -89,15 +89,30 @@ if (!grepl("cores\\s*=\\s*kfold_chain_cores", ma12_text, perl = TRUE) ||
     !grepl("kfold_chain_cores\\s*<-\\s*kfold_cfg\\$cores", ma12_text, perl = TRUE)) {
   stop("ma12 grouped K-fold brm() call must pass cores from accrual_kfold_config().")
 }
+for (fragment in c("Cores = kfold_chain_cores", "Backend = \"rstan\"", "sampler_provenance <- list(",
+                   "cores = kfold_chain_cores", "backend = \"rstan\"")) {
+  if (!grepl(fragment, ma12_text, fixed = TRUE)) {
+    stop("ma12 grouped K-fold cache/manifest metadata missing sampler provenance fragment: ", fragment)
+  }
+}
 ma13_text <- script_text("scripts/ma13_row_level_exact_kfold.R")
 if (!grepl("cores\\s*=\\s*row_kfold_chain_cores", ma13_text, perl = TRUE) ||
     !grepl("row_kfold_chain_cores\\s*<-\\s*kfold_cfg\\$cores", ma13_text, perl = TRUE)) {
   stop("ma13 row K-fold brm() call must pass cores from accrual_kfold_config().")
 }
+for (fragment in c("Cores = row_kfold_chain_cores", "Backend = \"rstan\"", "sampler_provenance <- list(",
+                   "cores = row_kfold_chain_cores", "backend = \"rstan\"")) {
+  if (!grepl(fragment, ma13_text, fixed = TRUE)) {
+    stop("ma13 row K-fold cache/manifest metadata missing sampler provenance fragment: ", fragment)
+  }
+}
 se02_text <- script_text("scripts/sensitivity/se02_refit_prior_scenarios.R")
 if (!grepl("cores\\s*=\\s*cores", se02_text, perl = TRUE) ||
     !grepl("cores\\s*<-\\s*sampler_cfg\\$cores", se02_text, perl = TRUE)) {
   stop("se02 sensitivity brm() call must pass cores from accrual_sampler_config().")
+}
+if (!grepl("backend = \"rstan\"", se02_text, fixed = TRUE)) {
+  stop("se02 sensitivity metadata must record backend = rstan.")
 }
 ma06_text <- script_text("scripts/ma06_prior_predictive_checks.R")
 if (!grepl("ACCRUAL_BASELINE_CORES", ma06_text, fixed = TRUE) ||

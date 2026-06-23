@@ -142,11 +142,13 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Config_Tag = config_tag,
     Kfold_Run_Root = kfold_run_root,
     Chains = chains,
+    Cores = kfold_chain_cores,
     Chain_Cores = kfold_chain_cores,
     Iter = iter,
     Warmup = warmup,
     Adapt_Delta = adapt_delta,
     Max_Treedepth = max_treedepth,
+    Backend = "rstan",
     Sampler_Profile = kfold_cfg$sampler_profile,
     Config_Source = kfold_cfg$config_source,
     RNG_Context = grouped_run_rng_meta$RNG_Context,
@@ -651,6 +653,13 @@ main <- function() {
         Model_Key = mapply(model_key_for_task, Model_ID, Target_Space, Sample_Group, Heterogeneity_Variant, Fold_ID),
         Fit_Path = file.path(models_dir, paste0("fit_", Model_Key, ".rds")),
         Score_Cache_Path = file.path(cache_dir, paste0(Model_Key, "_scores.rds")),
+        Chains = chains,
+        Cores = kfold_chain_cores,
+        Iter = iter,
+        Warmup = warmup,
+        Adapt_Delta = adapt_delta,
+        Max_Treedepth = max_treedepth,
+        Backend = "rstan",
         M02_Included_In_Main_KFold = "M02" %in% unique(Model_ID),
         Stratified_Grouped_KFold = kfold_stratified_groups,
         Repeated_Grouped_KFold_Repeats = kfold_repeats,
@@ -691,6 +700,7 @@ main <- function() {
       ) %>%
       select(Target_Space, Sample_Group, Fold_ID, Model_ID, Model_Name, Heterogeneity_Variant,
              Config_Tag, Run_Mode, K, Run_ID, Model_Key, Fit_Path, Score_Cache_Path,
+             Chains, Cores, Iter, Warmup, Adapt_Delta, Max_Treedepth, Backend,
              Status, Started_At, Ended_At, Runtime_Seconds, N_Train_Obs, N_Test_Obs,
              N_Train_Firms, N_Test_Firms, Completed, Failure_Reason, Max_Rhat,
              Min_ESS_Bulk, Min_ESS_Tail, ESS_Warning, Divergences, Treedepth_Warnings,
@@ -746,6 +756,16 @@ main <- function() {
     if (is.null(cache_meta) || !all(needed %in% names(cache_meta))) return(FALSE)
     all(vapply(needed, function(nm) identical(as.character(cache_meta[[nm]]), as.character(expected_meta[[nm]])), logical(1)))
   }
+
+  sampler_provenance <- list(
+    chains = chains,
+    cores = kfold_chain_cores,
+    iter = iter,
+    warmup = warmup,
+    adapt_delta = adapt_delta,
+    max_treedepth = max_treedepth,
+    backend = "rstan"
+  )
 
   standardize_fold_data <- function(train_df, test_df) {
     audit <- data.frame(Variable = character(), Train_Mean = double(), Train_SD = double(), Used_Fallback_Zero = logical())
@@ -955,7 +975,8 @@ main <- function() {
       base_diag$Ended_At <- format_time(end)
       base_diag$Runtime_Seconds <- as.numeric(difftime(end, task_start, units = "secs"))
       base_diag$Failure_Reason <- reason
-      result <- list(cache_meta = expected_meta, fold_diag = base_diag, obs_scores = data.frame(), standardization_audit = audit)
+      result <- list(cache_meta = expected_meta, sampler_provenance = sampler_provenance,
+                     fold_diag = base_diag, obs_scores = data.frame(), standardization_audit = audit)
       saveRDS(result, score_cache_path)
       update_manifest_row(model_key, list(
         Status = "FAILED",
@@ -1096,7 +1117,8 @@ main <- function() {
     base_diag$Runtime_Seconds <- as.numeric(difftime(task_end, task_start, units = "secs"))
     base_diag$Completed <- TRUE
 
-    result <- list(cache_meta = expected_meta, fold_diag = base_diag, obs_scores = obs_scores, standardization_audit = standardization_audit)
+    result <- list(cache_meta = expected_meta, sampler_provenance = sampler_provenance,
+                   fold_diag = base_diag, obs_scores = obs_scores, standardization_audit = standardization_audit)
     saveRDS(result, score_cache_path)
     update_manifest_row(model_key, list(
       Status = "COMPLETED",
