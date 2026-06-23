@@ -23,6 +23,7 @@ iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
+refresh <- sampler_cfg$refresh
 options(mc.cores = cores)
 
 scenarios <- selected_sensitivity_scenarios()
@@ -59,8 +60,8 @@ if (nrow(eligible_formulas) == 0) stop("[BLOCKER] No eligible formulas for sensi
 if (!dry_run && !requireNamespace("brms", quietly = TRUE)) stop("[BLOCKER] brms is required for non-dry-run sensitivity refits.")
 
 sampling_config <- sprintf(
-  "chains=%d; cores=%d; iter=%d; warmup=%d; adapt_delta=%.3f; max_treedepth=%d; canonical_seed=%d; dry_run=%s",
-  chains, cores, iter, warmup, adapt_delta, max_treedepth, accrual_base_seed(), dry_run
+  "chains=%d; cores=%d; iter=%d; warmup=%d; adapt_delta=%.3f; max_treedepth=%d; refresh=%d; canonical_seed=%d; dry_run=%s",
+  chains, cores, iter, warmup, adapt_delta, max_treedepth, refresh, accrual_base_seed(), dry_run
 )
 plan_rows <- list()
 diag_rows <- list()
@@ -134,6 +135,7 @@ for (sidx in seq_len(nrow(scenarios))) {
       warmup = warmup,
       adapt_delta = adapt_delta,
       max_treedepth = max_treedepth,
+      refresh = refresh,
       backend = "rstan",
       RNG_Context = fit_rng_meta$RNG_Context,
       RNG_Offset = fit_rng_meta$RNG_Offset,
@@ -237,7 +239,8 @@ for (sidx in seq_len(nrow(scenarios))) {
             ", iter=", iter,
             ", warmup=", warmup,
             ", adapt_delta=", adapt_delta,
-            ", max_treedepth=", max_treedepth
+            ", max_treedepth=", max_treedepth,
+            ", refresh=", refresh
           )
           brms::brm(
             formula = brms::bf(as.formula(formula_str)),
@@ -251,7 +254,7 @@ for (sidx in seq_len(nrow(scenarios))) {
             control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
             seed = fit_rng_meta$Effective_Seed,
             save_pars = brms::save_pars(all = TRUE),
-            refresh = 500
+            refresh = refresh
           )
         },
         warning = function(w) {

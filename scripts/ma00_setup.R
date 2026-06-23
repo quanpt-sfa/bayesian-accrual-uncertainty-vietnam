@@ -356,7 +356,9 @@ accrual_model_parallel_config <- function(cores_per_fit, context = "unknown") {
   )
 }
 
-accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity", "baseline_remediation"),
+accrual_sampler_config <- function(kind = c("baseline", "baseline_remediation", "prior_predictive",
+                                            "grouped_kfold", "row_kfold", "sensitivity",
+                                            "simulation", "diagnostic_calibration"),
                                    run_mode = "FULL_MODE", varying_slopes = FALSE) {
   kind <- match.arg(kind)
   run_mode <- toupper(run_mode)
@@ -374,6 +376,8 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
       warmup = env_int("ACCRUAL_BASELINE_WARMUP", 1000L, min = 0L),
       adapt_delta = env_num("ACCRUAL_BASELINE_ADAPT_DELTA", if (varying_slopes) 0.99 else 0.95, min = 0),
       max_treedepth = env_int(c("ACCRUAL_BASELINE_MAX_TREEDEPTH", "ACCRUAL_BASELINE_MAX_TREEDepth"), if (varying_slopes) 15L else 12L, min = 1L),
+      refresh = env_int("ACCRUAL_BASELINE_REFRESH", 500L, min = 0L),
+      backend = env_value("ACCRUAL_BRMS_BACKEND", "rstan"),
       run_mode = "FULL_MODE",
       sampler_profile = if (varying_slopes) "baseline_varying_slopes" else "baseline",
       config_source = "scripts/ma00_setup.R:accrual_sampler_config"
@@ -387,8 +391,26 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
       warmup = env_int("ACCRUAL_REMEDIATION_WARMUP", 2000L, min = 0L),
       adapt_delta = env_num("ACCRUAL_REMEDIATION_ADAPT_DELTA", 0.99, min = 0),
       max_treedepth = env_int("ACCRUAL_REMEDIATION_MAX_TREEDEPTH", 15L, min = 1L),
+      refresh = env_int("ACCRUAL_REMEDIATION_REFRESH", 500L, min = 0L),
+      backend = env_value("ACCRUAL_BRMS_BACKEND", "rstan"),
       run_mode = "REMEDIATION",
       sampler_profile = "baseline_remediation",
+      config_source = "scripts/ma00_setup.R:accrual_sampler_config"
+    )
+  } else if (identical(kind, "prior_predictive")) {
+    chains <- env_int("ACCRUAL_PRIOR_PRED_CHAINS", 2L, min = 1L)
+    iter <- env_int(c("ACCRUAL_PRIOR_PRED_ITER", "ACCRUAL_PRIOR_PRED_N_DRAWS"), prior_pred_n_draws, min = 1L)
+    cfg <- list(
+      chains = chains,
+      cores = env_int("ACCRUAL_PRIOR_PRED_CORES", chains, min = 1L),
+      iter = iter,
+      warmup = env_int("ACCRUAL_PRIOR_PRED_WARMUP", min(500L, floor(iter / 2)), min = 0L),
+      adapt_delta = env_num("ACCRUAL_PRIOR_PRED_ADAPT_DELTA", NA_real_, min = 0, allow_na = TRUE),
+      max_treedepth = env_int("ACCRUAL_PRIOR_PRED_MAX_TREEDEPTH", NA_integer_, min = 1L, allow_na = TRUE),
+      refresh = env_int("ACCRUAL_PRIOR_PRED_REFRESH", 0L, min = 0L),
+      backend = env_value("ACCRUAL_BRMS_BACKEND", "rstan"),
+      run_mode = "FULL_MODE",
+      sampler_profile = "prior_predictive",
       config_source = "scripts/ma00_setup.R:accrual_sampler_config"
     )
   } else if (kind %in% c("grouped_kfold", "row_kfold")) {
@@ -402,11 +424,13 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
       warmup = env_int(paste0(prefix, "_WARMUP"), if (full_defaults) 1000L else 500L, min = 0L),
       adapt_delta = env_num(paste0(prefix, "_ADAPT_DELTA"), 0.95, min = 0),
       max_treedepth = env_int(paste0(prefix, "_MAX_TREEDEPTH"), 12L, min = 1L),
+      refresh = env_int(paste0(prefix, "_REFRESH"), 500L, min = 0L),
+      backend = env_value("ACCRUAL_BRMS_BACKEND", "rstan"),
       run_mode = run_mode,
       sampler_profile = profile,
       config_source = "scripts/ma00_setup.R:accrual_sampler_config"
     )
-  } else {
+  } else if (identical(kind, "sensitivity")) {
     chains <- env_int("ACCRUAL_SENS_CHAINS", 4L, min = 1L)
     cfg <- list(
       chains = chains,
@@ -415,12 +439,45 @@ accrual_sampler_config <- function(kind = c("baseline", "grouped_kfold", "row_kf
       warmup = env_int("ACCRUAL_SENS_WARMUP", 1000L, min = 0L),
       adapt_delta = env_num("ACCRUAL_SENS_ADAPT_DELTA", 0.95, min = 0),
       max_treedepth = env_int("ACCRUAL_SENS_MAX_TREEDEPTH", 12L, min = 1L),
+      refresh = env_int("ACCRUAL_SENS_REFRESH", 500L, min = 0L),
+      backend = env_value("ACCRUAL_BRMS_BACKEND", "rstan"),
       run_mode = run_mode,
       sampler_profile = "sensitivity",
       config_source = "scripts/ma00_setup.R:accrual_sampler_config"
     )
+  } else if (identical(kind, "simulation")) {
+    chains <- env_int("ACCRUAL_SIM_CHAINS", 2L, min = 1L)
+    cfg <- list(
+      chains = chains,
+      cores = env_int("ACCRUAL_SIM_CORES", chains, min = 1L),
+      iter = env_int("ACCRUAL_SIM_ITER", 1000L, min = 1L),
+      warmup = env_int("ACCRUAL_SIM_WARMUP", 500L, min = 0L),
+      adapt_delta = env_num("ACCRUAL_SIM_ADAPT_DELTA", 0.95, min = 0),
+      max_treedepth = env_int("ACCRUAL_SIM_MAX_TREEDEPTH", 12L, min = 1L),
+      refresh = env_int("ACCRUAL_SIM_REFRESH", 0L, min = 0L),
+      backend = env_value("ACCRUAL_BRMS_BACKEND", "rstan"),
+      run_mode = run_mode,
+      sampler_profile = "simulation",
+      config_source = "scripts/ma00_setup.R:accrual_sampler_config"
+    )
+  } else {
+    chains <- env_int("ACCRUAL_CALIBRATION_CHAINS", 4L, min = 1L)
+    cfg <- list(
+      chains = chains,
+      cores = env_int("ACCRUAL_CALIBRATION_CORES", chains, min = 1L),
+      iter = env_int("ACCRUAL_CALIBRATION_ITER", 8000L, min = 1L),
+      warmup = env_int("ACCRUAL_CALIBRATION_WARMUP", 2000L, min = 0L),
+      adapt_delta = env_num("ACCRUAL_CALIBRATION_ADAPT_DELTA", 0.99, min = 0),
+      max_treedepth = env_int("ACCRUAL_CALIBRATION_MAX_TREEDEPTH", 15L, min = 1L),
+      refresh = env_int("ACCRUAL_CALIBRATION_REFRESH", 500L, min = 0L),
+      backend = env_value("ACCRUAL_BRMS_BACKEND", "rstan"),
+      run_mode = run_mode,
+      sampler_profile = "diagnostic_calibration",
+      config_source = "scripts/ma00_setup.R:accrual_sampler_config"
+    )
   }
   if (cfg$warmup >= cfg$iter) stop("[BLOCKER] warmup must be smaller than iter for ", kind, ".")
+  if (!identical(cfg$backend, "rstan")) stop("[BLOCKER] Only brms/rstan backend is allowed in this pipeline patch. Got: ", cfg$backend)
   validate_rstan_cores(cfg$cores, cfg$chains, paste(kind, run_mode))
   cfg
 }
@@ -458,6 +515,8 @@ write_execution_config_registry <- function(path = file.path(method_design_root,
       row(scope, "warmup", cfg$warmup, paste0("see_", cfg$sampler_profile), cfg$config_source),
       row(scope, "adapt_delta", cfg$adapt_delta, paste0("see_", cfg$sampler_profile), cfg$config_source),
       row(scope, "max_treedepth", cfg$max_treedepth, paste0("see_", cfg$sampler_profile), cfg$config_source),
+      row(scope, "refresh", cfg$refresh, paste0("see_", cfg$sampler_profile), cfg$config_source),
+      row(scope, "backend", cfg$backend, paste0("see_", cfg$sampler_profile), rstan_note),
       row(scope, "sampler_profile", cfg$sampler_profile, "", cfg$config_source)
     ))
   }
@@ -482,11 +541,14 @@ write_execution_config_registry <- function(path = file.path(method_design_root,
     list(
       sampler_rows("baseline", accrual_sampler_config("baseline")),
       sampler_rows("baseline_remediation", accrual_sampler_config("baseline_remediation")),
+      sampler_rows("prior_predictive", accrual_sampler_config("prior_predictive")),
       sampler_rows("grouped_kfold_FULL_MODE", accrual_sampler_config("grouped_kfold", "FULL_MODE")),
       sampler_rows("grouped_kfold_FAST_MODE", accrual_sampler_config("grouped_kfold", "FAST_MODE")),
       sampler_rows("row_kfold_FULL_MODE", accrual_sampler_config("row_kfold", "FULL_MODE")),
       sampler_rows("row_kfold_FAST_MODE", accrual_sampler_config("row_kfold", "FAST_MODE")),
-      sampler_rows("sensitivity", accrual_sampler_config("sensitivity"))
+      sampler_rows("sensitivity", accrual_sampler_config("sensitivity")),
+      sampler_rows("simulation", accrual_sampler_config("simulation")),
+      sampler_rows("diagnostic_calibration", accrual_sampler_config("diagnostic_calibration"))
     )
   ))
   write.csv(registry, path, row.names = FALSE)

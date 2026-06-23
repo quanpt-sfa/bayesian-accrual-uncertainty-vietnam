@@ -115,9 +115,9 @@ if (!grepl("backend = \"rstan\"", se02_text, fixed = TRUE)) {
   stop("se02 sensitivity metadata must record backend = rstan.")
 }
 ma06_text <- script_text("scripts/ma06_prior_predictive_checks.R")
-if (!grepl("ACCRUAL_BASELINE_CORES", ma06_text, fixed = TRUE) ||
-    !grepl("cores\\s*=\\s*cores", ma06_text, perl = TRUE)) {
-  stop("ma06 prior predictive brm() call must pass explicit baseline cores.")
+if (!grepl('accrual_sampler_config("prior_predictive")', ma06_text, fixed = TRUE) ||
+    !grepl("cores\\s*=\\s*prior_cfg\\$cores", ma06_text, perl = TRUE)) {
+  stop("ma06 prior predictive brm() call must use centralized prior_predictive sampler cores.")
 }
 ma09_text <- script_text("scripts/ma09_loo_stacking.R")
 if (!grepl("cores\\s*<-\\s*sampler_cfg\\$cores", ma09_text, perl = TRUE) ||
@@ -125,9 +125,9 @@ if (!grepl("cores\\s*<-\\s*sampler_cfg\\$cores", ma09_text, perl = TRUE) ||
   stop("ma09 LOO refit brm() call must pass cores from accrual_sampler_config().")
 }
 se01_text <- script_text("scripts/sensitivity/se01_prior_predictive.R")
-if (!grepl("ACCRUAL_SENS_CORES", se01_text, fixed = TRUE) ||
-    !grepl("cores\\s*=\\s*cores", se01_text, perl = TRUE)) {
-  stop("se01 sensitivity prior predictive brm() call must pass explicit sensitivity cores.")
+if (!grepl('accrual_sampler_config("prior_predictive")', se01_text, fixed = TRUE) ||
+    !grepl("cores\\s*=\\s*prior_cfg\\$cores", se01_text, perl = TRUE)) {
+  stop("se01 sensitivity prior predictive brm() call must use centralized prior_predictive sampler cores.")
 }
 si03_text <- script_text("scripts/simulation/si03_brms_leakage_confirmation.R")
 if (!grepl("ACCRUAL_SIM_CORES", si03_text, fixed = TRUE) ||

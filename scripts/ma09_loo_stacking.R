@@ -78,6 +78,7 @@ iter <- sampler_cfg$iter
 warmup <- sampler_cfg$warmup
 adapt_delta <- sampler_cfg$adapt_delta
 max_treedepth <- sampler_cfg$max_treedepth
+refresh <- sampler_cfg$refresh
 options(mc.cores = cores)
 
 eligible_joined <- eligible_models %>%
@@ -170,7 +171,8 @@ for (i in seq_len(nrow(eligible_joined))) {
       ", iter=", iter,
       ", warmup=", warmup,
       ", adapt_delta=", adapt_delta,
-      ", max_treedepth=", max_treedepth
+      ", max_treedepth=", max_treedepth,
+      ", refresh=", refresh
     )
 
     prior_list <- default_prior_list(row$Heterogeneity_Variant)
@@ -191,7 +193,7 @@ for (i in seq_len(nrow(eligible_joined))) {
           offset = i
         ),
         save_pars = save_pars(all = TRUE),
-        refresh = 500
+        refresh = refresh
       )
     }, error = function(e) {
       message("[ERROR] Winsor save_pars refit crashed: ", e$message)

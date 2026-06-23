@@ -33,6 +33,7 @@ iter <- kfold_cfg$iter
 warmup <- kfold_cfg$warmup
 adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
+refresh <- kfold_cfg$refresh
 kfold_chain_cores <- kfold_cfg$cores
 grouped_run_rng_meta <- accrual_rng_metadata_list("grouped_kfold_run_manifest")
 options(mc.cores = kfold_chain_cores)
@@ -148,6 +149,7 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Warmup = warmup,
     Adapt_Delta = adapt_delta,
     Max_Treedepth = max_treedepth,
+    Refresh = refresh,
     Backend = "rstan",
     Sampler_Profile = kfold_cfg$sampler_profile,
     Config_Source = kfold_cfg$config_source,
@@ -659,6 +661,7 @@ main <- function() {
         Warmup = warmup,
         Adapt_Delta = adapt_delta,
         Max_Treedepth = max_treedepth,
+        Refresh = refresh,
         Backend = "rstan",
         M02_Included_In_Main_KFold = "M02" %in% unique(Model_ID),
         Stratified_Grouped_KFold = kfold_stratified_groups,
@@ -700,7 +703,7 @@ main <- function() {
       ) %>%
       select(Target_Space, Sample_Group, Fold_ID, Model_ID, Model_Name, Heterogeneity_Variant,
              Config_Tag, Run_Mode, K, Run_ID, Model_Key, Fit_Path, Score_Cache_Path,
-             Chains, Cores, Iter, Warmup, Adapt_Delta, Max_Treedepth, Backend,
+             Chains, Cores, Iter, Warmup, Adapt_Delta, Max_Treedepth, Refresh, Backend,
              Status, Started_At, Ended_At, Runtime_Seconds, N_Train_Obs, N_Test_Obs,
              N_Train_Firms, N_Test_Firms, Completed, Failure_Reason, Max_Rhat,
              Min_ESS_Bulk, Min_ESS_Tail, ESS_Warning, Divergences, Treedepth_Warnings,
@@ -764,6 +767,7 @@ main <- function() {
     warmup = warmup,
     adapt_delta = adapt_delta,
     max_treedepth = max_treedepth,
+    refresh = refresh,
     backend = "rstan"
   )
 
@@ -1027,7 +1031,8 @@ main <- function() {
         ", iter=", iter,
         ", warmup=", warmup,
         ", adapt_delta=", adapt_delta,
-        ", max_treedepth=", max_treedepth
+        ", max_treedepth=", max_treedepth,
+        ", refresh=", refresh
       )
       fit <- tryCatch({
         brm(
@@ -1044,7 +1049,7 @@ main <- function() {
             paste0("grouped_kfold_refit_", task$Target_Space, "_", task$Model_ID, "_", task$Heterogeneity_Variant),
             offset = fold_id
           ),
-          refresh = 500
+          refresh = refresh
         )
       }, error = function(e) e)
       if (inherits(fit, "error")) return(finish_failure(paste("brms fit failed:", fit$message), standardization_audit))

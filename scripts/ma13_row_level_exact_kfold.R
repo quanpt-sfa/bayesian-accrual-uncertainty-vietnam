@@ -36,6 +36,7 @@ iter <- kfold_cfg$iter
 warmup <- kfold_cfg$warmup
 adapt_delta <- kfold_cfg$adapt_delta
 max_treedepth <- kfold_cfg$max_treedepth
+refresh <- kfold_cfg$refresh
 row_kfold_chain_cores <- kfold_cfg$cores
 row_run_rng_meta <- accrual_rng_metadata_list("row_kfold_run_manifest")
 options(mc.cores = row_kfold_chain_cores)
@@ -424,6 +425,7 @@ planned_tasks <- do.call(rbind, lapply(seq_len(nrow(eligible)), function(i) {
       Warmup = warmup,
       Adapt_Delta = adapt_delta,
       Max_Treedepth = max_treedepth,
+      Refresh = refresh,
       Backend = "rstan",
       Status = "PLANNED",
       Completed = FALSE,
@@ -462,6 +464,7 @@ write_manifest <- function(status, extra_note = NA_character_) {
     Warmup = warmup,
     Adapt_Delta = adapt_delta,
     Max_Treedepth = max_treedepth,
+    Refresh = refresh,
     Backend = "rstan",
     Sampler_Profile = kfold_cfg$sampler_profile,
     Config_Source = kfold_cfg$config_source,
@@ -568,6 +571,7 @@ score_task <- function(task) {
     warmup = warmup,
     adapt_delta = adapt_delta,
     max_treedepth = max_treedepth,
+    refresh = refresh,
     backend = "rstan"
   )
   cache_ok <- FALSE
@@ -642,7 +646,8 @@ score_task <- function(task) {
       ", iter=", iter,
       ", warmup=", warmup,
       ", adapt_delta=", adapt_delta,
-      ", max_treedepth=", max_treedepth
+      ", max_treedepth=", max_treedepth,
+      ", refresh=", refresh
     )
     fit <- tryCatch({
       brm(
@@ -656,7 +661,7 @@ score_task <- function(task) {
         warmup = warmup,
         control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
         seed = task_rng_meta$Effective_Seed,
-        refresh = 500,
+        refresh = refresh,
         save_pars = brms::save_pars(all = TRUE)
       )
     }, error = function(e) e)

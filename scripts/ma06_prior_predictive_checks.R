@@ -49,12 +49,8 @@ if (nrow(representative_rows) == 0) {
   stop("[BLOCKER] No representative rows were selected for prior predictive checks.")
 }
 
-chains <- 2
-iter <- prior_pred_n_draws
-warmup <- min(500L, floor(iter / 2))
-cores <- env_int("ACCRUAL_BASELINE_CORES", chains, min = 1L)
-validate_rstan_cores(cores, chains, "ma06 prior predictive")
-options(mc.cores = cores)
+prior_cfg <- accrual_sampler_config("prior_predictive")
+options(mc.cores = prior_cfg$cores)
 
 summarize_quantiles <- function(x) {
   qs <- quantile(x, probs = c(0.01, 0.50, 0.99), na.rm = TRUE, names = FALSE, type = 7)
@@ -77,10 +73,11 @@ sample_prior_predictions <- function(row, rng_offset) {
   df_scaled <- read_winsor_sample(row$Target_Sample)
   formula_str <- fix_formula(row$brms_Formula)
   message(
-    "brms/rstan sampler controls: chains=", chains,
-    ", cores=", cores,
-    ", iter=", iter,
-    ", warmup=", warmup
+    "brms/rstan sampler controls: chains=", prior_cfg$chains,
+    ", cores=", prior_cfg$cores,
+    ", iter=", prior_cfg$iter,
+    ", warmup=", prior_cfg$warmup,
+    ", refresh=", prior_cfg$refresh
   )
   fit_prior <- brm(
     formula = bf(as.formula(formula_str)),
@@ -88,12 +85,12 @@ sample_prior_predictions <- function(row, rng_offset) {
     family = brms_family(),
     prior = default_prior_list(row$Heterogeneity_Variant),
     sample_prior = "only",
-    chains = chains,
-    cores = cores,
-    iter = iter,
-    warmup = warmup,
+    chains = prior_cfg$chains,
+    cores = prior_cfg$cores,
+    iter = prior_cfg$iter,
+    warmup = prior_cfg$warmup,
     seed = accrual_seed_for("baseline_prior_predictive_fit", offset = rng_offset),
-    refresh = 0
+    refresh = prior_cfg$refresh
   )
   posterior_predict(fit_prior)
 }

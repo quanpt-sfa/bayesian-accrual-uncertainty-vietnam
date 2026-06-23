@@ -16,14 +16,9 @@ write_prior_registry()
 
 dry_run <- env_flag("ACCRUAL_DRY_RUN", "TRUE")
 allow_prior_fail <- env_flag("ACCRUAL_ALLOW_PRIOR_PREDICTIVE_FAIL", "FALSE")
-n_draws <- as.integer(env_value("ACCRUAL_PRIOR_PRED_N_DRAWS", as.character(prior_pred_n_draws)))
-if (is.na(n_draws) || n_draws <= 0) n_draws <- prior_pred_n_draws
-chains <- 2L
-iter <- max(1000L, n_draws)
-warmup <- 500L
-cores <- env_int("ACCRUAL_SENS_CORES", chains, min = 1L)
-validate_rstan_cores(cores, chains, "se01 sensitivity prior predictive")
-options(mc.cores = cores)
+prior_cfg <- accrual_sampler_config("prior_predictive")
+n_draws <- prior_cfg$iter
+options(mc.cores = prior_cfg$cores)
 
 scenarios <- selected_sensitivity_scenarios()
 formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
@@ -80,8 +75,9 @@ for (sidx in seq_len(nrow(scenarios))) {
     model_structure = sc$Model_Structure,
     model_list = model_list,
     seed = accrual_seed_for(paste0("sensitivity_prior_predictive_manifest_", scenario), offset = sidx),
-    sampling_config = sprintf("sample_prior=only; draws=%d; chains=%d; cores=%d; iter=%d; warmup=%d; dry_run=%s",
-                              n_draws, chains, cores, iter, warmup, dry_run),
+    sampling_config = sprintf("sample_prior=only; draws=%d; chains=%d; cores=%d; iter=%d; warmup=%d; refresh=%d; dry_run=%s",
+                              n_draws, prior_cfg$chains, prior_cfg$cores, prior_cfg$iter,
+                              prior_cfg$warmup, prior_cfg$refresh, dry_run),
     status = if (dry_run) "DRY_RUN_PLANNED" else "STARTED",
     notes = "Prior predictive gate for sensitivity full-refit scenarios.",
     input_paths = c(formulas_path),
@@ -127,10 +123,11 @@ for (sidx in seq_len(nrow(scenarios))) {
 
     fit <- tryCatch({
       message(
-        "brms/rstan sampler controls: chains=", chains,
-        ", cores=", cores,
-        ", iter=", iter,
-        ", warmup=", warmup
+        "brms/rstan sampler controls: chains=", prior_cfg$chains,
+        ", cores=", prior_cfg$cores,
+        ", iter=", prior_cfg$iter,
+        ", warmup=", prior_cfg$warmup,
+        ", refresh=", prior_cfg$refresh
       )
       brms::brm(
         formula = brms::bf(as.formula(formula_str)),
@@ -138,15 +135,15 @@ for (sidx in seq_len(nrow(scenarios))) {
         family = brms_family(sc$Likelihood_Family),
         prior = prior_list,
         sample_prior = "only",
-        chains = chains,
-        cores = cores,
-        iter = iter,
-        warmup = warmup,
+        chains = prior_cfg$chains,
+        cores = prior_cfg$cores,
+        iter = prior_cfg$iter,
+        warmup = prior_cfg$warmup,
         seed = accrual_seed_for(
           paste0("sensitivity_prior_predictive_", scenario, "_", row$Target_Space, "_", row$Model_ID),
           offset = sidx * 1000L + i
         ),
-        refresh = 0
+        refresh = prior_cfg$refresh
       )
     }, error = function(e) {
       e

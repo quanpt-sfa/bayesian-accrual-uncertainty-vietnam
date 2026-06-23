@@ -112,9 +112,9 @@ if (run_varying_slope_models) {
 }
 
 sampler_cfg <- accrual_sampler_config("baseline", varying_slopes = run_varying_slope_models)
-baseline_sampler_controls <- sampler_cfg[c("chains", "cores", "iter", "warmup", "adapt_delta", "max_treedepth")]
+baseline_sampler_controls <- sampler_cfg[c("chains", "cores", "iter", "warmup", "adapt_delta", "max_treedepth", "refresh", "backend")]
 remediation_cfg <- accrual_sampler_config("baseline_remediation")
-remediation_sampler_controls <- remediation_cfg[c("chains", "cores", "iter", "warmup", "adapt_delta", "max_treedepth")]
+remediation_sampler_controls <- remediation_cfg[c("chains", "cores", "iter", "warmup", "adapt_delta", "max_treedepth", "refresh", "backend")]
 parallel_cfg <- accrual_model_parallel_config(baseline_sampler_controls$cores, "ma07a baseline brms fit")
 
 formulas_df <- formulas_df %>%
@@ -174,7 +174,8 @@ build_task_manifest <- function(formulas) {
       warmup = controls$warmup,
       adapt_delta = controls$adapt_delta,
       max_treedepth = controls$max_treedepth,
-      backend = "rstan",
+      refresh = controls$refresh,
+      backend = controls$backend,
       RNG_Context = rng$RNG_Context,
       RNG_Offset = rng$RNG_Offset,
       Canonical_Seed = rng$Canonical_Seed,
@@ -215,7 +216,7 @@ fit_ma07a_task_worker <- function(task) {
     "task_key", "model_key", "Model_ID", "Model_Name", "Target_Space", "Sample_Group",
     "Heterogeneity_Variant", "Target_Sample", "brms_Formula", "Prior_Set_ID",
     "Likelihood_Family", "Model_Structure", "chains", "cores", "iter", "warmup",
-    "adapt_delta", "max_treedepth", "backend", "RNG_Context", "RNG_Offset",
+    "adapt_delta", "max_treedepth", "refresh", "backend", "RNG_Context", "RNG_Offset",
     "Canonical_Seed", "Effective_Seed", "RNG_Source"
   )]
 
@@ -283,7 +284,7 @@ fit_ma07a_task_worker <- function(task) {
         control = list(adapt_delta = task$adapt_delta, max_treedepth = task$max_treedepth),
         seed = task$Effective_Seed,
         save_pars = brms::save_pars(all = TRUE),
-        refresh = 500
+        refresh = task$refresh
       )
       saveRDS(fit, task$fit_path)
       write_metadata_file(task$metadata_path, expected_meta)
