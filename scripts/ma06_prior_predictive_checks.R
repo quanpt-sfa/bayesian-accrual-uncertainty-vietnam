@@ -24,6 +24,8 @@ if (!file.exists(formulas_path)) {
 prior_spec_path <- file.path(output_root, "tables", "table_prior_specification.csv")
 prior_summary_path <- file.path(output_root, "tables", "table_prior_predictive_summary.csv")
 prior_extreme_path <- file.path(output_root, "tables", "table_prior_predictive_extreme_rates.csv")
+prior_task_manifest_path <- file.path(output_root, "tables", "table_ma06_prior_predictive_task_manifest.csv")
+prior_task_status_path <- file.path(output_root, "tables", "table_ma06_prior_predictive_task_status.csv")
 prior_notes_path <- file.path(output_root, "logs", "phase3a_prior_predictive_notes.txt")
 prior_method_note_path <- file.path(output_root, "logs", "method_note_scale_aware_student_priors.txt")
 
@@ -51,6 +53,7 @@ if (nrow(representative_rows) == 0) {
 
 prior_cfg <- accrual_sampler_config("prior_predictive")
 options(mc.cores = prior_cfg$cores)
+parallel_cfg <- accrual_fit_worker_config("prior_predictive", prior_cfg$cores, "ma06 prior predictive")
 
 summarize_quantiles <- function(x) {
   qs <- quantile(x, probs = c(0.01, 0.50, 0.99), na.rm = TRUE, names = FALSE, type = 7)
@@ -67,32 +70,6 @@ plausibility_flag <- function(share_gt_1, share_gt_2) {
   warning("plausibility_flag() is deprecated; use classify_chapter3_prior_predictive().", call. = FALSE)
   out <- classify_chapter3_prior_predictive(share_gt_1, share_gt_2, 0, 1, 0, 1)
   out$status
-}
-
-sample_prior_predictions <- function(row, rng_offset) {
-  df_scaled <- read_winsor_sample(row$Target_Sample)
-  formula_str <- fix_formula(row$brms_Formula)
-  message(
-    "brms/rstan sampler controls: chains=", prior_cfg$chains,
-    ", cores=", prior_cfg$cores,
-    ", iter=", prior_cfg$iter,
-    ", warmup=", prior_cfg$warmup,
-    ", refresh=", prior_cfg$refresh
-  )
-  fit_prior <- brm(
-    formula = bf(as.formula(formula_str)),
-    data = df_scaled,
-    family = brms_family(),
-    prior = default_prior_list(row$Heterogeneity_Variant),
-    sample_prior = "only",
-    chains = prior_cfg$chains,
-    cores = prior_cfg$cores,
-    iter = prior_cfg$iter,
-    warmup = prior_cfg$warmup,
-    seed = accrual_seed_for("baseline_prior_predictive_fit", offset = rng_offset),
-    refresh = prior_cfg$refresh
-  )
-  posterior_predict(fit_prior)
 }
 
 write_overlay_plot <- function(observed, simulated, figure_path, title_text) {
@@ -123,8 +100,197 @@ write_overlay_plot <- function(observed, simulated, figure_path, title_text) {
   )
 }
 
-summary_rows <- list()
-extreme_rows <- list()
+build_prior_task_manifest <- function(rows) {
+  out <- lapply(seq_len(nrow(rows)), function(i) {
+    row <- rows[i, ]
+    model_key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
+    rng <- accrual_rng_metadata_list("baseline_prior_predictive_fit", offset = i)
+    data.frame(
+      task_index = i,
+      task_key = stable_task_key("ma06_prior_predictive", model_key, i),
+      model_key = model_key,
+      Model_ID = row$Model_ID,
+      Model_Name = row$Model_Name,
+      Target_Space = row$Target_Space,
+      Sample_Group = row$Sample_Group,
+      Heterogeneity_Variant = row$Heterogeneity_Variant,
+      Target_Sample = row$Target_Sample,
+      brms_Formula = row$brms_Formula,
+      Prior_Set_ID = prior_set_id,
+      Likelihood_Family = likelihood_family,
+      Model_Structure = model_structure,
+      chains = prior_cfg$chains,
+      cores = prior_cfg$cores,
+      iter = prior_cfg$iter,
+      warmup = prior_cfg$warmup,
+      adapt_delta = prior_cfg$adapt_delta,
+      max_treedepth = prior_cfg$max_treedepth,
+      refresh = prior_cfg$refresh,
+      backend = prior_cfg$backend,
+      sampler_profile = prior_cfg$sampler_profile,
+      RNG_Context = rng$RNG_Context,
+      RNG_Offset = rng$RNG_Offset,
+      Canonical_Seed = rng$Canonical_Seed,
+      Effective_Seed = rng$Effective_Seed,
+      RNG_Source = rng$RNG_Source,
+      Required = TRUE,
+      log_path = file.path(output_root, "logs", paste0("prior_predictive_", model_key, ".log")),
+      stringsAsFactors = FALSE
+    )
+  })
+  bind_rows(out)
+}
+
+fit_ma06_prior_task_worker <- function(task) {
+  suppressPackageStartupMessages({
+    library(brms)
+    library(dplyr)
+  })
+  source("scripts/ma00_setup.R")
+  started_at <- as.character(Sys.time())
+  status <- "FAILED"
+  error_message <- ""
+  summary_row <- NULL
+  extreme_row <- NULL
+  observed <- numeric()
+  simulated <- matrix(numeric(), nrow = 0)
+  dir.create(dirname(task$log_path), recursive = TRUE, showWarnings = FALSE)
+
+  tryCatch({
+    message("[MA06] Prior predictive task: ", task$model_key)
+    df_scaled <- read_winsor_sample(task$Target_Sample)
+    observed <- df_scaled$TA_scaled
+    formula_str <- fix_formula(task$brms_Formula)
+    message(
+      "brms/rstan sampler controls: chains=", task$chains,
+      ", cores=", task$cores,
+      ", iter=", task$iter,
+      ", warmup=", task$warmup,
+      ", refresh=", task$refresh
+    )
+    brm_args <- list(
+      formula = brms::bf(stats::as.formula(formula_str)),
+      data = df_scaled,
+      family = brms_family(),
+      prior = default_prior_list(task$Heterogeneity_Variant),
+      sample_prior = "only",
+      chains = task$chains,
+      cores = task$cores,
+      iter = task$iter,
+      warmup = task$warmup,
+      seed = task$Effective_Seed,
+      refresh = task$refresh
+    )
+    if (!is.na(task$adapt_delta) || !is.na(task$max_treedepth)) {
+      control <- list()
+      if (!is.na(task$adapt_delta)) control$adapt_delta <- task$adapt_delta
+      if (!is.na(task$max_treedepth)) control$max_treedepth <- task$max_treedepth
+      brm_args$control <- control
+    }
+    fit_prior <- do.call(brms::brm, brm_args)
+    simulated <- brms::posterior_predict(fit_prior)
+
+    obs_q <- summarize_quantiles(observed)
+    prior_q <- summarize_quantiles(as.vector(simulated))
+    share_gt_1 <- mean(abs(simulated) > 1, na.rm = TRUE)
+    share_gt_2 <- mean(abs(simulated) > 2, na.rm = TRUE)
+    share_gt_5 <- mean(abs(simulated) > 5, na.rm = TRUE)
+    gate <- classify_chapter3_prior_predictive(
+      share_gt_1 = share_gt_1,
+      share_gt_2 = share_gt_2,
+      prior_p01 = prior_q$p01,
+      prior_p99 = prior_q$p99,
+      observed_p01 = obs_q$p01,
+      observed_p99 = obs_q$p99
+    )
+
+    summary_row <- data.frame(
+      task_index = task$task_index,
+      model_key = task$model_key,
+      Model_ID = task$Model_ID,
+      Model_Name = task$Model_Name,
+      Target_Space = task$Target_Space,
+      Sample_Group = task$Sample_Group,
+      Heterogeneity_Variant = task$Heterogeneity_Variant,
+      N_Obs = length(observed),
+      Observed_TA_Min = obs_q$min,
+      Observed_TA_P01 = obs_q$p01,
+      Observed_TA_Median = obs_q$median,
+      Observed_TA_P99 = obs_q$p99,
+      Observed_TA_Max = obs_q$max,
+      PriorPred_TA_P01 = prior_q$p01,
+      PriorPred_TA_Median = prior_q$median,
+      PriorPred_TA_P99 = prior_q$p99,
+      PriorPred_TA_P01_P99_Range = prior_q$p99 - prior_q$p01,
+      Observed_TA_P01_P99_Range = obs_q$p99 - obs_q$p01,
+      PriorPred_Range_Ratio_to_Observed = gate$range_ratio,
+      PriorPred_Share_Abs_GT_1 = share_gt_1,
+      PriorPred_Share_Abs_GT_2 = share_gt_2,
+      PriorPred_Share_Abs_GT_5 = share_gt_5,
+      Prior_Plausibility_Flag = gate$status,
+      Prior_Plausibility_Reason = gate$reason,
+      Prior_Set_ID = task$Prior_Set_ID,
+      Likelihood_Family = task$Likelihood_Family,
+      Model_Structure = task$Model_Structure,
+      Output_Root = output_root,
+      stringsAsFactors = FALSE
+    )
+
+    extreme_row <- data.frame(
+      task_index = task$task_index,
+      Model_ID = task$Model_ID,
+      Model_Name = task$Model_Name,
+      Target_Space = task$Target_Space,
+      Sample_Group = task$Sample_Group,
+      Heterogeneity_Variant = task$Heterogeneity_Variant,
+      Threshold = c("abs(TA_scaled) > 1", "abs(TA_scaled) > 2", "abs(TA_scaled) > 5"),
+      Rate = c(share_gt_1, share_gt_2, share_gt_5),
+      Prior_Set_ID = task$Prior_Set_ID,
+      Likelihood_Family = task$Likelihood_Family,
+      Model_Structure = task$Model_Structure,
+      Output_Root = output_root,
+      stringsAsFactors = FALSE
+    )
+    status <- "SUCCESS"
+  }, error = function(e) {
+    error_message <<- conditionMessage(e)
+  })
+
+  ended_at <- as.character(Sys.time())
+  writeLines(c(
+    paste0("Task: ", task$task_key),
+    paste0("Model key: ", task$model_key),
+    paste0("Started: ", started_at),
+    paste0("Ended: ", ended_at),
+    paste0("Status: ", status),
+    paste0("Error: ", error_message)
+  ), task$log_path, useBytes = TRUE)
+
+  list(
+    status = data.frame(
+      task_index = task$task_index,
+      task_key = task$task_key,
+      model_key = task$model_key,
+      Model_ID = task$Model_ID,
+      Model_Name = task$Model_Name,
+      Target_Space = task$Target_Space,
+      Sample_Group = task$Sample_Group,
+      Heterogeneity_Variant = task$Heterogeneity_Variant,
+      Required = task$Required,
+      status = status,
+      error_message = error_message,
+      log_path = task$log_path,
+      started_at = started_at,
+      ended_at = ended_at,
+      stringsAsFactors = FALSE
+    ),
+    summary = summary_row,
+    extreme = extreme_row,
+    observed = observed,
+    simulated = simulated
+  )
+}
+
 notes <- c(
   "ma06 prior predictive notes",
   sprintf("Mode: %s", mode),
@@ -140,93 +306,51 @@ notes <- c(
   ""
 )
 
-for (i in seq_len(nrow(representative_rows))) {
-  row <- representative_rows[i, ]
-  model_key <- model_key_sampled(row$Model_ID, row$Target_Space, row$Sample_Group, row$Heterogeneity_Variant, "_winsor")
-  message(sprintf("[%d/%d] Prior predictive check: %s", i, nrow(representative_rows), model_key))
+task_manifest <- build_prior_task_manifest(representative_rows)
+write.csv(task_manifest, prior_task_manifest_path, row.names = FALSE)
+task_list <- lapply(seq_len(nrow(task_manifest)), function(i) as.list(task_manifest[i, ]))
+task_results <- accrual_run_task_pool(
+  tasks = task_list,
+  worker_fun = fit_ma06_prior_task_worker,
+  parallel_cfg = parallel_cfg,
+  export_names = c("summarize_quantiles"),
+  packages = c("brms", "dplyr"),
+  context = "ma06 prior predictive"
+)
 
-  observed_df <- read_winsor_sample(row$Target_Sample)
-  observed <- observed_df$TA_scaled
-  simulated <- sample_prior_predictions(row, rng_offset = i)
+status_df <- bind_rows(lapply(task_results, `[[`, "status")) %>% arrange(task_index)
+write.csv(status_df, prior_task_status_path, row.names = FALSE)
+accrual_task_status_blocker(status_df, required_col = "Required", context = "ma06 prior predictive")
 
-  obs_q <- summarize_quantiles(observed)
-  prior_q <- summarize_quantiles(as.vector(simulated))
-  share_gt_1 <- mean(abs(simulated) > 1, na.rm = TRUE)
-  share_gt_2 <- mean(abs(simulated) > 2, na.rm = TRUE)
-  share_gt_5 <- mean(abs(simulated) > 5, na.rm = TRUE)
-  gate <- classify_chapter3_prior_predictive(
-    share_gt_1 = share_gt_1,
-    share_gt_2 = share_gt_2,
-    prior_p01 = prior_q$p01,
-    prior_p99 = prior_q$p99,
-    observed_p01 = obs_q$p01,
-    observed_p99 = obs_q$p99
-  )
-  flag <- gate$status
+summary_df <- bind_rows(lapply(task_results, `[[`, "summary")) %>%
+  arrange(task_index) %>%
+  select(-task_index, -model_key)
+extreme_df <- bind_rows(lapply(task_results, `[[`, "extreme")) %>%
+  arrange(task_index) %>%
+  select(-task_index)
 
-  summary_rows[[length(summary_rows) + 1]] <- data.frame(
-    Model_ID = row$Model_ID,
-    Model_Name = row$Model_Name,
-    Target_Space = row$Target_Space,
-    Sample_Group = row$Sample_Group,
-    Heterogeneity_Variant = row$Heterogeneity_Variant,
-    N_Obs = length(observed),
-    Observed_TA_Min = obs_q$min,
-    Observed_TA_P01 = obs_q$p01,
-    Observed_TA_Median = obs_q$median,
-    Observed_TA_P99 = obs_q$p99,
-    Observed_TA_Max = obs_q$max,
-    PriorPred_TA_P01 = prior_q$p01,
-    PriorPred_TA_Median = prior_q$median,
-    PriorPred_TA_P99 = prior_q$p99,
-    PriorPred_TA_P01_P99_Range = prior_q$p99 - prior_q$p01,
-    Observed_TA_P01_P99_Range = obs_q$p99 - obs_q$p01,
-    PriorPred_Range_Ratio_to_Observed = gate$range_ratio,
-    PriorPred_Share_Abs_GT_1 = share_gt_1,
-    PriorPred_Share_Abs_GT_2 = share_gt_2,
-    PriorPred_Share_Abs_GT_5 = share_gt_5,
-    Prior_Plausibility_Flag = flag,
-    Prior_Plausibility_Reason = gate$reason,
-    Prior_Set_ID = prior_set_id,
-    Likelihood_Family = likelihood_family,
-    Model_Structure = model_structure,
-    Output_Root = output_root,
-    stringsAsFactors = FALSE
-  )
-
-  extreme_rows[[length(extreme_rows) + 1]] <- data.frame(
-    Model_ID = row$Model_ID,
-    Model_Name = row$Model_Name,
-    Target_Space = row$Target_Space,
-    Sample_Group = row$Sample_Group,
-    Heterogeneity_Variant = row$Heterogeneity_Variant,
-    Threshold = c("abs(TA_scaled) > 1", "abs(TA_scaled) > 2", "abs(TA_scaled) > 5"),
-    Rate = c(share_gt_1, share_gt_2, share_gt_5),
-    Prior_Set_ID = prior_set_id,
-    Likelihood_Family = likelihood_family,
-    Model_Structure = model_structure,
-    Output_Root = output_root,
-    stringsAsFactors = FALSE
-  )
-
+for (result in task_results[order(vapply(task_results, function(x) x$status$task_index, numeric(1)))]) {
+  row_summary <- result$summary
   write_overlay_plot(
-    observed = observed,
-    simulated = simulated,
-    figure_path = file.path(output_root, "figures", paste0("fig_prior_predictive_overlay_", model_key, ".png")),
-    title_text = sprintf("Prior Predictive Overlay: %s", model_key)
+    observed = result$observed,
+    simulated = result$simulated,
+    figure_path = file.path(output_root, "figures", paste0("fig_prior_predictive_overlay_", row_summary$model_key, ".png")),
+    title_text = sprintf("Prior Predictive Overlay: %s", row_summary$model_key)
   )
-
   notes <- c(
     notes,
     sprintf(
       "%s: flag=%s, observed p99=%.4f, prior p99=%.4f, share|TA|>1=%.4f, share|TA|>2=%.4f, share|TA|>5=%.4f",
-      model_key, flag, obs_q$p99, prior_q$p99, share_gt_1, share_gt_2, share_gt_5
+      row_summary$model_key,
+      row_summary$Prior_Plausibility_Flag,
+      row_summary$Observed_TA_P99,
+      row_summary$PriorPred_TA_P99,
+      row_summary$PriorPred_Share_Abs_GT_1,
+      row_summary$PriorPred_Share_Abs_GT_2,
+      row_summary$PriorPred_Share_Abs_GT_5
     )
   )
 }
-
-summary_df <- bind_rows(summary_rows)
-extreme_df <- bind_rows(extreme_rows)
 
 write.csv(summary_df, prior_summary_path, row.names = FALSE)
 write.csv(extreme_df, prior_extreme_path, row.names = FALSE)

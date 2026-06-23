@@ -346,6 +346,21 @@ accrual_model_parallel_config <- function(cores_per_fit, context = "unknown") {
   if (!enabled) workers <- 1L
   total_core_budget <- env_int("ACCRUAL_TOTAL_CORE_BUDGET", default_total_core_budget(), min = 1L)
   validate_model_parallel_budget(workers, cores_per_fit, total_core_budget, context)
+  if (enabled && workers > 1L && identical(.Platform$OS.type, "windows") &&
+      as.integer(cores_per_fit) > 1L) {
+    if (!env_flag("ACCRUAL_ALLOW_NESTED_RSTAN_CORES", "FALSE")) {
+      stop(
+        "[BLOCKER] Model-level PSOCK workers with rstan cores_per_fit > 1 on Windows require ",
+        "ACCRUAL_ALLOW_NESTED_RSTAN_CORES=TRUE for ", context, ". ",
+        "Set cores_per_fit=1 or explicitly opt in after confirming the nested rstan chain parallelism is stable."
+      )
+    }
+    warning(
+      "[WARNING] ACCRUAL_ALLOW_NESTED_RSTAN_CORES=TRUE is enabled for ", context,
+      ". Total active cores are workers * cores_per_fit; monitor rstan/PSOCK stability on Windows.",
+      call. = FALSE
+    )
+  }
   list(
     enabled = enabled,
     workers = workers,
@@ -354,6 +369,81 @@ accrual_model_parallel_config <- function(cores_per_fit, context = "unknown") {
     backend = backend,
     retry_failed = env_flag("ACCRUAL_TASK_RETRY_FAILED", "FALSE")
   )
+}
+
+accrual_fit_worker_config <- function(kind, cores_per_fit, context = "unknown") {
+  cfg <- accrual_model_parallel_config(cores_per_fit = cores_per_fit, context = context)
+  cfg$context <- context
+  cfg$fit_kind <- kind
+  cfg
+}
+
+accrual_run_task_pool <- function(tasks, worker_fun, parallel_cfg,
+                                  export_names = character(), packages = character(),
+                                  context = "unknown") {
+  if (!length(tasks)) return(list())
+  if (!isTRUE(parallel_cfg$enabled) || as.integer(parallel_cfg$workers) <= 1L) {
+    return(lapply(tasks, worker_fun))
+  }
+  if (!identical(parallel_cfg$backend, "base_parallel")) {
+    stop("[BLOCKER] Unsupported model-parallel backend for ", context, ": ", parallel_cfg$backend)
+  }
+  message("[WORKER POOL] ", context, ": workers=", parallel_cfg$workers,
+          ", cores_per_fit=", parallel_cfg$cores_per_fit,
+          ", total_core_budget=", parallel_cfg$total_core_budget)
+  cl <- parallel::makeCluster(as.integer(parallel_cfg$workers))
+  on.exit(parallel::stopCluster(cl), add = TRUE)
+  parallel::clusterEvalQ(cl, {
+    source("scripts/ma00_setup.R")
+    NULL
+  })
+  if (length(packages)) {
+    parallel::clusterCall(cl, function(pkgs) {
+      for (pkg in pkgs) {
+        suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+      }
+      NULL
+    }, packages)
+  }
+  worker_env <- environment()
+  parallel::clusterExport(cl, varlist = "worker_fun", envir = worker_env)
+  if (length(export_names)) {
+    parallel::clusterExport(cl, varlist = unique(export_names), envir = parent.frame())
+  }
+  parallel::parLapplyLB(cl, tasks, worker_fun)
+}
+
+accrual_task_status_blocker <- function(status_df, required_col = "Main_Stack_Inclusion",
+                                        context = "unknown") {
+  if (!nrow(status_df)) return(invisible(TRUE))
+  status_col <- if ("status" %in% names(status_df)) {
+    "status"
+  } else if ("Status" %in% names(status_df)) {
+    "Status"
+  } else {
+    stop("[BLOCKER] Task status table for ", context, " has no status column.")
+  }
+  blocked_statuses <- c(
+    "FAILED",
+    "BLOCKED_METADATA_MISSING",
+    "BLOCKED_METADATA_MISMATCH",
+    "BLOCKED_MISSING_FIT",
+    "BLOCKED_MISSING_NON_TARGET_FIT",
+    "BLOCKED_BACKFILL_MISSING_FIT"
+  )
+  required <- if (required_col %in% names(status_df)) {
+    status_df[[required_col]] %in% c(TRUE, "TRUE", "true", "1", 1L)
+  } else {
+    rep(TRUE, nrow(status_df))
+  }
+  blocked <- status_df[[status_col]] %in% blocked_statuses
+  if (any(required & blocked, na.rm = TRUE)) {
+    key_col <- intersect(c("task_key", "Task_Key", "model_key", "Model_ID"), names(status_df))[1]
+    keys <- if (!is.na(key_col)) status_df[[key_col]][required & blocked] else which(required & blocked)
+    stop("[BLOCKER] Required task(s) failed or were blocked in ", context, ": ",
+         paste(keys, collapse = "; "))
+  }
+  invisible(TRUE)
 }
 
 accrual_sampler_config <- function(kind = c("baseline", "baseline_remediation", "prior_predictive",

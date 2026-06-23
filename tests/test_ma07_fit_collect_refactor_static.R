@@ -16,7 +16,7 @@ if (pos_07a < 0 || pos_07b < 0 || pos_07a > pos_07b) {
 }
 
 if (!grepl("ACCRUAL_ENABLE_MODEL_PARALLEL", ma07a, fixed = TRUE) &&
-    !grepl("accrual_model_parallel_config", ma07a, fixed = TRUE)) {
+    !grepl("accrual_fit_worker_config", ma07a, fixed = TRUE)) {
   stop("ma07a must support ACCRUAL_ENABLE_MODEL_PARALLEL through central config.")
 }
 if (!grepl("validate_model_parallel_budget", ma00, fixed = TRUE) ||
@@ -79,15 +79,14 @@ for (fragment in c(
 if (!grepl("write_metadata_file\\(task\\$metadata_path, expected_meta\\)", ma07a)) {
   stop("ma07a must be able to adopt legacy ma07 fits by writing metadata without refitting.")
 }
-cluster_export_match <- regmatches(
+task_pool_match <- regmatches(
   ma07a,
-  regexpr("parallel::clusterExport\\([\\s\\S]*?\\n\\s*\\)", ma07a, perl = TRUE)
+  regexpr("accrual_run_task_pool\\([\\s\\S]*?context = \"ma07a baseline brms fit\"\\s*\\)", ma07a, perl = TRUE)
 )
-if (!length(cluster_export_match) || !nzchar(cluster_export_match)) {
-  stop("ma07a must explicitly export worker dependencies with parallel::clusterExport().")
+if (!length(task_pool_match) || !nzchar(task_pool_match)) {
+  stop("ma07a must run workers through accrual_run_task_pool().")
 }
 for (symbol in c(
-  "fit_ma07a_task_worker",
   "metadata_matches_file",
   "metadata_state_file",
   "write_metadata_file",
@@ -96,8 +95,8 @@ for (symbol in c(
   "backfill_diagnostics_only",
   "adopt_legacy_ma07_fits"
 )) {
-  if (!grepl(symbol, cluster_export_match, fixed = TRUE)) {
-    stop("ma07a clusterExport() missing worker dependency: ", symbol)
+  if (!grepl(symbol, task_pool_match, fixed = TRUE)) {
+    stop("ma07a worker export_names missing worker dependency: ", symbol)
   }
 }
 
@@ -124,12 +123,14 @@ on.exit({
   for (nm in names(old_env)) {
     if (!nzchar(old_env[[nm]])) Sys.unsetenv(nm) else do.call(Sys.setenv, as.list(stats::setNames(old_env[[nm]], nm)))
   }
+  Sys.unsetenv("ACCRUAL_ALLOW_NESTED_RSTAN_CORES")
 }, add = TRUE)
 Sys.setenv(
   ACCRUAL_ENABLE_MODEL_PARALLEL = "TRUE",
   ACCRUAL_MODEL_PARALLEL_WORKERS = "2",
   ACCRUAL_TOTAL_CORE_BUDGET = "4",
-  ACCRUAL_BASELINE_CORES = "2"
+  ACCRUAL_BASELINE_CORES = "2",
+  ACCRUAL_ALLOW_NESTED_RSTAN_CORES = "TRUE"
 )
 cfg <- accrual_model_parallel_config(cores_per_fit = 2L, context = "static test")
 if (!isTRUE(cfg$enabled) || !identical(cfg$workers, 2L) || !identical(cfg$total_core_budget, 4L)) {
