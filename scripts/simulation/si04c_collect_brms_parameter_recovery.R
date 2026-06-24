@@ -10,7 +10,14 @@ if (!file.exists(manifest_path) || !file.exists(status_path)) stop("[BLOCKER] si
 manifest <- read.csv(manifest_path, stringsAsFactors = FALSE)
 status <- read.csv(status_path, stringsAsFactors = FALSE)
 accrual_task_status_blocker(status, required_col = "Required", context = "si04c brms recovery collect")
-write.csv(data.frame(output = c("table_brms_parameter_recovery_replications.csv", "table_brms_parameter_recovery_summary.csv"),
-                     owner = "si04c_collect_brms_parameter_recovery.R", task_manifest_rows = nrow(manifest)),
-          file.path(root, "tables", "table_si04_collect_contract.csv"), row.names = FALSE)
+replications <- do.call(rbind, lapply(manifest$result_path, function(path) {
+  if (!file.exists(path)) stop("[BLOCKER] si04c missing task result: ", path)
+  readRDS(path)
+}))
+replications$error <- replications$estimate - replications$true_value
+summary <- aggregate(error ~ parameter, replications, function(x) c(mean = mean(x), rmse = sqrt(mean(x^2))))
+summary <- data.frame(parameter = summary$parameter, mean_error = summary$error[, "mean"],
+                      rmse = summary$error[, "rmse"], stringsAsFactors = FALSE)
+write.csv(replications, file.path(root, "tables", "table_brms_parameter_recovery_replications.csv"), row.names = FALSE)
+write.csv(summary, file.path(root, "tables", "table_brms_parameter_recovery_summary.csv"), row.names = FALSE)
 phase_end("si04c", "Collect BRMS parameter recovery")

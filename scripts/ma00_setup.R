@@ -1786,6 +1786,11 @@ describe_numeric <- function(x) {
   )
 }
 
+log_mean_exp <- function(x) {
+  m <- max(x)
+  m + log(mean(exp(x - m)))
+}
+
 extract_weight_variant <- function(model_name, heterogeneity_variant = NULL) {
   if (!is.null(heterogeneity_variant) && !is.na(heterogeneity_variant) && nzchar(heterogeneity_variant)) {
     return(heterogeneity_variant)

@@ -43,6 +43,8 @@ rows <- lapply(seq_len(nrow(tasks)), function(i) {
     Target_Sample = if ("Target_Sample" %in% names(row)) row$Target_Sample else NA_character_,
     brms_Formula = if ("brms_Formula" %in% names(row)) row$brms_Formula else NA_character_,
     fit_path = safe_task_artifact_path(task_root, task_key, "_fit_sp.rds"),
+    result_path = safe_task_artifact_path(task_root, task_key, "_loo_result.rds"),
+    loo_cache_path = safe_task_artifact_path(task_root, task_key, "_loo.rds"),
     metadata_path = safe_task_artifact_path(task_root, task_key, "_metadata.csv"),
     task_log_path = safe_task_log_path(file.path(task_root, "logs"), task_key),
     chains = loo_cfg$chains,

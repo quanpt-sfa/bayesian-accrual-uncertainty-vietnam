@@ -14,19 +14,83 @@ fit_ma12b_task_worker <- function(task) {
   task <- as.list(task)
   dir.create(dirname(task$fit_path), recursive = TRUE, showWarnings = FALSE)
   dir.create(dirname(task$task_log_path), recursive = TRUE, showWarnings = FALSE)
+  if (is.null(task$result_path) || is.na(task$result_path) || !nzchar(task$result_path)) task$result_path <- task$prediction_path
+  started <- Sys.time()
+  status <- "FAILED"
+  reason <- NA_character_
   writeLines(c("ma12b task log", paste("Task_Key:", task$Task_Key), paste("Effective_Seed:", task$Effective_Seed)), task$task_log_path)
-  status <- "BLOCKED_PENDING_SPLIT_IMPLEMENTATION"
-  reason <- "ma12b worker contract is in place; fold-specific brms::brm body must preserve existing grouped K-fold semantics before heavy execution."
+  result <- tryCatch({
+    df <- read_winsor_sample(task$Target_Sample, prefactor = TRUE)
+    companies <- sort(unique(df$company))
+    set.seed(as.integer(task$Canonical_Seed) + 12000L + as.integer(task$Fold_ID))
+    shuffled <- sample(companies, length(companies))
+    fold_map <- data.frame(company = shuffled, Fold_ID = rep(seq_len(max(as.integer(tasks$Fold_ID))), length.out = length(shuffled)))
+    df <- merge(df, fold_map, by = "company", all.x = TRUE, sort = FALSE)
+    train_df <- df[df$Fold_ID != as.integer(task$Fold_ID), , drop = FALSE]
+    test_df <- df[df$Fold_ID == as.integer(task$Fold_ID), , drop = FALSE]
+    if (!nrow(train_df) || !nrow(test_df)) stop("Empty grouped K-fold train/test split.")
+    assert_training_factor_level_coverage(train_df, test_df, c("industry", "year"),
+                                          paste("ma12b", task$Target_Space, task$Model_ID, "fold", task$Fold_ID))
+    formula_str <- fix_formula(task$brms_Formula, prefactor = TRUE)
+    fit <- if (file.exists(task$fit_path)) tryCatch(readRDS(task$fit_path), error = function(e) NULL) else NULL
+    if (is.null(fit)) {
+      fit <- brms::brm(
+        formula = brms::bf(stats::as.formula(formula_str)),
+        data = train_df,
+        family = brms_family(),
+        prior = default_prior_list(task$Heterogeneity_Variant, model_structure = model_structure),
+        chains = as.integer(task$chains),
+        cores = as.integer(task$cores),
+        iter = as.integer(task$iter),
+        warmup = as.integer(task$warmup),
+        control = list(adapt_delta = as.numeric(task$adapt_delta), max_treedepth = as.integer(task$max_treedepth)),
+        seed = as.integer(task$Effective_Seed),
+        save_pars = brms::save_pars(all = TRUE),
+        refresh = if ("refresh" %in% names(task)) as.integer(task$refresh) else 0L
+      )
+      saveRDS(fit, task$fit_path)
+    }
+    ll <- brms::log_lik(fit, newdata = test_df, re_formula = NA, allow_new_levels = TRUE)
+    ep <- brms::posterior_epred(fit, newdata = test_df, re_formula = NA, allow_new_levels = TRUE)
+    lpd <- apply(ll, 2, log_mean_exp)
+    obs <- data.frame(
+      Target_Space = task$Target_Space, Sample_Group = task$Sample_Group, Fold_ID = as.integer(task$Fold_ID),
+      company = test_df$company, year = test_df$year, Model_ID = task$Model_ID,
+      Model_Name = task$Model_Name, Heterogeneity_Variant = task$Heterogeneity_Variant,
+      lpd_obs = lpd, y_actual = test_df$TA_scaled, pred_mean = colMeans(ep),
+      Prediction_Rule = "grouped_firm_log_lik_re_formula_NA_population_level",
+      stringsAsFactors = FALSE
+    )
+    fold_diag <- data.frame(
+      Target_Space = task$Target_Space, Fold_ID = as.integer(task$Fold_ID), Model_ID = task$Model_ID,
+      Model_Name = task$Model_Name, Heterogeneity_Variant = task$Heterogeneity_Variant,
+      N_Train_Obs = nrow(train_df), N_Test_Obs = nrow(test_df), Completed = TRUE,
+      Failure_Reason = NA_character_, stringsAsFactors = FALSE
+    )
+    out <- list(fold_diag = fold_diag, obs_scores = obs, standardization_audit = data.frame())
+    saveRDS(out, task$result_path)
+    status <<- "SUCCESS"
+    out
+  }, error = function(e) {
+    reason <<- conditionMessage(e)
+    NULL
+  })
+  ended <- Sys.time()
   write.csv(data.frame(Task_Key = task$Task_Key, status = status, reason = reason, backend = "rstan",
                        RNG_Context = task$RNG_Context, Effective_Seed = task$Effective_Seed,
+                       chains = task$chains, cores = task$cores, iter = task$iter, warmup = task$warmup,
+                       adapt_delta = task$adapt_delta, max_treedepth = task$max_treedepth,
+                       runtime_seconds = as.numeric(difftime(ended, started, units = "secs")),
                        stringsAsFactors = FALSE), task$metadata_path, row.names = FALSE)
   data.frame(Task_Key = task$Task_Key, status = status, reason = reason, Required = task$Required,
-             fit_path = task$fit_path, prediction_path = task$prediction_path, stringsAsFactors = FALSE)
+             fit_path = task$fit_path, prediction_path = task$prediction_path,
+             result_path = task$result_path, stringsAsFactors = FALSE)
 }
 
 parallel_cfg <- accrual_fit_worker_config("grouped_kfold", max(as.integer(tasks$cores), na.rm = TRUE), "ma12b grouped K-fold workers")
 results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_ma12b_task_worker, parallel_cfg,
-                                 export_names = "fit_ma12b_task_worker", context = "ma12b grouped K-fold workers")
+                                 export_names = c("fit_ma12b_task_worker", "tasks"), packages = "brms",
+                                 context = "ma12b grouped K-fold workers")
 status <- do.call(rbind, results)
 write_task_status(status_path, status)
 accrual_task_status_blocker(status, required_col = "Required", context = "ma12b grouped K-fold workers")

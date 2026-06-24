@@ -33,6 +33,15 @@ shared_output_fragments <- c(
 for (path in worker_scripts) {
   if (!file.exists(path)) stop("Missing worker split script: ", path)
   body <- txt(path)
+  if (grepl("BLOCKED_PENDING_SPLIT_IMPLEMENTATION", body, fixed = TRUE)) {
+    stop(path, " still contains the forbidden split-stage placeholder status.")
+  }
+  if (grepl("contract is in place", body, fixed = TRUE)) {
+    stop(path, " still contains worker-contract placeholder prose.")
+  }
+  if (!grepl("brms::brm\\s*\\(|\\bbrm\\s*\\(", body, perl = TRUE)) {
+    stop(path, " must contain the task-specific brms fit body.")
+  }
   for (fragment in c("accrual_run_task_pool(", "accrual_fit_worker_config(", "write_task_status(")) {
     if (!grepl(fragment, body, fixed = TRUE)) stop(path, " is not a worker fit script; missing ", fragment)
   }
@@ -43,6 +52,12 @@ for (path in worker_scripts) {
 for (path in collector_scripts) {
   if (!file.exists(path)) stop("Missing collector split script: ", path)
   body <- txt(path)
+  if (grepl("BLOCKED_PENDING_SPLIT_IMPLEMENTATION", body, fixed = TRUE)) {
+    stop(path, " still contains the forbidden split-stage placeholder status.")
+  }
+  if (grepl("collect_contract|contract is in place", body, perl = TRUE)) {
+    stop(path, " still contains collector-contract placeholder output.")
+  }
   if (grepl("accrual_run_task_pool\\(", body, perl = TRUE)) stop(path, " collector must not run model-level worker pools.")
   if (grepl("brms::brm\\s*\\(|\\bbrm\\s*\\(", body, perl = TRUE)) stop(path, " collector must not fit brms models.")
   if (!grepl("accrual_task_status_blocker(", body, fixed = TRUE)) stop(path, " collector must block failed required tasks.")

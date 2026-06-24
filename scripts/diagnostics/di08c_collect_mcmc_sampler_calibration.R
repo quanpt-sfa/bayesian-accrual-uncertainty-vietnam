@@ -10,8 +10,13 @@ if (!file.exists(manifest_path) || !file.exists(status_path)) stop("[BLOCKER] di
 manifest <- read.csv(manifest_path, stringsAsFactors = FALSE)
 status <- read.csv(status_path, stringsAsFactors = FALSE)
 accrual_task_status_blocker(status, required_col = "Required", context = "di08c calibration collect")
-write.csv(data.frame(output = c("table_di08_mcmc_sampler_calibration_results.csv", "table_di08_mcmc_sampler_calibration_recommendations.csv"),
-                     owner = "di08c_collect_mcmc_sampler_calibration.R", task_manifest_rows = nrow(manifest),
-                     production_inference = FALSE),
-          file.path(root, "tables", "table_di08_collect_contract.csv"), row.names = FALSE)
+results <- do.call(rbind, lapply(manifest$diagnostic_path, function(path) {
+  if (!file.exists(path)) stop("[BLOCKER] di08c missing diagnostic result: ", path)
+  readRDS(path)
+}))
+recommendations <- results[order(results$Max_Rhat), , drop = FALSE]
+recommendations$recommended_rank <- seq_len(nrow(recommendations))
+recommendations$production_inference <- FALSE
+write.csv(results, file.path(root, "tables", "table_di08_mcmc_sampler_calibration_results.csv"), row.names = FALSE)
+write.csv(recommendations, file.path(root, "tables", "table_di08_mcmc_sampler_calibration_recommendations.csv"), row.names = FALSE)
 phase_end("di08c", "Collect MCMC sampler calibration")

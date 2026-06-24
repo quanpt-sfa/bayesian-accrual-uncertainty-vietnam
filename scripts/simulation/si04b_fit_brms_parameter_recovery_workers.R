@@ -12,18 +12,65 @@ fit_si04b_task_worker <- function(task) {
   task <- as.list(task)
   dir.create(dirname(task$fit_path), recursive = TRUE, showWarnings = FALSE)
   dir.create(dirname(task$task_log_path), recursive = TRUE, showWarnings = FALSE)
+  started <- Sys.time()
+  status <- "FAILED"
+  reason <- NA_character_
   writeLines(c("si04b task log", paste("Task_Key:", task$Task_Key), paste("Effective_Seed:", task$Effective_Seed)), task$task_log_path)
-  status <- "BLOCKED_PENDING_SPLIT_IMPLEMENTATION"
-  reason <- "si04b worker contract is in place; brms::brm recovery replicate body must preserve parameter recovery estimands before heavy execution."
+  result <- tryCatch({
+    set.seed(as.integer(task$Effective_Seed))
+    n <- 160L
+    df <- data.frame(company = paste0("F", rep(seq_len(32L), each = 5L)), year = rep(2016:2020, 32L))
+    df$industry <- paste0("I", ((seq_len(nrow(df)) - 1L) %% 5L) + 1L)
+    for (v in pred_vars) df[[v]] <- rnorm(nrow(df))
+    beta_drev <- 0.04
+    beta_ppe <- -0.03
+    df$TA_scaled <- beta_drev * df$dREV_scaled + beta_ppe * df$PPE_scaled + rnorm(nrow(df), sd = 0.06)
+    df <- standardize_predictors(df)
+    fit <- brms::brm(
+      formula = brms::bf(TA_scaled ~ dREV_scaled_std + PPE_scaled_std + ROA_lag_std + (1 | company)),
+      data = df,
+      family = brms_family(),
+      prior = default_prior_list("firm_random_intercept", model_structure = model_structure),
+      chains = as.integer(task$chains),
+      cores = as.integer(task$cores),
+      iter = as.integer(task$iter),
+      warmup = as.integer(task$warmup),
+      control = list(adapt_delta = as.numeric(task$adapt_delta), max_treedepth = as.integer(task$max_treedepth)),
+      seed = as.integer(task$Effective_Seed),
+      save_pars = brms::save_pars(all = TRUE),
+      refresh = 0L
+    )
+    saveRDS(fit, task$fit_path)
+    fx <- brms::fixef(fit)
+    out <- data.frame(
+      Replication = as.integer(task$Replication),
+      parameter = c("dREV_scaled_std", "PPE_scaled_std"),
+      true_value = c(beta_drev, beta_ppe),
+      estimate = c(fx["dREV_scaled_std", "Estimate"], fx["PPE_scaled_std", "Estimate"]),
+      status = "SUCCESS",
+      stringsAsFactors = FALSE
+    )
+    saveRDS(out, task$result_path)
+    status <<- "SUCCESS"
+    out
+  }, error = function(e) {
+    reason <<- conditionMessage(e)
+    NULL
+  })
+  ended <- Sys.time()
   write.csv(data.frame(Task_Key = task$Task_Key, status = status, reason = reason,
                        RNG_Context = task$RNG_Context, Effective_Seed = task$Effective_Seed,
+                       chains = task$chains, cores = task$cores, iter = task$iter, warmup = task$warmup,
+                       adapt_delta = task$adapt_delta, max_treedepth = task$max_treedepth,
+                       runtime_seconds = as.numeric(difftime(ended, started, units = "secs")),
                        stringsAsFactors = FALSE), task$metadata_path, row.names = FALSE)
   data.frame(Task_Key = task$Task_Key, status = status, reason = reason, Required = task$Required,
              fit_path = task$fit_path, result_path = task$result_path, stringsAsFactors = FALSE)
 }
 parallel_cfg <- accrual_fit_worker_config("simulation", max(as.integer(tasks$cores), na.rm = TRUE), "si04b brms recovery workers")
 results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_si04b_task_worker, parallel_cfg,
-                                 export_names = "fit_si04b_task_worker", context = "si04b brms recovery workers")
+                                 export_names = "fit_si04b_task_worker", packages = "brms",
+                                 context = "si04b brms recovery workers")
 status <- do.call(rbind, results)
 write_task_status(status_path, status)
 accrual_task_status_blocker(status, required_col = "Required", context = "si04b brms recovery workers")

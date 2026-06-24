@@ -31,6 +31,12 @@ for (i in seq_len(nrow(registry))) {
 
   fit_text <- txt(fit_script)
   if (isTRUE(row$worker_required)) {
+    if (grepl("BLOCKED_PENDING_SPLIT_IMPLEMENTATION", fit_text, fixed = TRUE)) {
+      stop(fit_script, " still contains the forbidden split-stage placeholder status.")
+    }
+    if (!grepl("brms::brm\\s*\\(|\\bbrm\\s*\\(", fit_text, perl = TRUE)) {
+      stop(fit_script, " must contain the migrated task-specific brms fit body.")
+    }
     for (fragment in c("accrual_run_task_pool(", "accrual_fit_worker_config(", "write_task_status(")) {
       if (!grepl(fragment, fit_text, fixed = TRUE)) stop(fit_script, " missing worker fragment: ", fragment)
     }
@@ -47,6 +53,12 @@ for (i in seq_len(nrow(registry))) {
   }
 
   collect_text <- txt(collect_script)
+  if (grepl("BLOCKED_PENDING_SPLIT_IMPLEMENTATION", collect_text, fixed = TRUE)) {
+    stop(collect_script, " still contains the forbidden split-stage placeholder status.")
+  }
+  if (grepl("collect_contract|contract is in place", collect_text, perl = TRUE)) {
+    stop(collect_script, " still contains collector-contract placeholder output.")
+  }
   for (fragment in c("read.csv(manifest_path", "read.csv(status_path", "accrual_task_status_blocker(", "write.csv(")) {
     if (!grepl(fragment, collect_text, fixed = TRUE)) stop(collect_script, " missing collector fragment: ", fragment)
   }
