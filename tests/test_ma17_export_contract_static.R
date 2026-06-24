@@ -22,6 +22,10 @@ for (fragment in c(
   "table_denominator_capped_jaccard.csv",
   "table_da_z_est_vs_z_pred_comparison.csv",
   "table_3_13_denominator_diagnostics_summary",
+  "table_top_tail_group_economic_validity.csv",
+  "table_top_tail_group_outcome_means.csv",
+  "table_top_tail_group_economic_validity_decision.csv",
+  "table_3_14_top_tail_economic_validity_summary",
   "table_temporal_dependence_firmre_premium.csv",
   "table_temporal_dependence_decision.csv",
   "table_3_15_temporal_dependence_robustness_summary"

@@ -1,10 +1,10 @@
 # -----------------------------------------------------------------------------
-# Script: di06_temporal_dependence_robustness.R
+# Script: di09_temporal_dependence_robustness.R
 # Purpose: Lightweight AR(1) temporal-dependence robustness simulation for the
 #          row-minus-grouped Firm-RE premium.
 #
 # Intended use:
-#   Rscript scripts/diagnostics/di06_temporal_dependence_robustness.R
+#   Rscript scripts/diagnostics/di09_temporal_dependence_robustness.R
 #
 # This is a non-BRMS mechanism diagnostic. It uses lm/lmer-style fast scoring
 # and writes only simulation diagnostics under output_root.
@@ -15,11 +15,16 @@ suppressPackageStartupMessages({
 })
 
 source("scripts/ma00_setup.R")
-phase_begin("di06", "Temporal-dependence robustness diagnostic")
+phase_begin("di09", "Temporal-dependence robustness diagnostic")
 if (exists("ensure_analysis_dirs", mode = "function")) ensure_analysis_dirs()
 
+if (!env_flag("ACCRUAL_RUN_TEMPORAL_ROBUSTNESS", FALSE)) {
+  stop("[BLOCKER] Temporal-dependence robustness is gated because it can run many lmer fits. ",
+       "Set ACCRUAL_RUN_TEMPORAL_ROBUSTNESS=TRUE to run this diagnostic intentionally.")
+}
+
 script_start_time <- Sys.time()
-script_name <- "scripts/diagnostics/di06_temporal_dependence_robustness.R"
+script_name <- "scripts/diagnostics/di09_temporal_dependence_robustness.R"
 script_version <- "2026-06-25-v1-temporal-dependence-robustness"
 
 temporal_root <- file.path(output_root, "simulation", "temporal_dependence")
@@ -386,7 +391,29 @@ decision <- data.frame(
 )
 write.csv(decision, decision_path, row.names = FALSE, fileEncoding = "UTF-8")
 
+note <- c(
+  "# Temporal Dependence Robustness Note",
+  "",
+  "This lightweight AR(1) mechanism simulation tests whether the row-minus-grouped Firm-RE premium changes as same-firm residual shocks become temporally persistent.",
+  "",
+  "The simulated panel follows `TA_it = X_it beta + industry_year_effect + u_i + epsilon_it`, with `epsilon_it = rho * epsilon_i,t-1 + nu_it`.",
+  "",
+  "Row-level K-fold allows other years of the same firm to remain in training, so it should be interpreted as within-firm interpolation when persistent same-firm shocks are present.",
+  "",
+  "Grouped firm-level K-fold holds out entire firms and is therefore out-of-firm prediction.",
+  "",
+  paste0("Decision: `", decision_value, "`."),
+  decision_reason,
+  "",
+  "A warning is not a failure of the paper. It means row-level validation is capturing within-firm temporal information and should not be interpreted as out-of-time or out-of-firm validity.",
+  "",
+  "Temporal persistence does not by itself prove leakage, earnings management, or managerial intent."
+)
+writeLines(note, note_path, useBytes = TRUE)
+
 output_paths <- c(replications_path, premium_path, decision_path, io_manifest_path, note_path)
+write.csv(data.frame(path = output_paths, status = "pending", stringsAsFactors = FALSE),
+          io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 io_manifest <- data.frame(
   script_name = script_name,
   script_version = script_version,
@@ -412,25 +439,5 @@ io_manifest <- data.frame(
 )
 write.csv(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 
-note <- c(
-  "# Temporal Dependence Robustness Note",
-  "",
-  "This lightweight AR(1) mechanism simulation tests whether the row-minus-grouped Firm-RE premium changes as same-firm residual shocks become temporally persistent.",
-  "",
-  "The simulated panel follows `TA_it = X_it beta + industry_year_effect + u_i + epsilon_it`, with `epsilon_it = rho * epsilon_i,t-1 + nu_it`.",
-  "",
-  "Row-level K-fold allows other years of the same firm to remain in training, so it should be interpreted as within-firm interpolation when persistent same-firm shocks are present.",
-  "",
-  "Grouped firm-level K-fold holds out entire firms and is therefore out-of-firm prediction.",
-  "",
-  paste0("Decision: `", decision_value, "`."),
-  decision_reason,
-  "",
-  "A warning is not a failure of the paper. It means row-level validation is capturing within-firm temporal information and should not be interpreted as out-of-time or out-of-firm validity.",
-  "",
-  "Temporal persistence does not by itself prove leakage, earnings management, or managerial intent."
-)
-writeLines(note, note_path, useBytes = TRUE)
-
 cat("[SUCCESS] Temporal-dependence robustness outputs written under ", temporal_root, "\n", sep = "")
-phase_end("di06", "Temporal-dependence robustness diagnostic")
+phase_end("di09", "Temporal-dependence robustness diagnostic")

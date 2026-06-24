@@ -67,6 +67,9 @@ exact_kfold_reclassification_jaccard_path <- file.path(output_root, "diagnostics
 denominator_diagnostics_decision_path <- file.path(output_root, "diagnostics", "table_denominator_diagnostics_decision.csv")
 denominator_capped_jaccard_path <- file.path(output_root, "diagnostics", "table_denominator_capped_jaccard.csv")
 da_z_est_vs_z_pred_comparison_path <- file.path(output_root, "diagnostics", "table_da_z_est_vs_z_pred_comparison.csv")
+economic_validity_path <- file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity.csv")
+economic_validity_means_path <- file.path(output_root, "diagnostics", "table_top_tail_group_outcome_means.csv")
+economic_validity_decision_path <- file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv")
 temporal_dependence_premium_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv")
 temporal_dependence_decision_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
 DA_Finite_Gate_Decision <- read_required_gate(finite_gate_path, "gate_decision", "DA finite")
@@ -729,7 +732,7 @@ if (!is.null(denominator_decision) && nrow(denominator_decision) > 0 &&
     !is.null(denominator_capped_jaccard) && nrow(denominator_capped_jaccard) > 0) {
   original_denominator <- denominator_capped_jaccard %>%
     filter(.data$denominator_variant == "original_denominator") %>%
-    select(.data$target_space, original_DA_z_est_jaccard = .data$jaccard)
+    transmute(target_space = .data$target_space, original_DA_z_est_jaccard = .data$jaccard)
   perturbed_denominator <- denominator_capped_jaccard %>%
     filter(.data$denominator_variant != "original_denominator") %>%
     group_by(.data$target_space) %>%
@@ -769,6 +772,56 @@ if (!is.null(denominator_decision) && nrow(denominator_decision) > 0 &&
     )
   write_outputs(table_3_13, "table_3_13_denominator_diagnostics_summary", "Table 3.13 Denominator Diagnostics Summary")
   table_3_13_available <- TRUE
+}
+
+economic_validity <- safe_read_csv(economic_validity_path)
+economic_validity_means <- safe_read_csv(economic_validity_means_path)
+economic_validity_decision <- safe_read_csv(economic_validity_decision_path)
+table_3_14_available <- FALSE
+if (!is.null(economic_validity) && nrow(economic_validity) > 0 &&
+    !is.null(economic_validity_decision) && nrow(economic_validity_decision) > 0) {
+  economic_decision_value <- if ("economic_validity_decision" %in% names(economic_validity_decision)) {
+    as.character(economic_validity_decision$economic_validity_decision[[1]])
+  } else {
+    NA_character_
+  }
+  decision_summary <- economic_validity_decision %>%
+    select(any_of(c(
+      "reported_score_variable", "fitted_tests", "significant_tests_p10",
+      "common_top5_significant_tests_p10", "row_only_significant_tests_p10",
+      "grouped_only_significant_tests_p10", "interpretation"
+    )))
+  validity_summary <- economic_validity %>%
+    group_by(.data$reported_score_variable, .data$term) %>%
+    summarise(
+      tested_outcome_n = sum(.data$model_status == "fit_ok", na.rm = TRUE),
+      significant_outcome_n_p10 = sum(!is.na(.data$p_value) & .data$p_value <= 0.10, na.rm = TRUE),
+      min_p_value = suppressWarnings(min(.data$p_value, na.rm = TRUE)),
+      .groups = "drop"
+    ) %>%
+    mutate(min_p_value = ifelse(is.infinite(.data$min_p_value), NA_real_, .data$min_p_value))
+  table_3_14 <- validity_summary %>%
+    left_join(decision_summary, by = "reported_score_variable") %>%
+    mutate(economic_validity_decision = economic_decision_value) %>%
+    select(any_of(c(
+      "reported_score_variable", "term", "tested_outcome_n", "significant_outcome_n_p10",
+      "min_p_value", "fitted_tests", "significant_tests_p10",
+      "common_top5_significant_tests_p10", "row_only_significant_tests_p10",
+      "grouped_only_significant_tests_p10", "economic_validity_decision", "interpretation"
+    )))
+  if (!is.null(economic_validity_means) && nrow(economic_validity_means) > 0) {
+    mean_cols <- grep("^mean_", names(economic_validity_means), value = TRUE)
+    if (length(mean_cols)) {
+      means_compact <- economic_validity_means %>%
+        group_by(.data$reported_score_variable) %>%
+        summarise(outcome_mean_fields_available = paste(mean_cols, collapse = ";"), .groups = "drop")
+      table_3_14 <- table_3_14 %>% left_join(means_compact, by = "reported_score_variable")
+    }
+  }
+  if (nrow(table_3_14) > 0) {
+    write_outputs(table_3_14, "table_3_14_top_tail_economic_validity_summary", "Table 3.14 Top-Tail Economic Validity Summary")
+    table_3_14_available <- TRUE
+  }
 }
 
 temporal_premium <- safe_read_csv(temporal_dependence_premium_path)
@@ -886,6 +939,9 @@ if (table_3_12_available) {
 if (table_3_13_available) {
   required_stems <- c(required_stems, "table_3_13_denominator_diagnostics_summary")
 }
+if (table_3_14_available) {
+  required_stems <- c(required_stems, "table_3_14_top_tail_economic_validity_summary")
+}
 if (table_3_15_available) {
   required_stems <- c(required_stems, "table_3_15_temporal_dependence_robustness_summary")
 }
@@ -917,14 +973,18 @@ add_qc("QC16", "denominator diagnostics manuscript table available when di04 dec
        ifelse(file.exists(denominator_diagnostics_decision_path) && !table_3_13_available, "FAIL",
               ifelse(!file.exists(denominator_diagnostics_decision_path), "WARN", "PASS")),
        ifelse(file.exists(denominator_diagnostics_decision_path), file.path(report_dir, "table_3_13_denominator_diagnostics_summary.csv"), "di04 decision not present"))
-add_qc("QC17", "temporal-dependence robustness table available when di06 decision exists",
+add_qc("QC17", "economic-validity manuscript table available when di05 decision exists",
+       ifelse(file.exists(economic_validity_decision_path) && !table_3_14_available, "FAIL",
+              ifelse(!file.exists(economic_validity_decision_path), "WARN", "PASS")),
+       ifelse(file.exists(economic_validity_decision_path), file.path(report_dir, "table_3_14_top_tail_economic_validity_summary.csv"), "di05 decision not present"))
+add_qc("QC18", "temporal-dependence robustness table available when temporal decision exists",
        ifelse(file.exists(temporal_dependence_decision_path) && !table_3_15_available, "FAIL",
               ifelse(!file.exists(temporal_dependence_decision_path), "WARN", "PASS")),
-       ifelse(file.exists(temporal_dependence_decision_path), file.path(report_dir, "table_3_15_temporal_dependence_robustness_summary.csv"), "di06 decision not present"))
+       ifelse(file.exists(temporal_dependence_decision_path), file.path(report_dir, "table_3_15_temporal_dependence_robustness_summary.csv"), "di09 temporal decision not present"))
 
 report_path <- file.path(report_dir, "chapter3_methods_tables_report.md")
 qc_path <- file.path(report_dir, "chapter3_methods_tables_qc.csv")
-add_qc("QC18", "master report exists", "PASS", report_path)
+add_qc("QC19", "master report exists", "PASS", report_path)
 qc <- bind_rows(qc_rows)
 write.csv(qc, qc_path, row.names = FALSE, fileEncoding = "UTF-8")
 generated_files <- unique(c(generated_files, qc_path, report_path))
@@ -937,6 +997,7 @@ if (any(preprocessing_audit$leakage_risk_classification %in% c("potential_predic
 if (is.null(prior_summary)) add_warning("Prior predictive diagnostics are missing.")
 if (is.null(diag) || is.null(kfold_balance_in)) add_warning("MCMC/fold outputs are not fully available.")
 if (!file.exists(denominator_diagnostics_decision_path)) add_warning("Denominator diagnostics are missing.")
+if (!file.exists(economic_validity_decision_path)) add_warning("Economic-validity top-tail diagnostics are missing.")
 if (!file.exists(temporal_dependence_decision_path)) add_warning("Temporal-dependence robustness outputs are missing.")
 
 report_lines <- c(

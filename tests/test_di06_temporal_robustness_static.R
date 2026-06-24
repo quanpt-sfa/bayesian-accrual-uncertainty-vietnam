@@ -1,6 +1,6 @@
 txt <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
 
-di06_path <- "scripts/diagnostics/di06_temporal_dependence_robustness.R"
+di06_path <- "scripts/diagnostics/di09_temporal_dependence_robustness.R"
 if (!file.exists(di06_path)) stop("Missing temporal robustness script: ", di06_path)
 di06 <- txt(di06_path)
 
@@ -12,7 +12,9 @@ required_fragments <- c(
   "table_temporal_dependence_firmre_premium.csv",
   "table_temporal_dependence_decision.csv",
   "table_temporal_dependence_io_manifest.csv",
-  "temporal_dependence_reviewer_note.md"
+  "temporal_dependence_reviewer_note.md",
+  "ACCRUAL_RUN_TEMPORAL_ROBUSTNESS",
+  "[BLOCKER] Temporal-dependence robustness is gated"
 )
 
 for (fragment in required_fragments) {

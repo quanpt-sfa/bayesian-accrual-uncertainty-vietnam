@@ -25,39 +25,35 @@ dir.create(notes_dir, recursive = TRUE, showWarnings = FALSE)
 
 artifact_spec <- data.frame(
   artifact_id = c(
-    "di04_weights", "di04_shift", "di04_exclusions", "di04_note",
-    "di05_distribution", "di05_correlation", "di05_decomposition", "di05_profile", "di05_capping", "di05_note",
-    "di06_results", "di06_framework", "di06_counts", "di06_means", "di06_note",
-    "si05_rep_results", "si05_grid_summary", "si06_mechanism_summary", "si06_note"
+    "full_vs_strict_weights", "full_vs_strict_shift", "full_vs_strict_exclusions", "full_vs_strict_note",
+    "denominator_sd_mu_distribution", "denominator_capped_jaccard", "da_z_est_vs_z_pred_comparison", "denominator_decision",
+    "economic_validity", "economic_validity_decision", "economic_validity_means", "economic_validity_counts", "economic_validity_note",
+    "temporal_firmre_premium", "temporal_decision"
   ),
   source_path = c(
     file.path(output_root, "diagnostics", "table_full_vs_strict_stacking_weights.csv"),
     file.path(output_root, "diagnostics", "table_full_vs_strict_firmre_shift.csv"),
     file.path(output_root, "diagnostics", "table_strict_model_exclusions.csv"),
     file.path(output_root, "diagnostics", "full_vs_strict_stacking_note.md"),
-    file.path(output_root, "diagnostics", "table_denominator_distribution_by_target.csv"),
-    file.path(output_root, "diagnostics", "table_denominator_rank_correlation.csv"),
-    file.path(output_root, "diagnostics", "table_z_est_decomposition_jaccard.csv"),
-    file.path(output_root, "diagnostics", "table_top5_membership_denominator_profile.csv"),
-    file.path(output_root, "diagnostics", "table_z_est_denominator_capping_sensitivity.csv"),
-    file.path(output_root, "diagnostics", "denominator_diagnostics_note.md"),
-    file.path(output_root, "validation", "top5_membership", "table_outcome_validation_top5_membership.csv"),
-    file.path(output_root, "validation", "top5_membership", "table_outcome_validation_preinterpretation_matrix.csv"),
-    file.path(output_root, "validation", "top5_membership", "table_outcome_validation_n_by_membership.csv"),
-    file.path(output_root, "validation", "top5_membership", "table_outcome_validation_marginal_means.csv"),
-    file.path(output_root, "validation", "top5_membership", "outcome_validation_top5_note.md"),
-    file.path(output_root, "simulation", "lmer_temporal_dependence", "tables", "table_lmer_temporal_dependence_rep_results.csv"),
-    file.path(output_root, "simulation", "lmer_temporal_dependence", "tables", "table_lmer_temporal_dependence_grid_summary.csv"),
-    file.path(output_root, "simulation", "lmer_temporal_dependence", "tables", "table_temporal_dependence_mechanism_summary.csv"),
-    file.path(output_root, "simulation", "lmer_temporal_dependence", "notes", "temporal_dependence_mechanism_note.md")
+    file.path(output_root, "diagnostics", "table_denominator_sd_mu_distribution.csv"),
+    file.path(output_root, "diagnostics", "table_denominator_capped_jaccard.csv"),
+    file.path(output_root, "diagnostics", "table_da_z_est_vs_z_pred_comparison.csv"),
+    file.path(output_root, "diagnostics", "table_denominator_diagnostics_decision.csv"),
+    file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity.csv"),
+    file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv"),
+    file.path(output_root, "diagnostics", "table_top_tail_group_outcome_means.csv"),
+    file.path(output_root, "diagnostics", "table_top_tail_set_counts_exact_kfold.csv"),
+    file.path(output_root, "diagnostics", "economic_validity_top_tail_reviewer_note.md"),
+    file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv"),
+    file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
   ),
   artifact_class = c(
-    rep("di04_full_vs_strict", 4),
-    rep("di05_denominator", 6),
-    rep("di06_outcome_validation", 5),
-    rep("si05_si06_temporal_dependence", 4)
+    rep("full_vs_strict_legacy_reviewer", 4),
+    rep("di04_denominator", 4),
+    rep("di05_economic_validity", 5),
+    rep("temporal_dependence_optional", 2)
   ),
-  required = TRUE,
+  required = c(rep(TRUE, 13), rep(FALSE, 2)),
   stringsAsFactors = FALSE
 )
 
@@ -82,7 +78,7 @@ if (any(missing)) {
        ". Partial manifest written to: ", manifest_path)
 }
 
-for (i in seq_len(nrow(artifact_spec))) {
+for (i in which(artifact_spec$exists)) {
   file.copy(artifact_spec$source_path[[i]], artifact_spec$destination_path[[i]], overwrite = TRUE)
 }
 
@@ -99,16 +95,16 @@ checklist <- artifact_spec %>%
 summary_lines <- c(
   "# Section 4.7 Reviewer Evidence Package",
   "",
-  "This package assembles the reviewer-required diagnostics for exact-KFold model-space sensitivity, denominator mechanics, membership-based outcome validation, and temporal-dependence simulation.",
+  "This package assembles reviewer-facing diagnostics for exact-KFold model-space sensitivity, denominator mechanics, economic-validity top-tail membership checks, and optional temporal-dependence robustness.",
   "",
   paste0("Generated at: ", Sys.time()),
   paste0("Output root: ", output_root),
   "",
   "## Included Artifact Classes",
-  "- di04_full_vs_strict: full admissible versus strict clean model-space stacking weights.",
-  "- di05_denominator: SD(mu) denominator distribution, rank correlation, decomposition, and capping sensitivity.",
-  "- di06_outcome_validation: RowOnlyTop5, GroupedOnlyTop5, and CommonTop5 supplementary outcome validation.",
-  "- si05_si06_temporal_dependence: AR(1)/persistent-shock mechanism simulation outputs.",
+  "- full_vs_strict_legacy_reviewer: full admissible versus strict clean model-space stacking weights.",
+  "- di04_denominator: canonical SD(mu) denominator distribution, capped Jaccard, z-est versus z-pred comparison, and decision.",
+  "- di05_economic_validity: canonical RowOnlyTop5, GroupedOnlyTop5, and CommonTop5 supplementary economic-validity outputs.",
+  "- temporal_dependence_optional: gated AR(1) temporal-dependence robustness outputs, included when ACCRUAL_RUN_TEMPORAL_ROBUSTNESS=TRUE has been run.",
   "",
   "## Execution Status",
   paste0("- Required artifacts present: ", sum(artifact_spec$exists), " / ", nrow(artifact_spec))

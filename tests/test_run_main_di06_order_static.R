@@ -13,16 +13,20 @@ pos <- function(fragment, text = main_text) regexpr(fragment, text, fixed = TRUE
 di03_pos <- pos("scripts/diagnostics/di03_exact_kfold_reclassification_audit.R")
 di04_pos <- pos("scripts/diagnostics/di04_denominator_diagnostics.R")
 di05_pos <- pos("scripts/diagnostics/di05_economic_validity_top_tail.R")
-di06_pos <- pos("scripts/diagnostics/di06_temporal_dependence_robustness.R")
+temporal_pos <- pos("scripts/diagnostics/di09_temporal_dependence_robustness.R")
 ma17_pos <- pos("scripts/ma17_export_tables_figures.R")
 
 if (di03_pos < 0) stop("run.R main missing di03.")
-if (di06_pos < 0) stop("run.R main missing di06_temporal_dependence_robustness.R.")
+if (di04_pos < 0) stop("run.R main missing di04 denominator diagnostics.")
+if (di05_pos < 0) stop("run.R main missing di05 economic-validity diagnostics.")
 if (ma17_pos < 0) stop("run.R main missing ma17.")
 
-if (!(di03_pos < di06_pos)) stop("di06 must appear after di03 in run.R main.")
-if (di04_pos > 0 && !(di04_pos < di06_pos)) stop("di06 must appear after di04 when di04 is present in run.R main.")
-if (di05_pos > 0 && !(di05_pos < di06_pos)) stop("di06 must appear after di05 when di05 is present in run.R main.")
-if (!(di06_pos < ma17_pos)) stop("di06 must appear before ma17 in run.R main.")
+if (!(di03_pos < di04_pos && di04_pos < di05_pos && di05_pos < ma17_pos)) {
+  stop("run.R main order must be di03 -> di04_denominator -> di05_economic_validity -> ma17.")
+}
+
+if (temporal_pos > 0) {
+  stop("Temporal-dependence robustness must not run as a default main step.")
+}
 
 cat("test_run_main_di06_order_static.R passed\n")

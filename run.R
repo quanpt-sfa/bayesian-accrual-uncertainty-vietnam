@@ -161,7 +161,12 @@ main_steps <- list(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv")
        ),
        require_reason = "exact-KFold grouped/row DA outputs"),
-  step("di06", "scripts/diagnostics/di06_temporal_dependence_robustness.R", "Temporal-dependence robustness for row-minus-grouped Firm-RE premium"),
+  step("di05", "scripts/diagnostics/di05_economic_validity_top_tail.R", "Economic-validity check for exact-KFold top-tail groups",
+       requires = c(
+         file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv"),
+         file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv")
+       ),
+       require_reason = "di03 membership sets and winsor no-lookahead sample"),
   step("ma17", "scripts/ma17_export_tables_figures.R", "Chapter 3 manuscript table export",
        requires = c(
           table_artifact("table_DA_finite_gate_decision.csv"),
@@ -221,7 +226,7 @@ simulation_steps <- list(
 )
 
 reviewer_steps <- list(
-  step("di04", "scripts/diagnostics/di04_full_vs_strict_model_space_stacking.R",
+  step("rv04", "scripts/diagnostics/di04_full_vs_strict_model_space_stacking.R",
        "Full vs strict model-space stacking diagnostic",
        requires = c(
          table_artifact("table_model_primary_inclusion_gate.csv"),
@@ -229,7 +234,7 @@ reviewer_steps <- list(
          table_artifact("table_mcmc_diagnostics_gate_winsor.csv")
        ),
        require_reason = "model inclusion gate, exact-KFold weight audit, and baseline MCMC diagnostics gate"),
-  step("di05", "scripts/diagnostics/di05_denominator_diagnostics_z_est.R",
+  step("rv05", "scripts/diagnostics/di05_denominator_diagnostics_z_est.R",
        "Denominator diagnostics for estimation-scaled DA",
        requires = c(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
@@ -237,12 +242,15 @@ reviewer_steps <- list(
          file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv")
        ),
        require_reason = "exact-KFold grouped/row DA outputs and di03 membership sets"),
-  step("di06", "scripts/diagnostics/di06_outcome_validation_top5_membership.R",
+  step("rv06", "scripts/diagnostics/di06_outcome_validation_top5_membership.R",
        "Supplementary economic-validity validation for top-5 membership",
        requires = c(
          file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv")
        ),
        require_reason = "di03 membership sets"),
+  step("rv09", "scripts/diagnostics/di09_temporal_dependence_robustness.R",
+       "Temporal-dependence robustness for row-minus-grouped Firm-RE premium",
+       heavy = TRUE),
   step("si05", "scripts/simulation/si05_lmer_temporal_dependence_run.R",
        "LMER temporal-dependence persistent-shock simulation",
        heavy = TRUE),

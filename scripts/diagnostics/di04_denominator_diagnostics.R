@@ -371,33 +371,13 @@ decision <- decision_summary %>%
       TRUE ~ "Denominator perturbations do not materially eliminate the observed matched top-5% turnover."
     )
   ) %>%
-  select(.data$diagnostic_decision, everything())
+  select(all_of("diagnostic_decision"), everything())
 
 write.csv(distribution, distribution_path, row.names = FALSE, fileEncoding = "UTF-8")
 write.csv(comparison, comparison_path, row.names = FALSE, fileEncoding = "UTF-8")
 write.csv(capped_jaccard, capped_jaccard_path, row.names = FALSE, fileEncoding = "UTF-8")
 write.csv(z_est_vs_z_pred, z_est_vs_z_pred_path, row.names = FALSE, fileEncoding = "UTF-8")
 write.csv(decision, decision_path, row.names = FALSE, fileEncoding = "UTF-8")
-
-input_paths <- c(grouped_path, row_path, jaccard_path, source_manifest_path, grouped_pin_path, row_pin_path)
-output_paths <- c(distribution_path, comparison_path, capped_jaccard_path, z_est_vs_z_pred_path, decision_path, io_manifest_path, note_path)
-io_manifest <- data.frame(
-  script_name = script_name,
-  script_version = script_version,
-  git_commit = git_commit_or_na(),
-  start_time = as.character(script_start_time),
-  end_time = as.character(Sys.time()),
-  runtime_seconds = as.numeric(difftime(Sys.time(), script_start_time, units = "secs")),
-  io_class = c(rep("input", length(input_paths)), rep("output", length(output_paths))),
-  path = c(input_paths, output_paths),
-  exists = file.exists(c(input_paths, output_paths)),
-  file_size_bytes = vapply(c(input_paths, output_paths), file_size_or_na, numeric(1)),
-  modified_time = vapply(c(input_paths, output_paths), mtime_or_na, character(1)),
-  md5 = vapply(c(input_paths, output_paths), file_hash_or_na, character(1)),
-  output_root = output_root,
-  stringsAsFactors = FALSE
-)
-write.csv(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 note <- c(
   "# Denominator Diagnostics Reviewer Note",
@@ -415,6 +395,29 @@ note <- c(
   "These diagnostics address measurement robustness. They do not prove earnings management or identify intent."
 )
 writeLines(note, note_path, useBytes = TRUE)
+
+input_paths <- c(grouped_path, row_path, jaccard_path, source_manifest_path, grouped_pin_path, row_pin_path)
+output_paths <- c(distribution_path, comparison_path, capped_jaccard_path, z_est_vs_z_pred_path, decision_path, io_manifest_path, note_path)
+write.csv(data.frame(path = output_paths, status = "pending", stringsAsFactors = FALSE),
+          io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
+io_paths <- c(input_paths, output_paths)
+io_manifest <- data.frame(
+  script_name = script_name,
+  script_version = script_version,
+  git_commit = git_commit_or_na(),
+  start_time = as.character(script_start_time),
+  end_time = as.character(Sys.time()),
+  runtime_seconds = as.numeric(difftime(Sys.time(), script_start_time, units = "secs")),
+  io_class = c(rep("input", length(input_paths)), rep("output", length(output_paths))),
+  path = io_paths,
+  exists = file.exists(io_paths),
+  file_size_bytes = vapply(io_paths, file_size_or_na, numeric(1)),
+  modified_time = vapply(io_paths, mtime_or_na, character(1)),
+  md5 = vapply(io_paths, file_hash_or_na, character(1)),
+  output_root = output_root,
+  stringsAsFactors = FALSE
+)
+write.csv(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 cat("[SUCCESS] di04 denominator diagnostics written under ", diagnostics_dir, "\n", sep = "")
 phase_end("di04", "Denominator diagnostics for exact-KFold DA")
