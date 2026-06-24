@@ -76,6 +76,13 @@ ma09c_body <- txt("scripts/ma09c_collect_loo_stacking.R")
 for (fragment in c("Main_Stack_Inclusion", "Sample_Group", "main_common", "N mismatch", "loo_model_weights")) {
   if (!grepl(fragment, ma09c_body, fixed = TRUE)) stop("ma09c must preserve old ma09 stacking guard: ", fragment)
 }
+for (fragment in c("Weight = weights", "stacking_weight = weights")) {
+  if (!grepl(fragment, ma09c_body, fixed = TRUE)) stop("ma09c stacking output must preserve Weight/stacking_weight schema: ", fragment)
+}
+ma10_body <- txt("scripts/ma10_construct_psis_loo_DA.R")
+for (fragment in c("normalize_stacking_weight_schema <- function", "weights_df$Weight <- weights_df$stacking_weight", "Weight/stacking_weight")) {
+  if (!grepl(fragment, ma10_body, fixed = TRUE)) stop("ma10 must normalize ma09c Weight/stacking_weight schema: ", fragment)
+}
 
 for (path in collector_scripts) {
   if (!file.exists(path)) stop("Missing collector split script: ", path)

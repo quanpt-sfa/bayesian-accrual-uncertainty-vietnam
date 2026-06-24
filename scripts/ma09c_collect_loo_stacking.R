@@ -77,6 +77,7 @@ make_weights <- function(space) {
     Target_Space = manifest$Target_Space[idx],
     Sample_Group = manifest$Sample_Group[idx],
     Heterogeneity_Variant = manifest$Heterogeneity_Variant[idx],
+    Weight = weights,
     stacking_weight = weights,
     Primary_Secondary = "secondary_psis_loo",
     stringsAsFactors = FALSE

@@ -39,6 +39,21 @@ w_rt_df <- read.csv(rt_weights_path, stringsAsFactors = FALSE)
 df_ep <- read.csv(ep_sample_path, stringsAsFactors = FALSE)
 df_rt <- read.csv(rt_sample_path, stringsAsFactors = FALSE)
 
+normalize_stacking_weight_schema <- function(weights_df, path) {
+  if (!"Weight" %in% names(weights_df) && "stacking_weight" %in% names(weights_df)) {
+    weights_df$Weight <- weights_df$stacking_weight
+  }
+  if (!"stacking_weight" %in% names(weights_df) && "Weight" %in% names(weights_df)) {
+    weights_df$stacking_weight <- weights_df$Weight
+  }
+  if (!"Weight" %in% names(weights_df)) {
+    stop("[BLOCKER] Stacking weights file lacks Weight/stacking_weight column: ", path)
+  }
+  weights_df
+}
+w_ep_df <- normalize_stacking_weight_schema(w_ep_df, ep_weights_path)
+w_rt_df <- normalize_stacking_weight_schema(w_rt_df, rt_weights_path)
+
 clean_variant_name <- function(heterogeneity_variant, model_name = NULL) {
   variant <- extract_weight_variant(ifelse(is.null(model_name), "", model_name), heterogeneity_variant)
   safe_variant_name(variant)
