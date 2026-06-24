@@ -23,11 +23,9 @@ required_fragments <- c(
   "$env:ACCRUAL_SIM_RECOVERY_REPLICATIONS = \"30\"",
   "$env:ACCRUAL_SIM_RECOVERY_CORES = \"$coresPerFit\"",
   "$argsForRun = @(\"run.R\", \"simulation\")",
-  "$previousErrorActionPreference = $ErrorActionPreference",
-  "$ErrorActionPreference = \"Continue\"",
-  "& $RscriptPath @argsForRun 2>&1 | Tee-Object -FilePath $consoleLog",
+  "$cmdLine = '\"' + $RscriptPath + '\" ' + ($argsForRun -join \" \") + \" 2>&1\"",
+  "& cmd.exe /d /s /c $cmdLine | Tee-Object -FilePath $consoleLog",
   "$rscriptExitCode = $LASTEXITCODE",
-  "$ErrorActionPreference = $previousErrorActionPreference",
   "if ($rscriptExitCode -ne 0)"
 )
 
@@ -37,7 +35,7 @@ for (fragment in required_fragments) {
   }
 }
 
-forbidden_fragments <- c("--target simulation", "\"--target\"", "'--target'")
+forbidden_fragments <- c("--target simulation", "\"--target\"", "'--target'", "& $RscriptPath @argsForRun 2>&1")
 hits <- forbidden_fragments[vapply(forbidden_fragments, grepl, logical(1), x = txt, fixed = TRUE)]
 if (length(hits)) {
   stop("Simulation run profile must not use run.R --target syntax: ", paste(hits, collapse = ", "))

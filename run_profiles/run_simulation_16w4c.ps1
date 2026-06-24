@@ -137,15 +137,9 @@ if ($DryRun) {
     $argsForRun += "--dry-run"
 }
 
-$rscriptExitCode = 0
-$previousErrorActionPreference = $ErrorActionPreference
-try {
-    $ErrorActionPreference = "Continue"
-    & $RscriptPath @argsForRun 2>&1 | Tee-Object -FilePath $consoleLog
-    $rscriptExitCode = $LASTEXITCODE
-} finally {
-    $ErrorActionPreference = $previousErrorActionPreference
-}
+$cmdLine = '"' + $RscriptPath + '" ' + ($argsForRun -join " ") + " 2>&1"
+& cmd.exe /d /s /c $cmdLine | Tee-Object -FilePath $consoleLog
+$rscriptExitCode = $LASTEXITCODE
 
 if ($rscriptExitCode -ne 0) {
     throw "Simulation pipeline failed with exit code $rscriptExitCode. See log: $consoleLog"
