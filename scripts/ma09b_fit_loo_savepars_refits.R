@@ -110,12 +110,12 @@ fit_ma09b_task_worker <- function(task) {
       moment_match_note = mm_note
     )
     saveRDS(out, task$result_path)
-    status <<- "SUCCESS"
-    out
+    list(status = "SUCCESS", reason = NA_character_, value = out)
   }, error = function(e) {
-    reason <<- conditionMessage(e)
-    NULL
+    list(status = "FAILED", reason = conditionMessage(e), value = NULL)
   })
+  status <- result$status
+  reason <- result$reason
   ended <- Sys.time()
   metadata <- data.frame(
     Task_Key = task$Task_Key,

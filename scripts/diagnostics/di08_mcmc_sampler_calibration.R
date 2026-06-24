@@ -264,38 +264,51 @@ for (target_index in seq_along(calibration_targets)) {
     fit_status <- "SUCCESS"
     diag <- list(max_rhat = NA_real_, min_bulk_ess = NA_real_, min_tail_ess = NA_real_,
                  n_divergent = NA_integer_, max_treedepth_hits = NA_integer_)
-    fit <- tryCatch({
-      brms::brm(
-        formula = brms_form,
-        data = df_scaled,
-        family = brms_family(),
-        prior = prior_list,
-        chains = prof$chains,
-        cores = prof$cores,
-        iter = prof$iter,
-        warmup = prof$warmup,
-        control = list(adapt_delta = prof$adapt_delta, max_treedepth = prof$max_treedepth),
-        seed = seed,
-        save_pars = brms::save_pars(all = TRUE),
-        refresh = 500
+    fit_result <- tryCatch({
+      list(
+        fit = brms::brm(
+          formula = brms_form,
+          data = df_scaled,
+          family = brms_family(),
+          prior = prior_list,
+          chains = prof$chains,
+          cores = prof$cores,
+          iter = prof$iter,
+          warmup = prof$warmup,
+          control = list(adapt_delta = prof$adapt_delta, max_treedepth = prof$max_treedepth),
+          seed = seed,
+          save_pars = brms::save_pars(all = TRUE),
+          refresh = 500
+        ),
+        status = "SUCCESS",
+        error_message = NA_character_
       )
     }, error = function(e) {
-      err_msg <<- conditionMessage(e)
-      fit_status <<- "FAILED"
-      NULL
+      list(fit = NULL, status = "FAILED", error_message = conditionMessage(e))
     })
+    fit <- fit_result$fit
+    fit_status <- fit_result$status
+    err_msg <- fit_result$error_message
 
     if (!is.null(fit)) {
       saveRDS(fit, fit_path)
-      diag <- tryCatch(
-        extract_fit_diagnostics(fit, prof$max_treedepth),
-        error = function(e) {
-          err_msg <<- conditionMessage(e)
-          fit_status <<- "DIAGNOSTICS_FAILED"
-          list(max_rhat = NA_real_, min_bulk_ess = NA_real_, min_tail_ess = NA_real_,
-               n_divergent = NA_integer_, max_treedepth_hits = NA_integer_)
-        }
-      )
+      diag_result <- tryCatch({
+        list(
+          diag = extract_fit_diagnostics(fit, prof$max_treedepth),
+          status = fit_status,
+          error_message = err_msg
+        )
+      }, error = function(e) {
+        list(
+          diag = list(max_rhat = NA_real_, min_bulk_ess = NA_real_, min_tail_ess = NA_real_,
+                      n_divergent = NA_integer_, max_treedepth_hits = NA_integer_),
+          status = "DIAGNOSTICS_FAILED",
+          error_message = conditionMessage(e)
+        )
+      })
+      diag <- diag_result$diag
+      fit_status <- diag_result$status
+      err_msg <- diag_result$error_message
     }
 
     diagnostics_status <- if (identical(fit_status, "SUCCESS")) {

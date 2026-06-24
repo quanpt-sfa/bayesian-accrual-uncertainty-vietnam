@@ -150,7 +150,7 @@ fit_ma06_prior_task_worker <- function(task) {
   simulated <- matrix(numeric(), nrow = 0)
   dir.create(dirname(task$log_path), recursive = TRUE, showWarnings = FALSE)
 
-  tryCatch({
+  error_message <- tryCatch({
     message("[MA06] Prior predictive task: ", task$model_key)
     df_scaled <- read_winsor_sample(task$Target_Sample)
     observed <- df_scaled$TA_scaled
@@ -246,8 +246,9 @@ fit_ma06_prior_task_worker <- function(task) {
       stringsAsFactors = FALSE
     )
     status <- "SUCCESS"
+    ""
   }, error = function(e) {
-    error_message <<- conditionMessage(e)
+    conditionMessage(e)
   })
 
   ended_at <- as.character(Sys.time())

@@ -49,12 +49,12 @@ fit_si03b_task_worker <- function(task) {
       stringsAsFactors = FALSE
     )
     saveRDS(out, task$result_path)
-    status <<- "SUCCESS"
-    out
+    list(status = "SUCCESS", reason = NA_character_, value = out)
   }, error = function(e) {
-    reason <<- conditionMessage(e)
-    NULL
+    list(status = "FAILED", reason = conditionMessage(e), value = NULL)
   })
+  status <- result$status
+  reason <- result$reason
   ended <- Sys.time()
   write.csv(data.frame(Task_Key = task$Task_Key, status = status, reason = reason,
                        RNG_Context = task$RNG_Context, Effective_Seed = task$Effective_Seed,

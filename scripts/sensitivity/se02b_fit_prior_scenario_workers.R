@@ -22,7 +22,7 @@ fit_se02b_task_worker <- function(task) {
     paste("Scenario:", task$Scenario),
     paste("Effective_Seed:", task$Effective_Seed)
   ), task$task_log_path)
-  fit <- tryCatch({
+  fit_result <- tryCatch({
     df_scaled <- read_winsor_sample(task$Target_Sample)
     formula_str <- fix_formula(task$brms_Formula)
     prior_list <- default_prior_list(
@@ -31,7 +31,8 @@ fit_se02b_task_worker <- function(task) {
       prior_set_id = prior_set_id,
       family = likelihood_family
     )
-    captured_warnings <- character()
+    warning_log <- new.env(parent = emptyenv())
+    warning_log$messages <- character()
     out <- withCallingHandlers(
       brms::brm(
         formula = brms::bf(stats::as.formula(formula_str)),
@@ -48,16 +49,17 @@ fit_se02b_task_worker <- function(task) {
         refresh = if ("refresh" %in% names(task)) as.integer(task$refresh) else 0L
       ),
       warning = function(w) {
-        captured_warnings <<- c(captured_warnings, conditionMessage(w))
+        warning_log$messages <- c(warning_log$messages, conditionMessage(w))
         invokeRestart("muffleWarning")
       }
     )
-    warning_count <<- length(captured_warnings)
-    out
+    list(fit = out, reason = NA_character_, warning_count = length(warning_log$messages))
   }, error = function(e) {
-    reason <<- conditionMessage(e)
-    NULL
+    list(fit = NULL, reason = conditionMessage(e), warning_count = 0L)
   })
+  fit <- fit_result$fit
+  reason <- fit_result$reason
+  warning_count <- fit_result$warning_count
   if (!is.null(fit)) {
     saveRDS(fit, task$fit_path)
     draws <- tryCatch(list(

@@ -175,4 +175,24 @@ for (forbidden in c("defer_diagnostic_only", "defer_simulation_only", "split_fit
   }
 }
 
+production_worker_paths <- c(
+  "scripts/ma06_prior_predictive_checks.R",
+  "scripts/ma07a_fit_brms_named_models.R",
+  "scripts/ma09b_fit_loo_savepars_refits.R",
+  "scripts/ma12b_fit_grouped_kfold_firm_workers.R",
+  "scripts/ma13b_fit_row_level_exact_kfold_workers.R",
+  "scripts/sensitivity/se01_prior_predictive.R",
+  "scripts/sensitivity/se02b_fit_prior_scenario_workers.R",
+  "scripts/simulation/si03b_fit_brms_leakage_confirmation_workers.R",
+  "scripts/simulation/si04b_fit_brms_parameter_recovery_workers.R",
+  "scripts/diagnostics/di08b_fit_mcmc_sampler_calibration_workers.R"
+)
+worker_superassignment <- production_worker_paths[vapply(production_worker_paths, function(path) {
+  grepl("<<-", txt(path), fixed = TRUE)
+}, logical(1))]
+if (length(worker_superassignment)) {
+  stop("Production worker scripts must not use <<- superassignment in worker/refit code: ",
+       paste(worker_superassignment, collapse = ", "))
+}
+
 cat("test_brms_worker_refactor_static.R passed\n")

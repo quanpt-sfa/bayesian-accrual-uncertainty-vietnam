@@ -134,7 +134,7 @@ fit_se01_prior_task_worker <- function(task) {
   dir.create(dirname(task$log_path), recursive = TRUE, showWarnings = FALSE)
   dir.create(dirname(task$output_path), recursive = TRUE, showWarnings = FALSE)
 
-  tryCatch({
+  error_result <- tryCatch({
     if (isTRUE(task$dry_run) || identical(toupper(as.character(task$dry_run)), "TRUE")) {
       row_out <- data.frame(
         task_index = task$task_index,
@@ -221,9 +221,10 @@ fit_se01_prior_task_worker <- function(task) {
       )
       status <- "SUCCESS"
     }
+    list(error_message = "", row_out = NULL)
   }, error = function(e) {
-    error_message <<- conditionMessage(e)
-    row_out <<- data.frame(
+    msg <- conditionMessage(e)
+    list(error_message = msg, row_out = data.frame(
       task_index = task$task_index,
       scenario = task$scenario,
       model_id = task$Model_ID,
@@ -238,11 +239,13 @@ fit_se01_prior_task_worker <- function(task) {
       yrep_sd = NA_real_,
       range_ratio_to_observed = NA_real_,
       status = "FAIL",
-      reason = paste("brms prior predictive failed:", error_message),
+      reason = paste("brms prior predictive failed:", msg),
       output_path = task$output_path,
       stringsAsFactors = FALSE
-    )
+    ))
   })
+  error_message <- error_result$error_message
+  if (!is.null(error_result$row_out)) row_out <- error_result$row_out
 
   ended_at <- as.character(Sys.time())
   writeLines(c(

@@ -227,7 +227,7 @@ fit_ma07a_task_worker <- function(task) {
     paste0("Metadata path: ", task$metadata_path)
   )
 
-  result <- tryCatch({
+  error_message <- tryCatch({
     metadata_status <- metadata_state_file(task$metadata_path, expected_meta)
     metadata_matches <- identical(metadata_status, "metadata_matched")
     if (file.exists(task$fit_path) && metadata_matches && !force_refit && !isTRUE(task$row_is_remediation_target)) {
@@ -291,12 +291,10 @@ fit_ma07a_task_worker <- function(task) {
       metadata_status <- "metadata_written"
       status <- "SUCCESS"
     }
-    NULL
+    ""
   }, error = function(e) {
-    error_message <<- conditionMessage(e)
-    NULL
+    conditionMessage(e)
   })
-  invisible(result)
 
   ended_at <- as.character(Sys.time())
   log_lines <- c(log_lines, paste0("Ended: ", ended_at), paste0("Status: ", status),
