@@ -155,6 +155,12 @@ main_steps <- list(
          file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv")
        ),
        require_reason = "exact-KFold grouped/row DA outputs and new-firm predictive gate decision"),
+  step("di04", "scripts/diagnostics/di04_denominator_diagnostics.R", "Denominator diagnostics for estimation-scaled exact-KFold DA",
+       requires = c(
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv")
+       ),
+       require_reason = "exact-KFold grouped/row DA outputs"),
   step("ma17", "scripts/ma17_export_tables_figures.R", "Chapter 3 manuscript table export",
        requires = c(
           table_artifact("table_DA_finite_gate_decision.csv"),

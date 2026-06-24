@@ -64,6 +64,9 @@ if (!file.exists(new_firm_gate_path)) {
 }
 exact_kfold_reclassification_decision_path <- file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_decision.csv")
 exact_kfold_reclassification_jaccard_path <- file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_jaccard.csv")
+denominator_diagnostics_decision_path <- file.path(output_root, "diagnostics", "table_denominator_diagnostics_decision.csv")
+denominator_capped_jaccard_path <- file.path(output_root, "diagnostics", "table_denominator_capped_jaccard.csv")
+da_z_est_vs_z_pred_comparison_path <- file.path(output_root, "diagnostics", "table_da_z_est_vs_z_pred_comparison.csv")
 DA_Finite_Gate_Decision <- read_required_gate(finite_gate_path, "gate_decision", "DA finite")
 New_Firm_Predictive_Gate_Decision <- read_required_gate(new_firm_gate_path, "audit_decision", "new-firm predictive")
 Exact_KFold_Reclassification_Decision_Table <- safe_read_csv(exact_kfold_reclassification_decision_path)
@@ -715,6 +718,57 @@ if (!is.null(exact_kfold_jaccard) && nrow(exact_kfold_jaccard) > 0) {
     table_3_12_available <- TRUE
   }
 }
+
+denominator_decision <- safe_read_csv(denominator_diagnostics_decision_path)
+denominator_capped_jaccard <- safe_read_csv(denominator_capped_jaccard_path)
+da_z_est_vs_z_pred_comparison <- safe_read_csv(da_z_est_vs_z_pred_comparison_path)
+table_3_13_available <- FALSE
+if (!is.null(denominator_decision) && nrow(denominator_decision) > 0 &&
+    !is.null(denominator_capped_jaccard) && nrow(denominator_capped_jaccard) > 0) {
+  original_denominator <- denominator_capped_jaccard %>%
+    filter(.data$denominator_variant == "original_denominator") %>%
+    select(.data$target_space, original_DA_z_est_jaccard = .data$jaccard)
+  perturbed_denominator <- denominator_capped_jaccard %>%
+    filter(.data$denominator_variant != "original_denominator") %>%
+    group_by(.data$target_space) %>%
+    summarise(
+      capped_floored_denominator_jaccard_min = min(.data$jaccard, na.rm = TRUE),
+      capped_floored_denominator_jaccard_max = max(.data$jaccard, na.rm = TRUE),
+      .groups = "drop"
+    )
+  z_pred_summary <- if (!is.null(da_z_est_vs_z_pred_comparison) && nrow(da_z_est_vs_z_pred_comparison) > 0) {
+    da_z_est_vs_z_pred_comparison %>%
+      group_by(.data$target_space) %>%
+      summarise(
+        DA_z_est_vs_DA_z_pred_top5_jaccard_min = min(.data$top5_jaccard_z_est_vs_z_pred, na.rm = TRUE),
+        DA_z_est_vs_DA_z_pred_top5_jaccard_max = max(.data$top5_jaccard_z_est_vs_z_pred, na.rm = TRUE),
+        .groups = "drop"
+      )
+  } else {
+    data.frame(
+      target_space = unique(denominator_decision$target_space),
+      DA_z_est_vs_DA_z_pred_top5_jaccard_min = NA_real_,
+      DA_z_est_vs_DA_z_pred_top5_jaccard_max = NA_real_,
+      stringsAsFactors = FALSE
+    )
+  }
+  table_3_13 <- denominator_decision %>%
+    select(any_of(c("diagnostic_decision", "target_space", "claim_assessment"))) %>%
+    left_join(original_denominator, by = "target_space") %>%
+    left_join(perturbed_denominator, by = "target_space") %>%
+    left_join(z_pred_summary, by = "target_space") %>%
+    mutate(
+      paper_b_claim_support = dplyr::case_when(
+        .data$diagnostic_decision == "PASS_DENOMINATOR_DIAGNOSTIC_STABLE" ~ "supports_measurement_robustness",
+        .data$diagnostic_decision == "WARN_DENOMINATOR_SENSITIVE" ~ "weakens_claim_requires_qualification",
+        .data$diagnostic_decision == "FAIL_DENOMINATOR_DRIVEN" ~ "does_not_support_denominator_robustness",
+        TRUE ~ "insufficient_inputs"
+      )
+    )
+  write_outputs(table_3_13, "table_3_13_denominator_diagnostics_summary", "Table 3.13 Denominator Diagnostics Summary")
+  table_3_13_available <- TRUE
+}
+
 ExactKFold_Magnitude_RQ2_Primary_Output_Allowed <- table_3_12_available &&
   any(table_3_12$Primary_Inference_Allowed %in% TRUE &
         grepl("^primary_magnitude", table_3_12$metric_class))
@@ -803,6 +857,9 @@ required_stems <- c(
 if (table_3_12_available) {
   required_stems <- c(required_stems, "table_3_12_exact_kfold_reclassification_jaccard")
 }
+if (table_3_13_available) {
+  required_stems <- c(required_stems, "table_3_13_denominator_diagnostics_summary")
+}
 
 qc_rows <- list()
 add_qc <- function(id, name, status, details) {
@@ -827,10 +884,14 @@ add_qc("QC14", "manifest table exists", ifelse(file.exists(file.path(report_dir,
 add_qc("QC15", "exact-KFold reclassification manuscript table available when di03 decision exists",
        ifelse(file.exists(exact_kfold_reclassification_decision_path) && !table_3_12_available, "FAIL", "PASS"),
        ifelse(file.exists(exact_kfold_reclassification_decision_path), file.path(report_dir, "table_3_12_exact_kfold_reclassification_jaccard.csv"), "di03 decision not present"))
+add_qc("QC16", "denominator diagnostics manuscript table available when di04 decision exists",
+       ifelse(file.exists(denominator_diagnostics_decision_path) && !table_3_13_available, "FAIL",
+              ifelse(!file.exists(denominator_diagnostics_decision_path), "WARN", "PASS")),
+       ifelse(file.exists(denominator_diagnostics_decision_path), file.path(report_dir, "table_3_13_denominator_diagnostics_summary.csv"), "di04 decision not present"))
 
 report_path <- file.path(report_dir, "chapter3_methods_tables_report.md")
 qc_path <- file.path(report_dir, "chapter3_methods_tables_qc.csv")
-add_qc("QC16", "master report exists", "PASS", report_path)
+add_qc("QC17", "master report exists", "PASS", report_path)
 qc <- bind_rows(qc_rows)
 write.csv(qc, qc_path, row.names = FALSE, fileEncoding = "UTF-8")
 generated_files <- unique(c(generated_files, qc_path, report_path))
@@ -842,6 +903,7 @@ if (any(prediction_audit$prediction_rule_classification == "unclear_requires_man
 if (any(preprocessing_audit$leakage_risk_classification %in% c("potential_predictive_leakage", "unclear_requires_manual_review"))) add_warning("Preprocessing leakage risk is detected or unclear.")
 if (is.null(prior_summary)) add_warning("Prior predictive diagnostics are missing.")
 if (is.null(diag) || is.null(kfold_balance_in)) add_warning("MCMC/fold outputs are not fully available.")
+if (!file.exists(denominator_diagnostics_decision_path)) add_warning("Denominator diagnostics are missing.")
 
 report_lines <- c(
   "# Chapter 3 Methods Tables Report",

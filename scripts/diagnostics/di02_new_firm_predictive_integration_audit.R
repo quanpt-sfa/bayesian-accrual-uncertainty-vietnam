@@ -187,11 +187,13 @@ classify_source_code_evidence <- function(path, role) {
 source_paths <- data.frame(
   source_role = c(
     "psis_loo_stacked_DA_draw_constructor",
-    "exact_kfold_DA_draw_constructor",
+    "exact_kfold_DA_constructor",
     "grouped_PSIS_LOFO",
-    "exact_grouped_kfold",
+    "exact_grouped_kfold_worker",
+    "exact_grouped_kfold_collector",
     "BRMS_leakage_confirmation",
-    "exact_row_kfold_candidate",
+    "exact_row_kfold_worker",
+    "exact_row_kfold_collector",
     "psis_reliability_gate_candidate"
   ),
   path = c(
@@ -199,8 +201,10 @@ source_paths <- data.frame(
     file.path("scripts", "ma14_construct_exact_kfold_DA.R"),
     file.path("scripts", "robustness", "ro01_lofo_stacking.R"),
     file.path("scripts", "ma12b_fit_grouped_kfold_firm_workers.R"),
+    file.path("scripts", "ma12c_collect_grouped_kfold_firm_scores.R"),
     file.path("scripts", "simulation", "si03b_fit_brms_leakage_confirmation_workers.R"),
     file.path("scripts", "ma13b_fit_row_level_exact_kfold_workers.R"),
+    file.path("scripts", "ma13c_collect_row_level_exact_kfold_scores.R"),
     file.path("scripts", "diagnostics", "di01_psis_reliability_gate.R")
   ),
   stringsAsFactors = FALSE
@@ -228,14 +232,14 @@ candidate_outputs <- data.frame(
     "psis_reliability_gate"
   ),
   expected_source_role = c(
-    "stacked_DA_draw_constructor",
-    "stacked_DA_draw_constructor",
-    "exact_grouped_kfold",
-    "exact_grouped_kfold",
-    "exact_grouped_kfold",
-    "exact_grouped_kfold",
-    "exact_row_kfold_candidate",
-    "exact_row_kfold_candidate",
+    "psis_loo_stacked_DA_draw_constructor",
+    "psis_loo_stacked_DA_draw_constructor",
+    "exact_grouped_kfold_worker",
+    "exact_grouped_kfold_collector",
+    "exact_grouped_kfold_collector",
+    "exact_grouped_kfold_collector",
+    "exact_row_kfold_worker",
+    "exact_row_kfold_collector",
     "psis_reliability_gate_candidate"
   ),
   path = c(

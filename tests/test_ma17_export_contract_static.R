@@ -17,6 +17,17 @@ if (!grepl("scripts/ma12b_fit_grouped_kfold_firm_workers.R", ma17, fixed = TRUE)
   stop("ma17 must audit the active split grouped-KFold worker script.")
 }
 
+for (fragment in c(
+  "table_denominator_diagnostics_decision.csv",
+  "table_denominator_capped_jaccard.csv",
+  "table_da_z_est_vs_z_pred_comparison.csv",
+  "table_3_13_denominator_diagnostics_summary"
+)) {
+  if (!grepl(fragment, ma17, fixed = TRUE)) {
+    stop("ma17 must consume/export denominator diagnostic fragment: ", fragment)
+  }
+}
+
 if (grepl('file.path("reports", "chapter3_methods_tables")', ma17, fixed = TRUE)) {
   stop("ma17 must not hard-code reports/chapter3_methods_tables.")
 }
