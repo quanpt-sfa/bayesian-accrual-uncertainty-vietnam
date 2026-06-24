@@ -1,10 +1,10 @@
 # -----------------------------------------------------------------------------
-# Script: di06_outcome_validation_top5_membership.R
+# Script: rv06_legacy_outcome_validation_top5_membership.R
 # Purpose: Supplementary economic-validity validation using exact-KFold top-5%
 #          membership classes: row-only, grouped-only, and common top-tail.
 #
 # Intended use:
-#   Rscript scripts/diagnostics/di06_outcome_validation_top5_membership.R
+#   Rscript scripts/diagnostics/rv06_legacy_outcome_validation_top5_membership.R
 #
 # This script does not fit or refit Bayesian models.
 # -----------------------------------------------------------------------------
@@ -15,7 +15,7 @@ suppressPackageStartupMessages({
 })
 
 source("scripts/ma00_setup.R")
-phase_begin("di06", "Outcome validation for top-5 membership")
+phase_begin("rv06", "Legacy outcome validation for top-5 membership")
 if (exists("ensure_analysis_dirs", mode = "function")) ensure_analysis_dirs()
 
 validation_dir <- file.path(output_root, "validation", "top5_membership")
@@ -242,5 +242,5 @@ note <- c(
 )
 writeLines(note, note_path, useBytes = TRUE)
 
-cat("[SUCCESS] di06 outputs written under ", validation_dir, "\n", sep = "")
-phase_end("di06", "Outcome validation for top-5 membership")
+cat("[SUCCESS] rv06 legacy outputs written under ", validation_dir, "\n", sep = "")
+phase_end("rv06", "Legacy outcome validation for top-5 membership")

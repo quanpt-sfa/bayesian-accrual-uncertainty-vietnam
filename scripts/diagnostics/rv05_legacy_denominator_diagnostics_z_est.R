@@ -1,10 +1,10 @@
 # -----------------------------------------------------------------------------
-# Script: di05_denominator_diagnostics_z_est.R
+# Script: rv05_legacy_denominator_diagnostics_z_est.R
 # Purpose: Decompose estimation-scaled DA top-tail reclassification into raw DA
 #          numerator versus SD(mu) denominator mechanisms.
 #
 # Intended use:
-#   Rscript scripts/diagnostics/di05_denominator_diagnostics_z_est.R
+#   Rscript scripts/diagnostics/rv05_legacy_denominator_diagnostics_z_est.R
 #
 # This is an artifact-only diagnostic. It does not fit or refit models.
 # -----------------------------------------------------------------------------
@@ -14,7 +14,7 @@ suppressPackageStartupMessages({
 })
 
 source("scripts/ma00_setup.R")
-phase_begin("di05", "Denominator diagnostics for estimation-scaled DA")
+phase_begin("rv05", "Legacy denominator diagnostics for estimation-scaled DA")
 if (exists("ensure_analysis_dirs", mode = "function")) ensure_analysis_dirs()
 
 diagnostics_dir <- file.path(output_root, "diagnostics")
@@ -268,4 +268,4 @@ note <- c(
 writeLines(note, note_path, useBytes = TRUE)
 
 cat("[SUCCESS] di05 outputs written under ", diagnostics_dir, "\n", sep = "")
-phase_end("di05", "Denominator diagnostics for estimation-scaled DA")
+phase_end("rv05", "Legacy denominator diagnostics for estimation-scaled DA")

@@ -30,4 +30,4 @@ for (fragment in forbidden_fragments) {
   }
 }
 
-cat("test_di06_temporal_robustness_static.R passed\n")
+cat("test_di09_temporal_robustness_static.R passed\n")

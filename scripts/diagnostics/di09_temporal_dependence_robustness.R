@@ -411,10 +411,9 @@ note <- c(
 )
 writeLines(note, note_path, useBytes = TRUE)
 
-output_paths <- c(replications_path, premium_path, decision_path, io_manifest_path, note_path)
-write.csv(data.frame(path = output_paths, status = "pending", stringsAsFactors = FALSE),
-          io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
-io_manifest <- data.frame(
+output_paths <- c(replications_path, premium_path, decision_path, note_path)
+io_manifest <- rbind(
+data.frame(
   script_name = script_name,
   script_version = script_version,
   start_time = as.character(script_start_time),
@@ -436,6 +435,30 @@ io_manifest <- data.frame(
   K = K,
   seed = base_seed,
   stringsAsFactors = FALSE
+),
+data.frame(
+  script_name = script_name,
+  script_version = script_version,
+  start_time = as.character(script_start_time),
+  end_time = as.character(Sys.time()),
+  runtime_seconds = as.numeric(difftime(Sys.time(), script_start_time, units = "secs")),
+  git_commit = git_commit_or_na(),
+  output_root = output_root,
+  io_class = "output",
+  path = io_manifest_path,
+  exists = TRUE,
+  file_size_bytes = NA_real_,
+  modified_time = NA_character_,
+  md5 = "self_referential_manifest",
+  rho_grid = paste(rho_grid, collapse = ","),
+  sigma_firm_grid = paste(sigma_firm_grid, collapse = ","),
+  T_grid = paste(T_grid, collapse = ","),
+  replications = R,
+  n_firms = n_firms,
+  K = K,
+  seed = base_seed,
+  stringsAsFactors = FALSE
+)
 )
 write.csv(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 

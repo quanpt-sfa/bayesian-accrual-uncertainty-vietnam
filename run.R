@@ -226,7 +226,7 @@ simulation_steps <- list(
 )
 
 reviewer_steps <- list(
-  step("rv04", "scripts/diagnostics/di04_full_vs_strict_model_space_stacking.R",
+  step("rv04", "scripts/diagnostics/rv04_full_vs_strict_model_space_stacking.R",
        "Full vs strict model-space stacking diagnostic",
        requires = c(
          table_artifact("table_model_primary_inclusion_gate.csv"),
@@ -234,7 +234,7 @@ reviewer_steps <- list(
          table_artifact("table_mcmc_diagnostics_gate_winsor.csv")
        ),
        require_reason = "model inclusion gate, exact-KFold weight audit, and baseline MCMC diagnostics gate"),
-  step("rv05", "scripts/diagnostics/di05_denominator_diagnostics_z_est.R",
+  step("rv05", "scripts/diagnostics/rv05_legacy_denominator_diagnostics_z_est.R",
        "Denominator diagnostics for estimation-scaled DA",
        requires = c(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
@@ -242,7 +242,7 @@ reviewer_steps <- list(
          file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv")
        ),
        require_reason = "exact-KFold grouped/row DA outputs and di03 membership sets"),
-  step("rv06", "scripts/diagnostics/di06_outcome_validation_top5_membership.R",
+  step("rv06", "scripts/diagnostics/rv06_legacy_outcome_validation_top5_membership.R",
        "Supplementary economic-validity validation for top-5 membership",
        requires = c(
          file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv")

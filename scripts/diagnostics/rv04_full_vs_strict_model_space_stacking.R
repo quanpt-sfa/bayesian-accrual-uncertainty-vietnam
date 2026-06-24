@@ -1,10 +1,10 @@
 # -----------------------------------------------------------------------------
-# Script: di04_full_vs_strict_model_space_stacking.R
+# Script: rv04_full_vs_strict_model_space_stacking.R
 # Purpose: Compare exact-KFold stacking weights under the full admissible model
 #          space versus a strict clean MCMC diagnostics model space.
 #
 # Intended use:
-#   Rscript scripts/diagnostics/di04_full_vs_strict_model_space_stacking.R
+#   Rscript scripts/diagnostics/rv04_full_vs_strict_model_space_stacking.R
 #
 # This is an artifact-only reviewer diagnostic. It does not fit or refit models.
 # -----------------------------------------------------------------------------
@@ -14,11 +14,11 @@ suppressPackageStartupMessages({
 })
 
 source("scripts/ma00_setup.R")
-phase_begin("di04", "Full vs strict model-space stacking diagnostic")
+phase_begin("rv04", "Full vs strict model-space stacking diagnostic")
 if (exists("ensure_analysis_dirs", mode = "function")) ensure_analysis_dirs()
 
 script_start <- Sys.time()
-script_name <- "scripts/diagnostics/di04_full_vs_strict_model_space_stacking.R"
+script_name <- "scripts/diagnostics/rv04_full_vs_strict_model_space_stacking.R"
 script_version <- "2026-06-22-v2-read-weight-audit"
 
 diagnostics_dir <- file.path(output_root, "diagnostics")
@@ -78,7 +78,7 @@ write_empty_outputs <- function(reason) {
   write.csv(empty_shift, shift_out_path, row.names = FALSE)
   write.csv(empty_weights[0, ], exclusions_out_path, row.names = FALSE)
   writeLines(c("# Full vs Strict Model-Space Stacking Note", "", reason), note_out_path, useBytes = TRUE)
-  phase_end("di04", "Full vs strict model-space stacking diagnostic")
+  phase_end("rv04", "Full vs strict model-space stacking diagnostic")
   quit(save = "no", status = 0)
 }
 
@@ -227,4 +227,4 @@ note <- c(
 writeLines(note, note_out_path, useBytes = TRUE)
 
 cat("[SUCCESS] di04 outputs written under ", diagnostics_dir, "\n", sep = "")
-phase_end("di04", "Full vs strict model-space stacking diagnostic")
+phase_end("rv04", "Full vs strict model-space stacking diagnostic")
