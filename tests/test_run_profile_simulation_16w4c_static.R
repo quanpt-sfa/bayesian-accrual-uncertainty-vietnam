@@ -23,7 +23,12 @@ required_fragments <- c(
   "$env:ACCRUAL_SIM_RECOVERY_REPLICATIONS = \"30\"",
   "$env:ACCRUAL_SIM_RECOVERY_CORES = \"$coresPerFit\"",
   "$argsForRun = @(\"run.R\", \"simulation\")",
-  "& $RscriptPath @argsForRun 2>&1 | Tee-Object -FilePath $consoleLog"
+  "$previousErrorActionPreference = $ErrorActionPreference",
+  "$ErrorActionPreference = \"Continue\"",
+  "& $RscriptPath @argsForRun 2>&1 | Tee-Object -FilePath $consoleLog",
+  "$rscriptExitCode = $LASTEXITCODE",
+  "$ErrorActionPreference = $previousErrorActionPreference",
+  "if ($rscriptExitCode -ne 0)"
 )
 
 for (fragment in required_fragments) {
