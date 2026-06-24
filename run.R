@@ -247,7 +247,17 @@ reviewer_steps <- list(
 diagnostics_steps <- list(
   step("di01", "scripts/diagnostics/di01_psis_reliability_gate.R", "Secondary PSIS reliability diagnostics"),
   step("di02", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration diagnostics", gate = "new_firm_predictive"),
-  step("di03", "scripts/diagnostics/di03_exact_kfold_reclassification_audit.R", "Exact K-fold reclassification/Jaccard diagnostics")
+  step("di03", "scripts/diagnostics/di03_exact_kfold_reclassification_audit.R", "Exact K-fold reclassification/Jaccard diagnostics"),
+  step("di08a", "scripts/diagnostics/di08a_plan_mcmc_sampler_calibration.R", "Plan diagnostic MCMC sampler calibration"),
+  step("di08b", "scripts/diagnostics/di08b_fit_mcmc_sampler_calibration_workers.R", "Fit diagnostic MCMC sampler calibration with workers", heavy = TRUE,
+       requires = c(file.path(output_root, "diagnostics", "mcmc_sampler_calibration", "tables", "table_di08_sampler_calibration_task_manifest.csv")),
+       require_reason = "di08a sampler calibration task manifest"),
+  step("di08c", "scripts/diagnostics/di08c_collect_mcmc_sampler_calibration.R", "Collect diagnostic MCMC sampler calibration",
+       requires = c(
+         file.path(output_root, "diagnostics", "mcmc_sampler_calibration", "tables", "table_di08_sampler_calibration_task_manifest.csv"),
+         file.path(output_root, "diagnostics", "mcmc_sampler_calibration", "tables", "table_di08_sampler_calibration_task_status.csv")
+       ),
+       require_reason = "di08a manifest and di08b task status")
 )
 
 diagnostics_steps_for_all <- list(
@@ -258,7 +268,17 @@ diagnostics_steps_for_all <- list(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv"),
          file.path(output_root, "new_firm_predictive_audit", "tables", "table_new_firm_predictive_integration_decision.csv")
        ),
-       require_reason = "exact-KFold grouped/row DA outputs and new-firm predictive gate decision")
+       require_reason = "exact-KFold grouped/row DA outputs and new-firm predictive gate decision"),
+  step("di08a", "scripts/diagnostics/di08a_plan_mcmc_sampler_calibration.R", "Plan diagnostic MCMC sampler calibration"),
+  step("di08b", "scripts/diagnostics/di08b_fit_mcmc_sampler_calibration_workers.R", "Fit diagnostic MCMC sampler calibration with workers", heavy = TRUE,
+       requires = c(file.path(output_root, "diagnostics", "mcmc_sampler_calibration", "tables", "table_di08_sampler_calibration_task_manifest.csv")),
+       require_reason = "di08a sampler calibration task manifest"),
+  step("di08c", "scripts/diagnostics/di08c_collect_mcmc_sampler_calibration.R", "Collect diagnostic MCMC sampler calibration",
+       requires = c(
+         file.path(output_root, "diagnostics", "mcmc_sampler_calibration", "tables", "table_di08_sampler_calibration_task_manifest.csv"),
+         file.path(output_root, "diagnostics", "mcmc_sampler_calibration", "tables", "table_di08_sampler_calibration_task_status.csv")
+       ),
+       require_reason = "di08a manifest and di08b task status")
 )
 
 steps_for_target <- function(x) {

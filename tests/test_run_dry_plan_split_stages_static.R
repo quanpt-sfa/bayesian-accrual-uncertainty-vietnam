@@ -7,7 +7,8 @@ ordered_ids <- c(
   "ma13a", "ma13b", "ma13c",
   "se02a", "se02b", "se02c",
   "si03a", "si03b", "si03c",
-  "si04a", "si04b", "si04c"
+  "si04a", "si04b", "si04c",
+  "di08a", "di08b", "di08c"
 )
 positions <- vapply(ordered_ids, function(id) regexpr(paste0(id, " "), dry_text, fixed = TRUE)[1], numeric(1))
 missing <- ordered_ids[positions < 0]
@@ -19,7 +20,8 @@ groups <- list(
   c("ma13a", "ma13b", "ma13c"),
   c("se02a", "se02b", "se02c"),
   c("si03a", "si03b", "si03c"),
-  c("si04a", "si04b", "si04c")
+  c("si04a", "si04b", "si04c"),
+  c("di08a", "di08b", "di08c")
 )
 for (group in groups) {
   pos <- positions[group]
@@ -32,16 +34,17 @@ obsolete_stage_lines <- c(
   "ma13 scripts/ma13_row_level_exact_kfold.R",
   "se02 scripts/sensitivity/se02_refit_prior_scenarios.R",
   "si03 scripts/simulation/si03_brms_leakage_confirmation.R",
-  "si04 scripts/simulation/si04_brms_parameter_recovery.R"
+  "si04 scripts/simulation/si04_brms_parameter_recovery.R",
+  "di08 scripts/diagnostics/di08_mcmc_sampler_calibration.R"
 )
 hits <- obsolete_stage_lines[vapply(obsolete_stage_lines, grepl, logical(1), x = dry_text, fixed = TRUE)]
 if (length(hits)) stop("Dry-run plan still includes obsolete mixed fit/collect stage(s): ", paste(hits, collapse = ", "))
 
-for (id in c("ma09b", "ma12b", "ma13b", "se02b", "si03b", "si04b")) {
+for (id in c("ma09b", "ma12b", "ma13b", "se02b", "si03b", "si04b", "di08b")) {
   line <- dry[grepl(paste0(id, " "), dry, fixed = TRUE)]
   if (!length(line) || !grepl("heavy", line, fixed = TRUE)) stop(id, " must be marked heavy in dry-run plan.")
 }
-for (id in c("ma09c", "ma12c", "ma13c", "se02c", "si03c", "si04c")) {
+for (id in c("ma09c", "ma12c", "ma13c", "se02c", "si03c", "si04c", "di08c")) {
   line <- dry[grepl(paste0(id, " "), dry, fixed = TRUE)]
   if (!length(line) || !grepl("requires artifacts", line, fixed = TRUE)) stop(id, " must be marked requires artifacts in dry-run plan.")
 }
