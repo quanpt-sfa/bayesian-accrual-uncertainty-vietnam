@@ -8,6 +8,37 @@ manifest_path <- file.path(root, "tables", "table_si04_brms_recovery_task_manife
 status_path <- file.path(root, "tables", "table_si04_brms_recovery_task_status.csv")
 if (!file.exists(manifest_path)) stop("[BLOCKER] Missing si04a task manifest: ", manifest_path)
 tasks <- read.csv(manifest_path, stringsAsFactors = FALSE)
+sim_cfg <- accrual_simulation_runtime_config("brms_recovery")
+
+recovery_prior <- function() {
+  c(
+    brms::set_prior("normal(0, 0.10)", class = "b"),
+    brms::set_prior("normal(0, 0.10)", class = "Intercept"),
+    brms::set_prior("exponential(10)", class = "sigma"),
+    brms::set_prior("exponential(10)", class = "sd")
+  )
+}
+
+extract_si04b_diagnostics <- function(fit, max_treedepth) {
+  draws <- posterior::as_draws_df(fit)
+  draw_summary <- as.data.frame(posterior::summarise_draws(draws, "rhat", "ess_bulk", "ess_tail"))
+  np <- brms::nuts_params(fit)
+  treedepths <- np$Value[np$Parameter == "treedepth__"]
+  max_rhat <- suppressWarnings(max(draw_summary$rhat, na.rm = TRUE))
+  min_ess_bulk <- suppressWarnings(min(draw_summary$ess_bulk, na.rm = TRUE))
+  min_ess_tail <- suppressWarnings(min(draw_summary$ess_tail, na.rm = TRUE))
+  if (!is.finite(max_rhat)) max_rhat <- NA_real_
+  if (!is.finite(min_ess_bulk)) min_ess_bulk <- NA_real_
+  if (!is.finite(min_ess_tail)) min_ess_tail <- NA_real_
+  list(
+    max_rhat = max_rhat,
+    min_ess_bulk = min_ess_bulk,
+    min_ess_tail = min_ess_tail,
+    total_divergent = sum(np$Parameter == "divergent__" & np$Value > 0, na.rm = TRUE),
+    max_treedepth_hits = sum(treedepths >= max_treedepth, na.rm = TRUE)
+  )
+}
+
 fit_si04b_task_worker <- function(task) {
   task <- as.list(task)
   dir.create(dirname(task$fit_path), recursive = TRUE, showWarnings = FALSE)
@@ -18,19 +49,31 @@ fit_si04b_task_worker <- function(task) {
   writeLines(c("si04b task log", paste("Task_Key:", task$Task_Key), paste("Effective_Seed:", task$Effective_Seed)), task$task_log_path)
   result <- tryCatch({
     set.seed(as.integer(task$Effective_Seed))
-    n <- 160L
-    df <- data.frame(company = paste0("F", rep(seq_len(32L), each = 5L)), year = rep(2016:2020, 32L))
-    df$industry <- paste0("I", ((seq_len(nrow(df)) - 1L) %% 5L) + 1L)
+    T_val <- as.integer(task$T)
+    sigma_firm <- as.numeric(task$sigma_firm)
+    n_firms <- as.integer(sim_cfg$n_firms)
+    n_industries <- as.integer(sim_cfg$n_industries)
+    firms <- paste0("F", seq_len(n_firms))
+    years <- seq_len(T_val)
+    df <- expand.grid(company = firms, year = years, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+    df$industry <- paste0("I", ((match(df$company, firms) - 1L) %% n_industries) + 1L)
     for (v in pred_vars) df[[v]] <- rnorm(nrow(df))
     beta_drev <- 0.04
     beta_ppe <- -0.03
-    df$TA_scaled <- beta_drev * df$dREV_scaled + beta_ppe * df$PPE_scaled + rnorm(nrow(df), sd = 0.06)
+    beta_roa <- 0.02
+    firm_effect <- rnorm(n_firms, mean = 0, sd = sigma_firm)
+    names(firm_effect) <- firms
+    df$TA_scaled <- beta_drev * df$dREV_scaled +
+      beta_ppe * df$PPE_scaled +
+      beta_roa * df$ROA_lag +
+      firm_effect[df$company] +
+      rnorm(nrow(df), sd = sim_cfg$sigma_eps)
     df <- standardize_predictors(df)
     fit <- brms::brm(
       formula = brms::bf(TA_scaled ~ dREV_scaled_std + PPE_scaled_std + ROA_lag_std + (1 | company)),
       data = df,
-      family = brms_family(),
-      prior = default_prior_list("firm_random_intercept", model_structure = model_structure),
+      family = brms::student(),
+      prior = recovery_prior(),
       chains = as.integer(task$chains),
       cores = as.integer(task$cores),
       iter = as.integer(task$iter),
@@ -42,11 +85,21 @@ fit_si04b_task_worker <- function(task) {
     )
     saveRDS(fit, task$fit_path)
     fx <- brms::fixef(fit)
+    fit_diag <- extract_si04b_diagnostics(fit, as.integer(task$max_treedepth))
     out <- data.frame(
+      T = T_val,
+      sigma_firm = sigma_firm,
       Replication = as.integer(task$Replication),
       parameter = c("dREV_scaled_std", "PPE_scaled_std"),
       true_value = c(beta_drev, beta_ppe),
       estimate = c(fx["dREV_scaled_std", "Estimate"], fx["PPE_scaled_std", "Estimate"]),
+      n_obs = stats::nobs(fit),
+      max_rhat = fit_diag$max_rhat,
+      min_ess_bulk = fit_diag$min_ess_bulk,
+      min_ess_tail = fit_diag$min_ess_tail,
+      total_divergent = fit_diag$total_divergent,
+      max_treedepth_hits = fit_diag$max_treedepth_hits,
+      fit_path = task$fit_path,
       status = "SUCCESS",
       stringsAsFactors = FALSE
     )
@@ -69,7 +122,8 @@ fit_si04b_task_worker <- function(task) {
 }
 parallel_cfg <- accrual_fit_worker_config("simulation", max(as.integer(tasks$cores), na.rm = TRUE), "si04b brms recovery workers")
 results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_si04b_task_worker, parallel_cfg,
-                                 export_names = "fit_si04b_task_worker", packages = "brms",
+                                 export_names = c("fit_si04b_task_worker", "sim_cfg", "recovery_prior", "extract_si04b_diagnostics"),
+                                 packages = c("brms", "posterior"),
                                  context = "si04b brms recovery workers")
 status <- do.call(rbind, results)
 write_task_status(status_path, status)

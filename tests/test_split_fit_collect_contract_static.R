@@ -83,6 +83,21 @@ ma10_body <- txt("scripts/ma10_construct_psis_loo_DA.R")
 for (fragment in c("normalize_stacking_weight_schema <- function", "weights_df$Weight <- weights_df$stacking_weight", "Weight/stacking_weight")) {
   if (!grepl(fragment, ma10_body, fixed = TRUE)) stop("ma10 must normalize ma09c Weight/stacking_weight schema: ", fragment)
 }
+si04a_body <- txt("scripts/simulation/si04a_plan_brms_parameter_recovery.R")
+for (fragment in c("sim_cfg$t_grid", "sim_cfg$sigma_grid", "si04_T%d_sigma%s_rep%03d", "T = row$T", "sigma_firm = row$sigma_firm")) {
+  if (!grepl(fragment, si04a_body, fixed = TRUE)) stop("si04a must plan full T x sigma_firm x replication grid: ", fragment)
+}
+si04b_body <- txt("scripts/simulation/si04b_fit_brms_parameter_recovery_workers.R")
+for (fragment in c("T_val <- as.integer(task$T)", "sigma_firm <- as.numeric(task$sigma_firm)", "sim_cfg$n_firms", "firm_effect <- rnorm", "extract_si04b_diagnostics", "stats::nobs")) {
+  if (!grepl(fragment, si04b_body, fixed = TRUE)) stop("si04b must use task-level recovery cell and diagnostics: ", fragment)
+}
+if (grepl("brms::nobs", si04b_body, fixed = TRUE) || grepl("status <<-", si04b_body, fixed = TRUE)) {
+  stop("si04b must not use brms::nobs or status <<- superassignment.")
+}
+si04c_body <- txt("scripts/simulation/si04c_collect_brms_parameter_recovery.R")
+for (fragment in c("table_brms_parameter_recovery_diagnostic_summary.csv", "max_rhat_max", "min_ess_bulk_min", "min_ess_tail_min", "total_divergent", "T=15, sigma_firm=0.3")) {
+  if (!grepl(fragment, si04c_body, fixed = TRUE)) stop("si04c must collect cell-level recovery diagnostics: ", fragment)
+}
 
 for (path in collector_scripts) {
   if (!file.exists(path)) stop("Missing collector split script: ", path)
