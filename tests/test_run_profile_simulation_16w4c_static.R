@@ -4,6 +4,12 @@ if (!file.exists(profile_path)) stop("Missing simulation run profile: ", profile
 txt <- paste(readLines(profile_path, warn = FALSE), collapse = "\n")
 
 required_fragments <- c(
+  "[string]$RepoRoot = (Resolve-Path \".\").Path",
+  "[string]$RscriptPath = \"Rscript\"",
+  "Get-Command Rscript -ErrorAction SilentlyContinue",
+  "Get-ChildItem \"C:\\Program Files\\R\" -Recurse -Filter Rscript.exe",
+  "throw \"Rscript.exe not found in PATH or C:\\Program Files\\R. Pass -RscriptPath explicitly.\"",
+  "Write-Host \"Rscript path     : $RscriptPath\"",
   "$workers = 15",
   "$coresPerFit = 4",
   "$totalBudget = $workers * $coresPerFit",
@@ -16,7 +22,8 @@ required_fragments <- c(
   "$env:ACCRUAL_SIM_BRMS_CORES = \"$coresPerFit\"",
   "$env:ACCRUAL_SIM_RECOVERY_REPLICATIONS = \"30\"",
   "$env:ACCRUAL_SIM_RECOVERY_CORES = \"$coresPerFit\"",
-  "$argsForRun = @(\"run.R\", \"simulation\")"
+  "$argsForRun = @(\"run.R\", \"simulation\")",
+  "& $RscriptPath @argsForRun 2>&1 | Tee-Object -FilePath $consoleLog"
 )
 
 for (fragment in required_fragments) {

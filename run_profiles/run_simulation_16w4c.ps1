@@ -3,7 +3,8 @@
 # Parallel policy: 15 model-level workers x 4 rstan cores = 60 active cores.
 
 param(
-    [string]$RepoRoot = "E:\Quan\bayesian-accrual-uncertainty-vietnam",
+    [string]$RepoRoot = (Resolve-Path ".").Path,
+    [string]$RscriptPath = "Rscript",
     [switch]$DryRun,
     [switch]$Resume,
     [switch]$AllowOversubscription
@@ -31,6 +32,24 @@ if (!(Test-Path "scripts\ma00_setup.R")) {
 if (!(Test-Path "data\raw")) {
     throw "data\raw not found. run.R requires data/raw to exist."
 }
+
+if ($RscriptPath -eq "Rscript") {
+    $cmd = Get-Command Rscript -ErrorAction SilentlyContinue
+    if ($null -ne $cmd) {
+        $RscriptPath = $cmd.Source
+    } else {
+        $candidates = Get-ChildItem "C:\Program Files\R" -Recurse -Filter Rscript.exe -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending
+
+        if ($candidates.Count -eq 0) {
+            throw "Rscript.exe not found in PATH or C:\Program Files\R. Pass -RscriptPath explicitly."
+        }
+
+        $RscriptPath = $candidates[0].FullName
+    }
+}
+
+Write-Host "Rscript path     : $RscriptPath"
 
 $cpu = Get-CimInstance Win32_Processor
 $logicalCores = ($cpu | Measure-Object NumberOfLogicalProcessors -Sum).Sum
@@ -118,7 +137,7 @@ if ($DryRun) {
     $argsForRun += "--dry-run"
 }
 
-& Rscript @argsForRun 2>&1 | Tee-Object -FilePath $consoleLog
+& $RscriptPath @argsForRun 2>&1 | Tee-Object -FilePath $consoleLog
 
 if ($LASTEXITCODE -ne 0) {
     throw "Simulation pipeline failed with exit code $LASTEXITCODE. See log: $consoleLog"
