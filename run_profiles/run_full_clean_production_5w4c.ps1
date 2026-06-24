@@ -230,6 +230,9 @@ try {
     Rscript tests/test_chapter3_method_alignment_static.R
     Rscript tests/test_run_profile_production_5w4c_static.R
     Rscript tests/test_test_config_hygiene_static.R
+    Rscript tests/test_heavy_stage_worker_coverage_static.R
+    Rscript tests/test_split_fit_collect_contract_static.R
+    Rscript tests/test_run_dry_plan_split_stages_static.R
 
     if (Test-Path "tests/test_gitignore_artifact_hygiene_static.R") {
         Rscript tests/test_gitignore_artifact_hygiene_static.R

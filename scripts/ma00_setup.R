@@ -442,6 +442,95 @@ accrual_test_parallel_scenarios <- function() {
   )
 }
 
+accrual_heavy_fit_stage_registry <- function() {
+  data.frame(
+    stage_id = c("ma09", "ma12", "ma13", "se02", "si03", "si04", "di08"),
+    fit_script = c(
+      "scripts/ma09b_fit_loo_savepars_refits.R",
+      "scripts/ma12b_fit_grouped_kfold_firm_workers.R",
+      "scripts/ma13b_fit_row_level_exact_kfold_workers.R",
+      "scripts/sensitivity/se02b_fit_prior_scenario_workers.R",
+      "scripts/simulation/si03b_fit_brms_leakage_confirmation_workers.R",
+      "scripts/simulation/si04b_fit_brms_parameter_recovery_workers.R",
+      "scripts/diagnostics/di08b_fit_mcmc_sampler_calibration_workers.R"
+    ),
+    collect_script = c(
+      "scripts/ma09c_collect_loo_stacking.R",
+      "scripts/ma12c_collect_grouped_kfold_firm_scores.R",
+      "scripts/ma13c_collect_row_level_exact_kfold_scores.R",
+      "scripts/sensitivity/se02c_collect_prior_scenario_outputs.R",
+      "scripts/simulation/si03c_collect_brms_leakage_confirmation.R",
+      "scripts/simulation/si04c_collect_brms_parameter_recovery.R",
+      "scripts/diagnostics/di08c_collect_mcmc_sampler_calibration.R"
+    ),
+    original_script = c(
+      "scripts/ma09_loo_stacking.R",
+      "scripts/ma12_grouped_kfold_firm.R",
+      "scripts/ma13_row_level_exact_kfold.R",
+      "scripts/sensitivity/se02_refit_prior_scenarios.R",
+      "scripts/simulation/si03_brms_leakage_confirmation.R",
+      "scripts/simulation/si04_brms_parameter_recovery.R",
+      "scripts/diagnostics/di08_mcmc_sampler_calibration.R"
+    ),
+    fit_kind = c(
+      "loo_savepars",
+      "grouped_kfold",
+      "row_kfold",
+      "sensitivity",
+      "simulation",
+      "simulation",
+      "diagnostic_calibration"
+    ),
+    config_helper = c(
+      "accrual_loo_config",
+      "accrual_kfold_config",
+      "accrual_kfold_config",
+      "accrual_sampler_config",
+      "accrual_simulation_runtime_config",
+      "accrual_simulation_runtime_config",
+      "accrual_calibration_profile_grid"
+    ),
+    worker_required = TRUE,
+    shared_outputs_parent_only = TRUE,
+    notes = c(
+      "PSIS/LOO remains secondary evidence; save_pars refits are worker-owned and stacking outputs are collector-owned.",
+      "Exact grouped firm K-fold remains primary RQ1 validation evidence; workers own fold fit artifacts only.",
+      "Exact row-level K-fold remains primary RQ1 validation evidence; workers own fold fit artifacts only.",
+      "Sensitivity prior-scenario model refits are worker-owned; sensitivity tables are collector-owned.",
+      "BRMS leakage simulation fit replicates are worker-owned; simulation summaries are collector-owned.",
+      "BRMS parameter recovery fit replicates are worker-owned; recovery summaries are collector-owned.",
+      "Sampler calibration is diagnostic-only; workers own calibration fit artifacts only."
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+accrual_task_cache_key <- function(...) {
+  raw_key <- stable_task_key(...)
+  gsub("[^A-Za-z0-9_.=-]+", "_", raw_key)
+}
+
+safe_task_artifact_path <- function(root, task_key, suffix) {
+  safe_key <- accrual_task_cache_key(task_key)
+  file.path(root, paste0(safe_key, suffix))
+}
+
+safe_task_log_path <- function(root, task_key) {
+  safe_task_artifact_path(root, task_key, ".log")
+}
+
+write_task_manifest <- function(path, tasks) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  write.csv(as.data.frame(tasks, stringsAsFactors = FALSE), path, row.names = FALSE)
+  invisible(path)
+}
+
+write_task_status <- function(path, status_rows) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  write.csv(as.data.frame(status_rows, stringsAsFactors = FALSE), path, row.names = FALSE)
+  invisible(path)
+}
+
 default_total_core_budget <- function() {
   physical <- parallel::detectCores(logical = FALSE)
   if (!is.na(physical) && is.finite(physical) && physical >= 1L) return(as.integer(physical))

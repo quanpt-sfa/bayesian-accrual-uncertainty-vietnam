@@ -164,16 +164,14 @@ for (path in c(
     stop("Simulation/diagnostic brms fit script must be listed in audit: ", path)
   }
 }
-for (decision in c(
-  "already_workerized",
-  "workerize_now",
-  "split_fit_collect_now",
-  "defer_diagnostic_only",
-  "defer_simulation_only",
-  "no_action_non_brms"
-)) {
+for (decision in c("already_workerized", "split_workerized")) {
   if (!grepl(decision, audit, fixed = TRUE)) {
     stop("Audit missing required worker_refactor_decision value: ", decision)
+  }
+}
+for (forbidden in c("defer_diagnostic_only", "defer_simulation_only", "split_fit_collect_now")) {
+  if (grepl(forbidden, audit, fixed = TRUE)) {
+    stop("Audit still lists deferred/split-pending heavy brms stage: ", forbidden)
   }
 }
 

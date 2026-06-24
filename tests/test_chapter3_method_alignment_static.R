@@ -238,8 +238,12 @@ if (grepl('file.path\\([^\\n]*"LATEST_RUN.txt"', ma14)) {
 dry <- system2("Rscript", c("run.R", "--dry-run"), stdout = TRUE, stderr = TRUE)
 dry_text <- paste(dry, collapse = "\n")
 required_dry_paths <- c(
-  "scripts/ma12_grouped_kfold_firm.R",
-  "scripts/ma13_row_level_exact_kfold.R",
+  "scripts/ma12a_plan_grouped_kfold_firm.R",
+  "scripts/ma12b_fit_grouped_kfold_firm_workers.R",
+  "scripts/ma12c_collect_grouped_kfold_firm_scores.R",
+  "scripts/ma13a_plan_row_level_exact_kfold.R",
+  "scripts/ma13b_fit_row_level_exact_kfold_workers.R",
+  "scripts/ma13c_collect_row_level_exact_kfold_scores.R",
   "scripts/ma14_construct_exact_kfold_DA.R",
   "scripts/ma15_audit_DA_finite_outputs.R",
   "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R"

@@ -67,13 +67,22 @@ main_steps <- list(
   step("ma08", "scripts/ma08_mcmc_diagnostics.R", "MCMC diagnostics for baseline fits",
        requires = c(table_artifact("table_brms_diagnostics_winsor.csv"), file.path(output_root, "models")),
        require_reason = "baseline fit diagnostics and model files from ma07"),
-  step("ma09", "scripts/ma09_loo_stacking.R", "PSIS/LOO stacking evidence, secondary to exact K-fold",
+  step("ma09a", "scripts/ma09a_plan_loo_savepars_refits.R", "Plan PSIS/LOO save_pars refits, secondary to exact K-fold",
        requires = c(
          table_artifact("table_brms_diagnostics_winsor.csv"),
          table_artifact("table_coefficient_summary_winsor.csv"),
          table_artifact("table_mcmc_diagnostics_gate_winsor.csv")
        ),
        require_reason = "baseline MCMC diagnostics gate and coefficient summaries"),
+  step("ma09b", "scripts/ma09b_fit_loo_savepars_refits.R", "Fit PSIS/LOO save_pars refits with workers", heavy = TRUE,
+       requires = c(table_artifact("table_ma09_savepars_refit_task_manifest.csv")),
+       require_reason = "ma09a save_pars refit task manifest"),
+  step("ma09c", "scripts/ma09c_collect_loo_stacking.R", "Collect PSIS/LOO stacking evidence, secondary to exact K-fold",
+       requires = c(
+         table_artifact("table_ma09_savepars_refit_task_manifest.csv"),
+         table_artifact("table_ma09_savepars_refit_task_status.csv")
+       ),
+       require_reason = "ma09a manifest and ma09b task status"),
   step("ma10", "scripts/ma10_construct_psis_loo_DA.R", "Construct PSIS/LOO secondary uncertainty-adjusted DA",
        requires = c(
          table_artifact("table_stacking_weights_ex_post_winsor_corrected.csv"),
@@ -87,8 +96,26 @@ main_steps <- list(
          table_artifact("table_stacking_weights_no_lookahead_winsor_corrected.csv")
        ),
        require_reason = "secondary PSIS/LOO DA and weights"),
-  step("ma12", "scripts/ma12_grouped_kfold_firm.R", "Grouped exact firm K-fold, primary RQ1 evidence", heavy = TRUE),
-  step("ma13", "scripts/ma13_row_level_exact_kfold.R", "Row-level exact K-fold, primary RQ1 evidence", heavy = TRUE),
+  step("ma12a", "scripts/ma12a_plan_grouped_kfold_firm.R", "Plan grouped exact firm K-fold, primary RQ1 evidence"),
+  step("ma12b", "scripts/ma12b_fit_grouped_kfold_firm_workers.R", "Fit grouped exact firm K-fold with workers, primary RQ1 evidence", heavy = TRUE,
+       requires = c(table_artifact("table_ma12_grouped_kfold_task_manifest.csv")),
+       require_reason = "ma12a grouped K-fold task manifest"),
+  step("ma12c", "scripts/ma12c_collect_grouped_kfold_firm_scores.R", "Collect grouped exact firm K-fold scores, primary RQ1 evidence",
+       requires = c(
+         table_artifact("table_ma12_grouped_kfold_task_manifest.csv"),
+         table_artifact("table_ma12_grouped_kfold_task_status.csv")
+       ),
+       require_reason = "ma12a manifest and ma12b task status"),
+  step("ma13a", "scripts/ma13a_plan_row_level_exact_kfold.R", "Plan row-level exact K-fold, primary RQ1 evidence"),
+  step("ma13b", "scripts/ma13b_fit_row_level_exact_kfold_workers.R", "Fit row-level exact K-fold with workers, primary RQ1 evidence", heavy = TRUE,
+       requires = c(table_artifact("table_ma13_row_kfold_task_manifest.csv")),
+       require_reason = "ma13a row K-fold task manifest"),
+  step("ma13c", "scripts/ma13c_collect_row_level_exact_kfold_scores.R", "Collect row-level exact K-fold scores, primary RQ1 evidence",
+       requires = c(
+         table_artifact("table_ma13_row_kfold_task_manifest.csv"),
+         table_artifact("table_ma13_row_kfold_task_status.csv")
+       ),
+       require_reason = "ma13a manifest and ma13b task status"),
   step("ma14", "scripts/ma14_construct_exact_kfold_DA.R", "Primary exact-KFoldW DA construction",
        requires = c(
          table_artifact("table_mcmc_diagnostics_gate_winsor.csv"),
@@ -138,7 +165,16 @@ robustness_steps <- list(
 
 sensitivity_steps <- list(
   step("se01", "scripts/sensitivity/se01_prior_predictive.R", "Sensitivity prior predictive gate"),
-  step("se02", "scripts/sensitivity/se02_refit_prior_scenarios.R", "Sensitivity full refits by prior scenario", heavy = TRUE),
+  step("se02a", "scripts/sensitivity/se02a_plan_prior_scenario_refits.R", "Plan sensitivity prior-scenario refits"),
+  step("se02b", "scripts/sensitivity/se02b_fit_prior_scenario_workers.R", "Fit sensitivity prior-scenario refits with workers", heavy = TRUE,
+       requires = c(file.path(output_root, "sensitivity", "tables", "table_se02_prior_scenario_refit_task_manifest.csv")),
+       require_reason = "se02a sensitivity refit task manifest"),
+  step("se02c", "scripts/sensitivity/se02c_collect_prior_scenario_outputs.R", "Collect sensitivity prior-scenario outputs",
+       requires = c(
+         file.path(output_root, "sensitivity", "tables", "table_se02_prior_scenario_refit_task_manifest.csv"),
+         file.path(output_root, "sensitivity", "tables", "table_se02_prior_scenario_refit_task_status.csv")
+       ),
+       require_reason = "se02a manifest and se02b task status"),
   step("se03", "scripts/sensitivity/se03_mcmc_diagnostics.R", "Sensitivity MCMC diagnostics"),
   step("se04", "scripts/sensitivity/se04_stacking.R", "Sensitivity stacking"),
   step("se05", "scripts/sensitivity/se05_construct_DA.R", "Sensitivity DA reconstruction"),
@@ -149,8 +185,26 @@ sensitivity_steps <- list(
 simulation_steps <- list(
   step("si01", "scripts/simulation/si01_lmer_pilot_run.R", "LMER leakage pilot simulation"),
   step("si02", "scripts/simulation/si02_lmer_pilot_report.R", "LMER leakage pilot report"),
-  step("si03", "scripts/simulation/si03_brms_leakage_confirmation.R", "BRMS leakage confirmation simulation", heavy = TRUE),
-  step("si04", "scripts/simulation/si04_brms_parameter_recovery.R", "BRMS parameter recovery simulation", heavy = TRUE)
+  step("si03a", "scripts/simulation/si03a_plan_brms_leakage_confirmation.R", "Plan BRMS leakage confirmation simulation"),
+  step("si03b", "scripts/simulation/si03b_fit_brms_leakage_confirmation_workers.R", "Fit BRMS leakage confirmation simulation with workers", heavy = TRUE,
+       requires = c(file.path(output_root, "simulation", "brms_leakage", "tables", "table_si03_brms_leakage_task_manifest.csv")),
+       require_reason = "si03a BRMS leakage task manifest"),
+  step("si03c", "scripts/simulation/si03c_collect_brms_leakage_confirmation.R", "Collect BRMS leakage confirmation simulation",
+       requires = c(
+         file.path(output_root, "simulation", "brms_leakage", "tables", "table_si03_brms_leakage_task_manifest.csv"),
+         file.path(output_root, "simulation", "brms_leakage", "tables", "table_si03_brms_leakage_task_status.csv")
+       ),
+       require_reason = "si03a manifest and si03b task status"),
+  step("si04a", "scripts/simulation/si04a_plan_brms_parameter_recovery.R", "Plan BRMS parameter recovery simulation"),
+  step("si04b", "scripts/simulation/si04b_fit_brms_parameter_recovery_workers.R", "Fit BRMS parameter recovery simulation with workers", heavy = TRUE,
+       requires = c(file.path(output_root, "simulation", "brms_parameter_recovery", "tables", "table_si04_brms_recovery_task_manifest.csv")),
+       require_reason = "si04a BRMS recovery task manifest"),
+  step("si04c", "scripts/simulation/si04c_collect_brms_parameter_recovery.R", "Collect BRMS parameter recovery simulation",
+       requires = c(
+         file.path(output_root, "simulation", "brms_parameter_recovery", "tables", "table_si04_brms_recovery_task_manifest.csv"),
+         file.path(output_root, "simulation", "brms_parameter_recovery", "tables", "table_si04_brms_recovery_task_status.csv")
+       ),
+       require_reason = "si04a manifest and si04b task status")
 )
 
 reviewer_steps <- list(
