@@ -4,14 +4,25 @@
 source("scripts/ma00_setup.R")
 phase_begin("ma13a", "Plan row-level exact K-fold")
 
-kfold_cfg <- accrual_kfold_config("row")
-tables_dir <- file.path(output_root, "tables")
-task_root <- file.path(output_root, "row_exact_kfold", "task_artifacts")
+script_version <- "split-worker-v1"
+run_ctx <- accrual_exact_kfold_run_context("row", script_version)
+kfold_cfg <- run_ctx$cfg
+filter_cfg <- run_ctx$filter_cfg
+compat_tables_dir <- file.path(output_root, "tables")
+tables_dir <- run_ctx$dirs$tables
+models_dir <- run_ctx$dirs$models
+task_root <- run_ctx$dirs$task_artifacts
+for (d in unlist(run_ctx$dirs, use.names = FALSE)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+writeLines(run_ctx$run_root, run_ctx$latest_run_path)
 manifest_path <- file.path(tables_dir, "table_ma13_row_kfold_task_manifest.csv")
+compat_manifest_path <- file.path(compat_tables_dir, "table_ma13_row_kfold_task_manifest.csv")
 formula_path <- file.path(tables_dir, "table_named_model_formulas_winsor.csv")
+if (!file.exists(formula_path)) formula_path <- file.path(compat_tables_dir, "table_named_model_formulas_winsor.csv")
 if (!file.exists(formula_path)) stop("[BLOCKER] ma13a requires named model formulas: ", formula_path)
 formulas <- read.csv(formula_path, stringsAsFactors = FALSE)
 formulas <- formulas[formulas$Model_ID %in% unique(unlist(lapply(c("ex_post", "real_time"), exact_kfold_model_ids_for_space))), , drop = FALSE]
+if (length(filter_cfg$target_space_filter)) formulas <- formulas[formulas$Target_Space %in% filter_cfg$target_space_filter, , drop = FALSE]
+if (length(filter_cfg$model_id_filter)) formulas <- formulas[formulas$Model_ID %in% filter_cfg$model_id_filter, , drop = FALSE]
 if (!nrow(formulas)) stop("[BLOCKER] ma13a found no row K-fold eligible formulas.")
 fold_assignment_path <- file.path(tables_dir, "table_ma13_row_kfold_fold_assignment.csv")
 sample_rows <- unique(formulas[, intersect(c("Target_Space", "Target_Sample"), names(formulas)), drop = FALSE])
@@ -60,14 +71,15 @@ for (i in seq_len(nrow(formulas))) {
     task_key <- accrual_task_cache_key("ma13", row$Model_ID, row$Target_Space, row$Heterogeneity_Variant, fold_id)
     rng <- accrual_rng_metadata_list("row_kfold_fit", offset = idx)
     rows[[idx]] <- data.frame(
-      Task_Key = task_key, Fold_ID = fold_id, Model_ID = row$Model_ID,
+      Task_Key = task_key, Row_KFold_Root = run_ctx$run_root, Config_Tag = run_ctx$config_tag,
+      Run_ID = run_ctx$run_id, K = kfold_cfg$K, Fold_ID = fold_id, Model_ID = row$Model_ID,
       Model_Name = if ("Model_Name" %in% names(row)) row$Model_Name else NA_character_,
       Target_Space = row$Target_Space, Sample_Group = if ("Sample_Group" %in% names(row)) row$Sample_Group else "main_common",
       Heterogeneity_Variant = row$Heterogeneity_Variant,
       Target_Sample = if ("Target_Sample" %in% names(row)) row$Target_Sample else NA_character_,
       brms_Formula = row$brms_Formula,
       Fold_Assignment_Path = fold_assignment_path,
-      fit_path = safe_task_artifact_path(task_root, task_key, "_fit.rds"),
+      fit_path = safe_task_artifact_path(models_dir, task_key, "_fit.rds"),
       prediction_path = safe_task_artifact_path(task_root, task_key, "_prediction.rds"),
       result_path = safe_task_artifact_path(task_root, task_key, "_result.rds"),
       metadata_path = safe_task_artifact_path(task_root, task_key, "_metadata.csv"),
@@ -76,11 +88,18 @@ for (i in seq_len(nrow(formulas))) {
       adapt_delta = kfold_cfg$adapt_delta, max_treedepth = kfold_cfg$max_treedepth, refresh = kfold_cfg$refresh,
       backend = kfold_cfg$backend, sampler_profile = kfold_cfg$sampler_profile,
       run_mode = kfold_cfg$run_mode, config_source = kfold_cfg$config_source,
+      Partial_Run = run_ctx$partial_run,
       RNG_Context = rng$RNG_Context, RNG_Offset = rng$RNG_Offset, Canonical_Seed = rng$Canonical_Seed,
       Effective_Seed = rng$Effective_Seed, Required = TRUE, stringsAsFactors = FALSE
     )
   }
 }
-write_task_manifest(manifest_path, do.call(rbind, rows))
+task_manifest <- do.call(rbind, rows)
+if (length(filter_cfg$fold_filter)) {
+  task_manifest <- task_manifest[task_manifest$Fold_ID %in% filter_cfg$fold_filter, , drop = FALSE]
+}
+if (!nrow(task_manifest)) stop("[BLOCKER] ma13a found no row K-fold tasks after filters.")
+write_task_manifest(manifest_path, task_manifest)
+write_task_manifest(compat_manifest_path, task_manifest)
 message("ma13a wrote task manifest: ", manifest_path)
 phase_end("ma13a", "Plan row-level exact K-fold")

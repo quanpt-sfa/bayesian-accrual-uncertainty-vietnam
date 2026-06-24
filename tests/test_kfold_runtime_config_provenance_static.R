@@ -95,7 +95,8 @@ with_temp_env(stats::setNames(as.list(rep(NA_character_, length(kfold_env_names)
   grouped_manifest <- read.csv(file.path(out_root, "tables", "table_ma12_grouped_kfold_task_manifest.csv"), stringsAsFactors = FALSE)
   row_manifest <- read.csv(file.path(out_root, "tables", "table_ma13_row_kfold_task_manifest.csv"), stringsAsFactors = FALSE)
   required_cols <- c("sampler_profile", "run_mode", "config_source", "chains", "cores", "iter",
-                     "warmup", "adapt_delta", "max_treedepth", "refresh", "backend")
+                     "warmup", "adapt_delta", "max_treedepth", "refresh", "backend",
+                     "K", "Config_Tag", "Run_ID")
   for (manifest_name in c("grouped_manifest", "row_manifest")) {
     manifest <- get(manifest_name)
     missing_cols <- setdiff(required_cols, names(manifest))
@@ -110,6 +111,14 @@ with_temp_env(stats::setNames(as.list(rep(NA_character_, length(kfold_env_names)
         any(manifest$run_mode != "FULL_MODE")) {
       stop(manifest_name, " did not write production exact K-fold sampler defaults.")
     }
+  }
+  if (!"Kfold_Run_Root" %in% names(grouped_manifest)) stop("grouped_manifest missing Kfold_Run_Root.")
+  if (!"Row_KFold_Root" %in% names(row_manifest)) stop("row_manifest missing Row_KFold_Root.")
+  if (!file.exists(file.path(unique(grouped_manifest$Kfold_Run_Root)[1], "tables", "table_ma12_grouped_kfold_task_manifest.csv"))) {
+    stop("ma12a must write grouped task manifest into the run-root tables directory.")
+  }
+  if (!file.exists(file.path(unique(row_manifest$Row_KFold_Root)[1], "tables", "table_ma13_row_kfold_task_manifest.csv"))) {
+    stop("ma13a must write row task manifest into the run-root tables directory.")
   }
 })
 

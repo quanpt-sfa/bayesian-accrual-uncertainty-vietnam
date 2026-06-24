@@ -998,9 +998,93 @@ accrual_kfold_filter_config <- function(kind = c("grouped_firm", "row")) {
       target_space_filter = env_list("ACCRUAL_ROW_KFOLD_TARGET_SPACE"),
       model_id_filter = env_list("ACCRUAL_ROW_KFOLD_MODEL_IDS"),
       fold_filter_raw = fold_raw,
-      fold_filter = fold_filter
+      fold_filter = fold_filter,
+      run_id = gsub("[^A-Za-z0-9_.-]", "_", trimws(env_value("ACCRUAL_ROW_KFOLD_RUN_ID", "default")))
     )
   }
+}
+
+accrual_exact_kfold_run_context <- function(kind = c("grouped_firm", "row"), script_version = "split") {
+  kind <- match.arg(kind)
+  cfg <- accrual_kfold_config(kind)
+  filter_cfg <- accrual_kfold_filter_config(kind)
+  run_id <- filter_cfg$run_id
+  if (!nzchar(run_id)) run_id <- "default"
+  run_id <- gsub("[^A-Za-z0-9_.-]", "_", run_id)
+  partial_run <- length(filter_cfg$target_space_filter) > 0 ||
+    length(filter_cfg$model_id_filter) > 0 ||
+    length(filter_cfg$fold_filter) > 0
+  config_tag <- paste0("K", cfg$K, "_", cfg$run_mode, "_modelset_primary_v", script_version, "_", run_id)
+  base_root <- file.path(output_root, if (identical(kind, "grouped_firm")) "kfold_firm" else "row_exact_kfold")
+  run_root <- file.path(base_root, config_tag)
+  dirs <- list(
+    base = base_root,
+    run = run_root,
+    tables = file.path(run_root, "tables"),
+    logs = file.path(run_root, "logs"),
+    models = file.path(run_root, "models"),
+    cache = file.path(run_root, "cache"),
+    task_artifacts = file.path(run_root, "task_artifacts"),
+    figures = file.path(run_root, "figures")
+  )
+  list(
+    kind = kind,
+    cfg = cfg,
+    filter_cfg = filter_cfg,
+    run_id = run_id,
+    config_tag = config_tag,
+    partial_run = partial_run,
+    base_root = base_root,
+    run_root = run_root,
+    dirs = dirs,
+    latest_run_path = file.path(base_root, "LATEST_RUN.txt"),
+    latest_completed_run_path = file.path(base_root, "LATEST_COMPLETED_RUN.txt")
+  )
+}
+
+accrual_extract_brms_mcmc_diagnostics <- function(fit, max_treedepth) {
+  out <- list(
+    max_rhat = NA_real_,
+    min_ess_bulk = NA_real_,
+    min_ess_tail = NA_real_,
+    ess_warning = TRUE,
+    divergences = NA_integer_,
+    treedepth_warnings = NA_integer_
+  )
+  s <- tryCatch(summary(fit), error = function(e) NULL)
+  if (!is.null(s)) {
+    rhats <- numeric()
+    ess_bulk <- numeric()
+    ess_tail <- numeric()
+    add_diag <- function(x, col) {
+      if (!is.null(x) && col %in% colnames(x)) x[, col] else numeric()
+    }
+    rhats <- c(rhats, add_diag(s$fixed, "Rhat"))
+    ess_bulk <- c(ess_bulk, add_diag(s$fixed, "Bulk_ESS"))
+    ess_tail <- c(ess_tail, add_diag(s$fixed, "Tail_ESS"))
+    if (!is.null(s$random)) {
+      for (group in names(s$random)) {
+        rhats <- c(rhats, add_diag(s$random[[group]], "Rhat"))
+        ess_bulk <- c(ess_bulk, add_diag(s$random[[group]], "Bulk_ESS"))
+        ess_tail <- c(ess_tail, add_diag(s$random[[group]], "Tail_ESS"))
+      }
+    }
+    out$max_rhat <- suppressWarnings(max(rhats, na.rm = TRUE))
+    out$min_ess_bulk <- suppressWarnings(min(ess_bulk, na.rm = TRUE))
+    out$min_ess_tail <- suppressWarnings(min(ess_tail, na.rm = TRUE))
+    if (!is.finite(out$max_rhat)) out$max_rhat <- NA_real_
+    if (!is.finite(out$min_ess_bulk)) out$min_ess_bulk <- NA_real_
+    if (!is.finite(out$min_ess_tail)) out$min_ess_tail <- NA_real_
+  }
+  np <- tryCatch(brms::nuts_params(fit), error = function(e) NULL)
+  if (!is.null(np) && all(c("Parameter", "Value") %in% names(np))) {
+    out$divergences <- as.integer(sum(np$Value[np$Parameter == "divergent__"], na.rm = TRUE))
+    treedepths <- np$Value[np$Parameter == "treedepth__"]
+    out$treedepth_warnings <- as.integer(sum(treedepths >= as.integer(max_treedepth), na.rm = TRUE))
+  }
+  out$ess_warning <- is.na(out$min_ess_bulk) || is.na(out$min_ess_tail) ||
+    out$min_ess_bulk < 400 || out$min_ess_tail < 400
+  out
 }
 
 accrual_simulation_runtime_config <- function(kind) {

@@ -9,6 +9,11 @@ status_path <- file.path(tables_dir, "table_ma13_row_kfold_task_status.csv")
 if (!file.exists(manifest_path)) stop("[BLOCKER] Missing ma13a task manifest: ", manifest_path)
 tasks <- read.csv(manifest_path, stringsAsFactors = FALSE)
 accrual_assert_kfold_manifest_matches_config(tasks, "row", "ma13b row K-fold workers")
+run_status_path <- if ("Row_KFold_Root" %in% names(tasks)) {
+  file.path(tasks$Row_KFold_Root[1], "tables", "table_ma13_row_kfold_task_status.csv")
+} else {
+  status_path
+}
 fit_ma13b_task_worker <- function(task) {
   task <- as.list(task)
   dir.create(dirname(task$fit_path), recursive = TRUE, showWarnings = FALSE)
@@ -84,16 +89,31 @@ fit_ma13b_task_worker <- function(task) {
       observed_TA_scaled = test_df$TA_scaled, log_predictive_density = apply(ll, 2, log_mean_exp),
       prediction_rule = ifelse(same_firm_history, "heldout_log_lik_re_formula_NULL_same_firm_history", "heldout_log_lik_re_formula_NULL_new_level_uncertainty_fallback"),
       same_firm_history_available = same_firm_history,
+      new_company_in_row_fold = !same_firm_history,
       primary_row_target_inclusion = same_firm_history,
       stringsAsFactors = FALSE
     )
+    fit_diag <- tryCatch(
+      accrual_extract_brms_mcmc_diagnostics(fit, as.integer(task$max_treedepth)),
+      error = function(e) list(max_rhat = NA_real_, min_ess_bulk = NA_real_, min_ess_tail = NA_real_,
+                               ess_warning = TRUE, divergences = NA_integer_, treedepth_warnings = NA_integer_)
+    )
     fold_diag <- data.frame(
-      Target_Space = task$Target_Space, Fold_ID = as.integer(task$Fold_ID), Model_ID = task$Model_ID,
+      Target_Space = task$Target_Space, Sample_Group = task$Sample_Group,
+      Fold_ID = as.integer(task$Fold_ID), Model_ID = task$Model_ID,
       Model_Name = task$Model_Name, Heterogeneity_Variant = task$Heterogeneity_Variant,
       N_Train_Obs = nrow(train_df), N_Test_Obs = nrow(test_df),
       N_Test_Obs_No_Same_Firm_History = sum(!same_firm_history),
       Any_New_Company_In_Row_Fold = any(!same_firm_history),
-      Completed = TRUE, Failure_Reason = NA_character_, stringsAsFactors = FALSE
+      Completed = TRUE, Failure_Reason = NA_character_,
+      Max_Rhat = fit_diag$max_rhat,
+      Min_ESS_Bulk = fit_diag$min_ess_bulk,
+      Min_ESS_Tail = fit_diag$min_ess_tail,
+      ESS_Warning = fit_diag$ess_warning,
+      Divergences = fit_diag$divergences,
+      Treedepth_Warnings = fit_diag$treedepth_warnings,
+      Runtime_Seconds = as.numeric(difftime(Sys.time(), started, units = "secs")),
+      stringsAsFactors = FALSE
     )
     out <- list(fold_diag = fold_diag, obs_scores = obs, standardization_audit = data.frame())
     saveRDS(out, task$result_path)
@@ -127,5 +147,9 @@ results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_ma13b_t
                                  context = "ma13b row K-fold workers")
 status <- do.call(rbind, results)
 write_task_status(status_path, status)
+if (!identical(normalizePath(status_path, winslash = "/", mustWork = FALSE),
+               normalizePath(run_status_path, winslash = "/", mustWork = FALSE))) {
+  write_task_status(run_status_path, status)
+}
 accrual_task_status_blocker(status, required_col = "Required", context = "ma13b row K-fold workers")
 phase_end("ma13b", "Fit row-level exact K-fold workers")
