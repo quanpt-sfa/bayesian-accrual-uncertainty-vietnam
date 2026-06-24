@@ -59,7 +59,12 @@ make_weights <- function(space) {
   } else {
     rep(TRUE, nrow(manifest))
   }
-  idx <- which(manifest$Target_Space == space & main_inclusion)
+  sample_main <- if ("Sample_Group" %in% names(manifest)) {
+    manifest$Sample_Group == "main_common"
+  } else {
+    rep(TRUE, nrow(manifest))
+  }
+  idx <- which(manifest$Target_Space == space & main_inclusion & sample_main)
   if (length(idx) < 2L) return(data.frame())
   n_obs <- vapply(results[idx], `[[`, numeric(1), "n_obs")
   if (length(unique(n_obs)) > 1L) {

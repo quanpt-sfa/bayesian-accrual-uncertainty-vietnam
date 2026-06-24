@@ -73,7 +73,7 @@ for (fragment in c("ELPD shifted materially", "Coefficient shift", "table_coeffi
   if (!grepl(fragment, ma09b_body, fixed = TRUE)) stop("ma09b must preserve old ma09 refit guard: ", fragment)
 }
 ma09c_body <- txt("scripts/ma09c_collect_loo_stacking.R")
-for (fragment in c("Main_Stack_Inclusion", "N mismatch", "loo_model_weights")) {
+for (fragment in c("Main_Stack_Inclusion", "Sample_Group", "main_common", "N mismatch", "loo_model_weights")) {
   if (!grepl(fragment, ma09c_body, fixed = TRUE)) stop("ma09c must preserve old ma09 stacking guard: ", fragment)
 }
 
