@@ -13,6 +13,44 @@ if (!file.exists(formula_path)) stop("[BLOCKER] ma13a requires named model formu
 formulas <- read.csv(formula_path, stringsAsFactors = FALSE)
 formulas <- formulas[formulas$Model_ID %in% unique(unlist(lapply(c("ex_post", "real_time"), exact_kfold_model_ids_for_space))), , drop = FALSE]
 if (!nrow(formulas)) stop("[BLOCKER] ma13a found no row K-fold eligible formulas.")
+fold_assignment_path <- file.path(tables_dir, "table_ma13_row_kfold_fold_assignment.csv")
+sample_rows <- unique(formulas[, intersect(c("Target_Space", "Target_Sample"), names(formulas)), drop = FALSE])
+fold_parts <- list()
+for (i in seq_len(nrow(sample_rows))) {
+  row <- sample_rows[i, , drop = FALSE]
+  path <- file.path(input_winsor_root, "tables", row$Target_Sample)
+  if (!file.exists(path)) stop("[BLOCKER] ma13a missing target sample for fold planning: ", path)
+  df <- read.csv(path, stringsAsFactors = FALSE)
+  df$row_id <- seq_len(nrow(df))
+  set_accrual_seed(
+    paste0("row_kfold_fold_assignment_", row$Target_Space),
+    offset = match(row$Target_Space, c("ex_post", "real_time"), nomatch = i)
+  )
+  fold_vec <- integer(nrow(df))
+  for (cc in sort(unique(df$company))) {
+    idx <- which(df$company == cc)
+    idx <- sample(idx, length(idx))
+    local_folds <- rep(seq_len(min(kfold_cfg$K, length(idx))), length.out = length(idx))
+    fold_vec[idx] <- sample(local_folds, length(local_folds))
+  }
+  fold_parts[[i]] <- data.frame(
+    Target_Space = row$Target_Space,
+    Target_Sample = row$Target_Sample,
+    row_id = df$row_id,
+    company = df$company,
+    year = df$year,
+    Fold_ID = fold_vec,
+    K = kfold_cfg$K,
+    RNG_Context = paste0("row_kfold_fold_assignment_", row$Target_Space),
+    Canonical_Seed = accrual_base_seed(),
+    Effective_Seed = accrual_seed_for(
+      paste0("row_kfold_fold_assignment_", row$Target_Space),
+      offset = match(row$Target_Space, c("ex_post", "real_time"), nomatch = i)
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+write.csv(do.call(rbind, fold_parts), fold_assignment_path, row.names = FALSE)
 rows <- list()
 idx <- 0L
 for (i in seq_len(nrow(formulas))) {
@@ -28,6 +66,7 @@ for (i in seq_len(nrow(formulas))) {
       Heterogeneity_Variant = row$Heterogeneity_Variant,
       Target_Sample = if ("Target_Sample" %in% names(row)) row$Target_Sample else NA_character_,
       brms_Formula = row$brms_Formula,
+      Fold_Assignment_Path = fold_assignment_path,
       fit_path = safe_task_artifact_path(task_root, task_key, "_fit.rds"),
       prediction_path = safe_task_artifact_path(task_root, task_key, "_prediction.rds"),
       result_path = safe_task_artifact_path(task_root, task_key, "_result.rds"),

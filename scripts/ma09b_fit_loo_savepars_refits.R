@@ -50,6 +50,41 @@ fit_ma09b_task_worker <- function(task) {
     }
     loo_raw <- loo::loo(fit, cores = 1)
     raw_k <- sum(loo_raw$diagnostics$pareto_k > 0.7)
+    refit_raw_elpd <- loo_raw$estimates["elpd_loo", "Estimate"]
+    original_elpd <- suppressWarnings(as.numeric(task$original_elpd))
+    if (is.finite(original_elpd) && abs(refit_raw_elpd - original_elpd) >= 10.0) {
+      stop(sprintf("Winsor save_pars refit ELPD shifted materially by %.4f for %s.",
+                   refit_raw_elpd - original_elpd, task$Task_Key))
+    }
+    max_diff_coef <- NA_real_
+    coeff_path <- file.path(output_root, "tables", "table_coefficient_summary_winsor.csv")
+    if (file.exists(coeff_path)) {
+      coeff_df <- read.csv(coeff_path, stringsAsFactors = FALSE)
+      orig_coefs <- coeff_df[
+        coeff_df$Model_ID == task$Model_ID &
+          coeff_df$Target_Space == task$Target_Space &
+          coeff_df$Heterogeneity_Variant == task$Heterogeneity_Variant,
+        ,
+        drop = FALSE
+      ]
+      if (nrow(orig_coefs) > 0) {
+        refit_coef_summary <- brms::fixef(fit)
+        refit_coef_names <- rownames(refit_coef_summary)
+        orig_coef_names_mapped <- gsub("factoryear", "year_f", orig_coefs$Parameter)
+        orig_coef_names_mapped <- gsub("factorindustry", "industry_f", orig_coef_names_mapped)
+        max_diff_coef <- 0
+        for (p_name in refit_coef_names) {
+          match_idx <- which(orig_coef_names_mapped == p_name)
+          if (length(match_idx) == 1) {
+            diff_val <- abs(refit_coef_summary[p_name, "Estimate"] - orig_coefs$Estimate[match_idx])
+            if (diff_val > max_diff_coef) max_diff_coef <- diff_val
+          }
+        }
+        if (max_diff_coef >= 0.005) {
+          stop(sprintf("Coefficient shift %.5f detected for winsor model %s.", max_diff_coef, task$Task_Key))
+        }
+      }
+    }
     loo_corrected <- loo_raw
     mm_applied <- FALSE
     mm_note <- "No high Pareto-k observations"
@@ -64,10 +99,13 @@ fit_ma09b_task_worker <- function(task) {
       loo_raw = loo_raw,
       loo_corrected = loo_corrected,
       n_obs = brms::nobs(fit),
-      refit_raw_elpd = loo_raw$estimates["elpd_loo", "Estimate"],
+      refit_raw_elpd = refit_raw_elpd,
       refit_raw_k_above_07 = raw_k,
       corrected_elpd = loo_corrected$estimates["elpd_loo", "Estimate"],
       corrected_k_above_07 = sum(loo_corrected$diagnostics$pareto_k > 0.7),
+      original_elpd = original_elpd,
+      elpd_diff_refit = if (is.finite(original_elpd)) refit_raw_elpd - original_elpd else NA_real_,
+      max_diff_coef = max_diff_coef,
       moment_match_applied = mm_applied,
       moment_match_note = mm_note
     )

@@ -46,6 +46,14 @@ for (i in seq_len(nrow(registry))) {
     if (grepl("worker_id|cluster_id|Sys\\.getpid|process ID|seq_along\\(results\\)", fit_text, perl = TRUE)) {
       stop(fit_script, " must not derive seeds from worker identity or scheduling order.")
     }
+    if (row$stage_id %in% c("ma12", "ma13")) {
+      if (!grepl("Fold_Assignment_Path", fit_text, fixed = TRUE)) {
+        stop(fit_script, " must read planned K-fold assignments from the task manifest.")
+      }
+      if (grepl("\\bsample\\s*\\(", fit_text, perl = TRUE) || grepl("\\bset\\.seed\\s*\\(", fit_text, perl = TRUE)) {
+        stop(fit_script, " must not sample K-fold partitions inside the worker.")
+      }
+    }
     worker_shared_hits <- shared_output_fragments[vapply(shared_output_fragments, grepl, logical(1), x = fit_text, fixed = TRUE)]
     if (length(worker_shared_hits)) {
       stop(fit_script, " worker stage names collector-owned shared output(s): ", paste(worker_shared_hits, collapse = ", "))

@@ -20,15 +20,15 @@ fit_ma13b_task_worker <- function(task) {
   result <- tryCatch({
     df <- read_winsor_sample(task$Target_Sample, prefactor = TRUE)
     df$row_id <- seq_len(nrow(df))
-    set.seed(as.integer(task$Canonical_Seed) + 13000L)
-    fold_vec <- integer(nrow(df))
-    for (cc in sort(unique(df$company))) {
-      idx <- which(df$company == cc)
-      idx <- sample(idx, length(idx))
-      local_folds <- rep(seq_len(min(max(as.integer(tasks$Fold_ID)), length(idx))), length.out = length(idx))
-      fold_vec[idx] <- sample(local_folds, length(local_folds))
+    if (!"Fold_Assignment_Path" %in% names(task) || is.na(task$Fold_Assignment_Path) || !nzchar(task$Fold_Assignment_Path)) {
+      stop("Task manifest is missing Fold_Assignment_Path.")
     }
-    df$Fold_ID <- fold_vec
+    if (!file.exists(task$Fold_Assignment_Path)) stop("Missing planned row K-fold assignment: ", task$Fold_Assignment_Path)
+    fold_map <- read.csv(task$Fold_Assignment_Path, stringsAsFactors = FALSE)
+    fold_map <- fold_map[fold_map$Target_Space == task$Target_Space & fold_map$Target_Sample == task$Target_Sample, , drop = FALSE]
+    if (anyDuplicated(fold_map$row_id)) stop("Row K-fold assignment has duplicate row_id rows for task sample.")
+    df <- merge(df, fold_map[, c("row_id", "Fold_ID"), drop = FALSE], by = "row_id", all.x = TRUE, sort = FALSE)
+    if (any(is.na(df$Fold_ID))) stop("Row K-fold assignment does not cover every row in task sample.")
     train_df <- df[df$Fold_ID != as.integer(task$Fold_ID), , drop = FALSE]
     test_df <- df[df$Fold_ID == as.integer(task$Fold_ID), , drop = FALSE]
     if (!nrow(train_df) || !nrow(test_df)) stop("Empty row K-fold train/test split.")
@@ -110,7 +110,7 @@ fit_ma13b_task_worker <- function(task) {
 }
 parallel_cfg <- accrual_fit_worker_config("row_kfold", max(as.integer(tasks$cores), na.rm = TRUE), "ma13b row K-fold workers")
 results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_ma13b_task_worker, parallel_cfg,
-                                 export_names = c("fit_ma13b_task_worker", "tasks"), packages = "brms",
+                                 export_names = "fit_ma13b_task_worker", packages = "brms",
                                  context = "ma13b row K-fold workers")
 status <- do.call(rbind, results)
 write_task_status(status_path, status)

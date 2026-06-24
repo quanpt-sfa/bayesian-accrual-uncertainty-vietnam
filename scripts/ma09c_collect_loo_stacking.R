@@ -30,10 +30,16 @@ loo_comparison <- do.call(rbind, lapply(seq_along(results), function(i) {
     Model_Name = task$Model_Name,
     Target_Space = task$Target_Space,
     Sample_Group = task$Sample_Group,
+    Main_Stack_Inclusion = if ("Main_Stack_Inclusion" %in% names(task)) task$Main_Stack_Inclusion else TRUE,
+    Secondary_Robustness = if ("Secondary_Robustness" %in% names(task)) task$Secondary_Robustness else FALSE,
     Heterogeneity_Variant = task$Heterogeneity_Variant,
     N_Obs = r$n_obs,
+    original_elpd = r$original_elpd,
     refit_raw_elpd = r$refit_raw_elpd,
     corrected_elpd = r$corrected_elpd,
+    elpd_diff_refit = r$elpd_diff_refit,
+    max_diff_coef = r$max_diff_coef,
+    original_k_above_07 = if ("original_k_above_07" %in% names(task)) task$original_k_above_07 else NA_integer_,
     refit_raw_k_above_07 = r$refit_raw_k_above_07,
     corrected_k_above_07 = r$corrected_k_above_07,
     moment_match_applied = r$moment_match_applied,
@@ -48,8 +54,17 @@ loo_comparison <- do.call(rbind, lapply(seq_along(results), function(i) {
 write.csv(loo_comparison, file.path(tables_dir, "table_loo_comparison_winsor_corrected.csv"), row.names = FALSE)
 
 make_weights <- function(space) {
-  idx <- which(manifest$Target_Space == space)
+  main_inclusion <- if ("Main_Stack_Inclusion" %in% names(manifest)) {
+    manifest$Main_Stack_Inclusion %in% c(TRUE, "TRUE", "true", "1", 1L)
+  } else {
+    rep(TRUE, nrow(manifest))
+  }
+  idx <- which(manifest$Target_Space == space & main_inclusion)
   if (length(idx) < 2L) return(data.frame())
+  n_obs <- vapply(results[idx], `[[`, numeric(1), "n_obs")
+  if (length(unique(n_obs)) > 1L) {
+    stop("[BLOCKER] N mismatch in ma09c stack for ", space, ": ", paste(unique(n_obs), collapse = ", "))
+  }
   weights <- as.numeric(loo::loo_model_weights(loo_list[idx], method = "stacking"))
   data.frame(
     Model_ID = manifest$Model_ID[idx],

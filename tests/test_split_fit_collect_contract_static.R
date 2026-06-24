@@ -49,6 +49,34 @@ for (path in worker_scripts) {
   if (length(hits)) stop(path, " names collector-owned shared output(s): ", paste(hits, collapse = ", "))
 }
 
+for (path in c("scripts/ma12a_plan_grouped_kfold_firm.R", "scripts/ma13a_plan_row_level_exact_kfold.R")) {
+  body <- txt(path)
+  for (fragment in c("Target_Sample", "Fold_Assignment_Path", "write.csv")) {
+    if (!grepl(fragment, body, fixed = TRUE)) stop(path, " must plan fixed fold assignments and carry target samples; missing ", fragment)
+  }
+}
+
+for (path in c("scripts/ma12b_fit_grouped_kfold_firm_workers.R", "scripts/ma13b_fit_row_level_exact_kfold_workers.R")) {
+  body <- txt(path)
+  if (!grepl("Fold_Assignment_Path", body, fixed = TRUE)) stop(path, " must read the planner-owned fold assignment artifact.")
+  if (grepl("\\bsample\\s*\\(", body, perl = TRUE) || grepl("\\bset\\.seed\\s*\\(", body, perl = TRUE)) {
+    stop(path, " must not create or randomize K-fold assignments inside workers.")
+  }
+}
+
+ma09a_body <- txt("scripts/ma09a_plan_loo_savepars_refits.R")
+for (fragment in c("Main_Stack_Inclusion", "Secondary_Robustness", "original_elpd", "original_k_above_07")) {
+  if (!grepl(fragment, ma09a_body, fixed = TRUE)) stop("ma09a manifest must preserve old ma09 guard metadata: ", fragment)
+}
+ma09b_body <- txt("scripts/ma09b_fit_loo_savepars_refits.R")
+for (fragment in c("ELPD shifted materially", "Coefficient shift", "table_coefficient_summary_winsor.csv")) {
+  if (!grepl(fragment, ma09b_body, fixed = TRUE)) stop("ma09b must preserve old ma09 refit guard: ", fragment)
+}
+ma09c_body <- txt("scripts/ma09c_collect_loo_stacking.R")
+for (fragment in c("Main_Stack_Inclusion", "N mismatch", "loo_model_weights")) {
+  if (!grepl(fragment, ma09c_body, fixed = TRUE)) stop("ma09c must preserve old ma09 stacking guard: ", fragment)
+}
+
 for (path in collector_scripts) {
   if (!file.exists(path)) stop("Missing collector split script: ", path)
   body <- txt(path)
