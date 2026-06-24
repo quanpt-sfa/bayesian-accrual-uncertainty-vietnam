@@ -4,15 +4,17 @@ txt <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
 
 run_txt <- txt("run.R")
 ma07a <- txt("scripts/ma07a_fit_brms_named_models.R")
-ma07b <- txt("scripts/ma07b_collect_brms_fit_outputs.R")
+ma07b <- txt("scripts/ma07b_extract_brms_fit_outputs_workers.R")
+ma07c <- txt("scripts/ma07c_collect_brms_fit_outputs.R")
 ma00 <- txt("scripts/ma00_setup.R")
 
 dry <- system2("Rscript", c("run.R", "--dry-run"), stdout = TRUE, stderr = TRUE)
 dry_text <- paste(dry, collapse = "\n")
 pos_07a <- regexpr("ma07a scripts/ma07a_fit_brms_named_models.R", dry_text, fixed = TRUE)[1]
-pos_07b <- regexpr("ma07b scripts/ma07b_collect_brms_fit_outputs.R", dry_text, fixed = TRUE)[1]
-if (pos_07a < 0 || pos_07b < 0 || pos_07a > pos_07b) {
-  stop("run.R --dry-run must include ma07a before ma07b.")
+pos_07b <- regexpr("ma07b scripts/ma07b_extract_brms_fit_outputs_workers.R", dry_text, fixed = TRUE)[1]
+pos_07c <- regexpr("ma07c scripts/ma07c_collect_brms_fit_outputs.R", dry_text, fixed = TRUE)[1]
+if (pos_07a < 0 || pos_07b < 0 || pos_07c < 0 || pos_07a > pos_07b || pos_07b > pos_07c) {
+  stop("run.R --dry-run must include ma07a before ma07b before ma07c.")
 }
 
 if (!grepl("ACCRUAL_ENABLE_MODEL_PARALLEL", ma07a, fixed = TRUE) &&
@@ -103,19 +105,37 @@ for (symbol in c(
 if (grepl("\\bbrm\\s*\\(", ma07b, perl = TRUE)) {
   stop("ma07b must not contain a brm() fitting call.")
 }
+if (!grepl("accrual_fit_worker_config", ma07b, fixed = TRUE) ||
+    !grepl("accrual_run_task_pool", ma07b, fixed = TRUE)) {
+  stop("ma07b extraction must run through the shared worker pool.")
+}
+if (!grepl("table_ma07_collect_task_manifest.csv", ma07b, fixed = TRUE) ||
+    !grepl("table_ma07_collect_task_status.csv", ma07b, fixed = TRUE)) {
+  stop("ma07b must write extraction task manifest and task status tables.")
+}
 for (path_fragment in c(
   "table_brms_diagnostics_winsor.csv",
   "table_coefficient_summary_winsor.csv",
   "table_ma07_fit_draw_artifact_audit.csv",
   "table_ma07_hard_gate_failures.csv"
 )) {
-  if (!grepl(path_fragment, ma07b, fixed = TRUE)) {
-    stop("ma07b must write downstream-compatible output: ", path_fragment)
+  if (grepl(path_fragment, ma07b, fixed = TRUE)) {
+    stop("ma07b worker extraction must not name collector-owned shared output: ", path_fragment)
+  }
+  if (!grepl(path_fragment, ma07c, fixed = TRUE)) {
+    stop("ma07c must write downstream-compatible output: ", path_fragment)
   }
 }
 if (!grepl("posterior_epred", ma07b, fixed = TRUE) ||
     !grepl("posterior_predict", ma07b, fixed = TRUE)) {
   stop("ma07b must preserve downstream draw artifact generation.")
+}
+if (grepl("posterior_epred|posterior_predict|loo::loo|brms::nuts_params", ma07c, perl = TRUE)) {
+  stop("ma07c must not perform heavy per-fit extraction work.")
+}
+if (!grepl("file.copy", ma07c, fixed = TRUE) ||
+    !grepl("draws_exists_after", ma07c, fixed = TRUE)) {
+  stop("ma07c must publish task-local draw artifacts and refresh draw audit status.")
 }
 
 parallel_scenarios <- accrual_test_parallel_scenarios()

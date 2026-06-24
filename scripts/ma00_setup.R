@@ -348,8 +348,35 @@ stable_task_key <- function(...) {
   paste(parts, collapse = "|")
 }
 
+accrual_production_sampler_defaults <- function(kind = c("baseline", "grouped_kfold", "row_kfold", "sensitivity"),
+                                                run_mode = "FULL_MODE") {
+  kind <- match.arg(kind)
+  run_mode <- toupper(run_mode)
+  if (kind %in% c("grouped_kfold", "row_kfold") && !run_mode %in% c("FULL_MODE", "FAST_MODE")) {
+    stop("[BLOCKER] K-fold run_mode must be FULL_MODE or FAST_MODE.")
+  }
+  if (kind %in% c("grouped_kfold", "row_kfold")) {
+    if (identical(run_mode, "FULL_MODE")) {
+      return(list(chains = 4L, cores = 4L, iter = 12000L, warmup = 4000L,
+                  adapt_delta = 0.99, max_treedepth = 15L, refresh = 500L))
+    }
+    return(list(chains = 2L, cores = 2L, iter = 1000L, warmup = 500L,
+                adapt_delta = 0.95, max_treedepth = 12L, refresh = 500L))
+  }
+  if (identical(kind, "baseline")) {
+    return(list(chains = 4L, cores = 4L, iter = 12000L, warmup = 4000L,
+                adapt_delta = 0.99, max_treedepth = 15L, refresh = 500L))
+  }
+  list(chains = 4L, cores = 4L, iter = 12000L, warmup = 4000L,
+       adapt_delta = 0.99, max_treedepth = 15L, refresh = 500L)
+}
+
 accrual_run_profile_config <- function(profile = "full_clean_production_5w4c") {
   profile <- match.arg(profile, c("full_clean_production_5w4c"))
+  baseline_defaults <- accrual_production_sampler_defaults("baseline")
+  grouped_kfold_defaults <- accrual_production_sampler_defaults("grouped_kfold", "FULL_MODE")
+  row_kfold_defaults <- accrual_production_sampler_defaults("row_kfold", "FULL_MODE")
+  sensitivity_defaults <- accrual_production_sampler_defaults("sensitivity")
   c(
     ACCRUAL_ENABLE_MODEL_PARALLEL = "TRUE",
     ACCRUAL_MODEL_PARALLEL_WORKERS = "5",
@@ -360,13 +387,13 @@ accrual_run_profile_config <- function(profile = "full_clean_production_5w4c") {
     ACCRUAL_PRIOR_PRED_ITER = "1000",
     ACCRUAL_PRIOR_PRED_WARMUP = "500",
     ACCRUAL_PRIOR_PRED_REFRESH = "0",
-    ACCRUAL_BASELINE_CHAINS = "4",
-    ACCRUAL_BASELINE_CORES = "4",
-    ACCRUAL_BASELINE_ITER = "12000",
-    ACCRUAL_BASELINE_WARMUP = "4000",
-    ACCRUAL_BASELINE_ADAPT_DELTA = "0.99",
-    ACCRUAL_BASELINE_MAX_TREEDEPTH = "15",
-    ACCRUAL_BASELINE_REFRESH = "500",
+    ACCRUAL_BASELINE_CHAINS = as.character(baseline_defaults$chains),
+    ACCRUAL_BASELINE_CORES = as.character(baseline_defaults$cores),
+    ACCRUAL_BASELINE_ITER = as.character(baseline_defaults$iter),
+    ACCRUAL_BASELINE_WARMUP = as.character(baseline_defaults$warmup),
+    ACCRUAL_BASELINE_ADAPT_DELTA = as.character(baseline_defaults$adapt_delta),
+    ACCRUAL_BASELINE_MAX_TREEDEPTH = as.character(baseline_defaults$max_treedepth),
+    ACCRUAL_BASELINE_REFRESH = as.character(baseline_defaults$refresh),
     ACCRUAL_REMEDIATION_CHAINS = "4",
     ACCRUAL_REMEDIATION_CORES = "4",
     ACCRUAL_REMEDIATION_ITER = "16000",
@@ -376,31 +403,31 @@ accrual_run_profile_config <- function(profile = "full_clean_production_5w4c") {
     ACCRUAL_REMEDIATION_REFRESH = "500",
     ACCRUAL_KFOLD_FIRM_MODE = "FULL_MODE",
     ACCRUAL_KFOLD_FIRM_K = "5",
-    ACCRUAL_KFOLD_FIRM_CHAINS = "4",
-    ACCRUAL_KFOLD_FIRM_CORES = "4",
-    ACCRUAL_KFOLD_FIRM_ITER = "12000",
-    ACCRUAL_KFOLD_FIRM_WARMUP = "4000",
-    ACCRUAL_KFOLD_FIRM_ADAPT_DELTA = "0.99",
-    ACCRUAL_KFOLD_FIRM_MAX_TREEDEPTH = "15",
-    ACCRUAL_KFOLD_FIRM_REFRESH = "500",
+    ACCRUAL_KFOLD_FIRM_CHAINS = as.character(grouped_kfold_defaults$chains),
+    ACCRUAL_KFOLD_FIRM_CORES = as.character(grouped_kfold_defaults$cores),
+    ACCRUAL_KFOLD_FIRM_ITER = as.character(grouped_kfold_defaults$iter),
+    ACCRUAL_KFOLD_FIRM_WARMUP = as.character(grouped_kfold_defaults$warmup),
+    ACCRUAL_KFOLD_FIRM_ADAPT_DELTA = as.character(grouped_kfold_defaults$adapt_delta),
+    ACCRUAL_KFOLD_FIRM_MAX_TREEDEPTH = as.character(grouped_kfold_defaults$max_treedepth),
+    ACCRUAL_KFOLD_FIRM_REFRESH = as.character(grouped_kfold_defaults$refresh),
     ACCRUAL_KFOLD_FIRM_OVERWRITE = "TRUE",
     ACCRUAL_ROW_KFOLD_MODE = "FULL_MODE",
     ACCRUAL_ROW_KFOLD_K = "5",
-    ACCRUAL_ROW_KFOLD_CHAINS = "4",
-    ACCRUAL_ROW_KFOLD_CORES = "4",
-    ACCRUAL_ROW_KFOLD_ITER = "12000",
-    ACCRUAL_ROW_KFOLD_WARMUP = "4000",
-    ACCRUAL_ROW_KFOLD_ADAPT_DELTA = "0.99",
-    ACCRUAL_ROW_KFOLD_MAX_TREEDEPTH = "15",
-    ACCRUAL_ROW_KFOLD_REFRESH = "500",
+    ACCRUAL_ROW_KFOLD_CHAINS = as.character(row_kfold_defaults$chains),
+    ACCRUAL_ROW_KFOLD_CORES = as.character(row_kfold_defaults$cores),
+    ACCRUAL_ROW_KFOLD_ITER = as.character(row_kfold_defaults$iter),
+    ACCRUAL_ROW_KFOLD_WARMUP = as.character(row_kfold_defaults$warmup),
+    ACCRUAL_ROW_KFOLD_ADAPT_DELTA = as.character(row_kfold_defaults$adapt_delta),
+    ACCRUAL_ROW_KFOLD_MAX_TREEDEPTH = as.character(row_kfold_defaults$max_treedepth),
+    ACCRUAL_ROW_KFOLD_REFRESH = as.character(row_kfold_defaults$refresh),
     ACCRUAL_ROW_KFOLD_OVERWRITE = "TRUE",
-    ACCRUAL_SENS_CHAINS = "4",
-    ACCRUAL_SENS_CORES = "4",
-    ACCRUAL_SENS_ITER = "12000",
-    ACCRUAL_SENS_WARMUP = "4000",
-    ACCRUAL_SENS_ADAPT_DELTA = "0.99",
-    ACCRUAL_SENS_MAX_TREEDEPTH = "15",
-    ACCRUAL_SENS_REFRESH = "500",
+    ACCRUAL_SENS_CHAINS = as.character(sensitivity_defaults$chains),
+    ACCRUAL_SENS_CORES = as.character(sensitivity_defaults$cores),
+    ACCRUAL_SENS_ITER = as.character(sensitivity_defaults$iter),
+    ACCRUAL_SENS_WARMUP = as.character(sensitivity_defaults$warmup),
+    ACCRUAL_SENS_ADAPT_DELTA = as.character(sensitivity_defaults$adapt_delta),
+    ACCRUAL_SENS_MAX_TREEDEPTH = as.character(sensitivity_defaults$max_treedepth),
+    ACCRUAL_SENS_REFRESH = as.character(sensitivity_defaults$refresh),
     ACCRUAL_SIM_REPLICATIONS = "500",
     ACCRUAL_SIM_TEMPORAL_REPLICATIONS = "500",
     ACCRUAL_SIM_BRMS_REPLICATIONS = "30",
@@ -572,6 +599,13 @@ accrual_model_parallel_config <- function(cores_per_fit, context = "unknown") {
   enabled <- is_model_parallel_enabled()
   workers <- env_int("ACCRUAL_MODEL_PARALLEL_WORKERS", 1L, min = 1L)
   if (!enabled) workers <- 1L
+  if (enabled && workers <= 1L && !env_flag("ACCRUAL_ALLOW_SINGLE_WORKER_MODEL_PARALLEL", "FALSE")) {
+    stop(
+      "[BLOCKER] ACCRUAL_ENABLE_MODEL_PARALLEL=TRUE but effective workers=1 for ", context, ". ",
+      "Set ACCRUAL_MODEL_PARALLEL_WORKERS > 1 or explicitly set ",
+      "ACCRUAL_ALLOW_SINGLE_WORKER_MODEL_PARALLEL=TRUE to run model-parallel stages with one worker."
+    )
+  }
   total_core_budget <- env_int("ACCRUAL_TOTAL_CORE_BUDGET", default_total_core_budget(), min = 1L)
   validate_model_parallel_budget(workers, cores_per_fit, total_core_budget, context)
   if (enabled && workers > 1L && identical(.Platform$OS.type, "windows") &&
@@ -610,15 +644,18 @@ accrual_run_task_pool <- function(tasks, worker_fun, parallel_cfg,
                                   export_names = character(), packages = character(),
                                   context = "unknown") {
   if (!length(tasks)) return(list())
+  message("[WORKER POOL] ", context, ": workers=", parallel_cfg$workers,
+          ", cores_per_fit=", parallel_cfg$cores_per_fit,
+          ", total_core_budget=", parallel_cfg$total_core_budget,
+          ", backend=", parallel_cfg$backend,
+          ", fit_kind=", if (!is.null(parallel_cfg$fit_kind)) parallel_cfg$fit_kind else "unknown",
+          ", context=", if (!is.null(parallel_cfg$context)) parallel_cfg$context else context)
   if (!isTRUE(parallel_cfg$enabled) || as.integer(parallel_cfg$workers) <= 1L) {
     return(lapply(tasks, worker_fun))
   }
   if (!identical(parallel_cfg$backend, "base_parallel")) {
     stop("[BLOCKER] Unsupported model-parallel backend for ", context, ": ", parallel_cfg$backend)
   }
-  message("[WORKER POOL] ", context, ": workers=", parallel_cfg$workers,
-          ", cores_per_fit=", parallel_cfg$cores_per_fit,
-          ", total_core_budget=", parallel_cfg$total_core_budget)
   cl <- parallel::makeCluster(as.integer(parallel_cfg$workers))
   on.exit(parallel::stopCluster(cl), add = TRUE)
   parallel::clusterEvalQ(cl, {
@@ -667,7 +704,14 @@ accrual_task_status_blocker <- function(status_df, required_col = "Main_Stack_In
   blocked <- status_df[[status_col]] %in% blocked_statuses
   if (any(required & blocked, na.rm = TRUE)) {
     key_col <- intersect(c("task_key", "Task_Key", "model_key", "Model_ID"), names(status_df))[1]
-    keys <- if (!is.na(key_col)) status_df[[key_col]][required & blocked] else which(required & blocked)
+    blocked_idx <- which(required & blocked)
+    keys <- if (!is.na(key_col)) status_df[[key_col]][blocked_idx] else blocked_idx
+    detail_col <- intersect(c("reason", "error_message", "Reason", "Failure_Reason"), names(status_df))[1]
+    if (!is.na(detail_col)) {
+      details <- paste0(keys, ": ", status_df[[detail_col]][blocked_idx])
+      details <- details[!is.na(details) & nzchar(details)]
+      if (length(details)) keys <- details
+    }
     stop("[BLOCKER] Required task(s) failed or were blocked in ", context, ": ",
          paste(keys, collapse = "; "))
   }
@@ -733,20 +777,20 @@ accrual_sampler_config <- function(kind = c("baseline", "baseline_remediation", 
     )
   } else if (kind %in% c("grouped_kfold", "row_kfold")) {
     prefix <- if (identical(kind, "grouped_kfold")) "ACCRUAL_KFOLD_FIRM" else "ACCRUAL_ROW_KFOLD"
-    full_defaults <- run_mode == "FULL_MODE"
-    chains <- env_int(paste0(prefix, "_CHAINS"), if (full_defaults) 4L else 2L, min = 1L)
+    defaults <- accrual_production_sampler_defaults(kind, run_mode)
+    chains <- env_int(paste0(prefix, "_CHAINS"), defaults$chains, min = 1L)
     cfg <- list(
       chains = chains,
       cores = env_int(paste0(prefix, "_CORES"), chains, min = 1L),
-      iter = env_int(paste0(prefix, "_ITER"), if (full_defaults) 3000L else 1000L, min = 1L),
-      warmup = env_int(paste0(prefix, "_WARMUP"), if (full_defaults) 1000L else 500L, min = 0L),
-      adapt_delta = env_num(paste0(prefix, "_ADAPT_DELTA"), 0.95, min = 0),
-      max_treedepth = env_int(paste0(prefix, "_MAX_TREEDEPTH"), 12L, min = 1L),
-      refresh = env_int(paste0(prefix, "_REFRESH"), 500L, min = 0L),
+      iter = env_int(paste0(prefix, "_ITER"), defaults$iter, min = 1L),
+      warmup = env_int(paste0(prefix, "_WARMUP"), defaults$warmup, min = 0L),
+      adapt_delta = env_num(paste0(prefix, "_ADAPT_DELTA"), defaults$adapt_delta, min = 0),
+      max_treedepth = env_int(paste0(prefix, "_MAX_TREEDEPTH"), defaults$max_treedepth, min = 1L),
+      refresh = env_int(paste0(prefix, "_REFRESH"), defaults$refresh, min = 0L),
       backend = env_value("ACCRUAL_BRMS_BACKEND", "rstan"),
       run_mode = run_mode,
       sampler_profile = profile,
-      config_source = "scripts/ma00_setup.R:accrual_sampler_config"
+      config_source = "scripts/ma00_setup.R:accrual_production_sampler_defaults/accrual_sampler_config"
     )
   } else if (identical(kind, "sensitivity")) {
     chains <- env_int("ACCRUAL_SENS_CHAINS", 4L, min = 1L)
@@ -800,8 +844,16 @@ accrual_sampler_config <- function(kind = c("baseline", "baseline_remediation", 
   cfg
 }
 
-accrual_kfold_config <- function(kind = c("grouped_firm", "row"), run_mode = "FULL_MODE") {
+accrual_kfold_config <- function(kind = c("grouped_firm", "row"), run_mode = NULL) {
   kind <- match.arg(kind)
+  if (is.null(run_mode)) {
+    run_mode <- if (identical(kind, "grouped_firm")) {
+      env_value("ACCRUAL_KFOLD_FIRM_MODE", "FULL_MODE")
+    } else {
+      env_value("ACCRUAL_ROW_KFOLD_MODE", "FULL_MODE")
+    }
+  }
+  run_mode <- toupper(run_mode)
   if (identical(kind, "grouped_firm")) {
     sampler <- accrual_sampler_config("grouped_kfold", run_mode = run_mode)
     c(list(K = env_int("ACCRUAL_KFOLD_FIRM_K", 5L, min = 2L), seed = accrual_seed("grouped_kfold")), sampler)
@@ -809,6 +861,88 @@ accrual_kfold_config <- function(kind = c("grouped_firm", "row"), run_mode = "FU
     sampler <- accrual_sampler_config("row_kfold", run_mode = run_mode)
     c(list(K = env_int("ACCRUAL_ROW_KFOLD_K", 5L, min = 2L), seed = accrual_seed("row_kfold")), sampler)
   }
+}
+
+accrual_sampler_manifest_columns <- function() {
+  c("sampler_profile", "run_mode", "config_source", "chains", "cores", "iter",
+    "warmup", "adapt_delta", "max_treedepth", "refresh", "backend")
+}
+
+accrual_sampler_value_equal <- function(actual, expected, name) {
+  if (name %in% c("chains", "cores", "iter", "warmup", "max_treedepth", "refresh")) {
+    return(identical(as.integer(actual), as.integer(expected)))
+  }
+  if (identical(name, "adapt_delta")) {
+    return(isTRUE(all.equal(as.numeric(actual), as.numeric(expected), tolerance = 1e-12)))
+  }
+  identical(as.character(actual), as.character(expected))
+}
+
+accrual_assert_kfold_manifest_matches_config <- function(tasks, kind = c("grouped_firm", "row"),
+                                                         context = "unknown") {
+  kind <- match.arg(kind)
+  if (env_flag("ACCRUAL_ALLOW_STALE_KFOLD_MANIFEST", "FALSE")) {
+    warning("[WARNING] ACCRUAL_ALLOW_STALE_KFOLD_MANIFEST=TRUE; skipping current K-fold config guard for ", context, ".", call. = FALSE)
+    return(invisible(TRUE))
+  }
+  current <- accrual_kfold_config(kind)
+  cols <- accrual_sampler_manifest_columns()
+  missing_cols <- setdiff(cols, names(tasks))
+  if (length(missing_cols)) {
+    stop("[BLOCKER] ", context, " task manifest is missing sampler provenance column(s): ",
+         paste(missing_cols, collapse = ", "), ". Rerun the planning script before fitting.")
+  }
+  mismatches <- character()
+  for (col in cols) {
+    vals <- unique(tasks[[col]])
+    vals <- vals[!is.na(vals)]
+    if (length(vals) != 1L || !accrual_sampler_value_equal(vals[[1]], current[[col]], col)) {
+      mismatches <- c(mismatches, sprintf("%s manifest=%s current=%s", col, paste(vals, collapse = "|"), current[[col]]))
+    }
+  }
+  if (length(mismatches)) {
+    plan_script <- if (identical(kind, "grouped_firm")) "scripts/ma12a_plan_grouped_kfold_firm.R" else "scripts/ma13a_plan_row_level_exact_kfold.R"
+    stop("[BLOCKER] ", context, " task manifest sampler config does not match current ma00 K-fold config: ",
+         paste(mismatches, collapse = "; "), ". Rerun ", plan_script,
+         " or set ACCRUAL_ALLOW_STALE_KFOLD_MANIFEST=TRUE only for an explicitly documented legacy run.")
+  }
+  invisible(TRUE)
+}
+
+accrual_validate_existing_fit_metadata <- function(task, context = "unknown",
+                                                   compare_cols = c("chains", "cores", "iter", "warmup", "adapt_delta", "max_treedepth")) {
+  if (!file.exists(task$metadata_path)) {
+    return(list(reusable = FALSE, reason = paste0("metadata missing: ", task$metadata_path)))
+  }
+  meta <- tryCatch(read.csv(task$metadata_path, stringsAsFactors = FALSE, check.names = FALSE), error = function(e) NULL)
+  if (is.null(meta) || nrow(meta) == 0) {
+    return(list(reusable = FALSE, reason = paste0("metadata unreadable or empty: ", task$metadata_path)))
+  }
+  missing_cols <- setdiff(compare_cols, names(meta))
+  if (length(missing_cols)) {
+    return(list(reusable = FALSE, reason = paste0("metadata missing sampler column(s): ", paste(missing_cols, collapse = ", "))))
+  }
+  mismatches <- character()
+  for (col in compare_cols) {
+    if (!accrual_sampler_value_equal(meta[[col]][1], task[[col]], col)) {
+      mismatches <- c(mismatches, sprintf("%s metadata=%s manifest=%s", col, meta[[col]][1], task[[col]]))
+    }
+  }
+  if (length(mismatches)) {
+    return(list(reusable = FALSE, reason = paste(mismatches, collapse = "; ")))
+  }
+  list(reusable = TRUE, reason = NA_character_)
+}
+
+accrual_assert_reusable_fit_metadata <- function(task, context = "unknown") {
+  state <- accrual_validate_existing_fit_metadata(task, context = context)
+  if (isTRUE(state$reusable)) return(invisible(TRUE))
+  if (isTRUE(force_refit)) {
+    warning("[WARNING] Existing fit metadata is not reusable for ", context, "; ACCRUAL_FORCE_REFIT=TRUE so the fit will be refit. Reason: ", state$reason, call. = FALSE)
+    return(invisible(FALSE))
+  }
+  stop("[BLOCKER] Existing fit cannot be reused for ", context, " because sampler metadata does not match the task manifest. ",
+       "Reason: ", state$reason, ". Set ACCRUAL_FORCE_REFIT=TRUE to refit or rerun the planning stage if the manifest is stale.")
 }
 
 accrual_orchestrator_config <- function() {
@@ -1440,7 +1574,7 @@ write_run_manifest <- function(path, scenario, prior_set_id, family, model_struc
 write_pipeline_index <- function() {
   dir.create(method_design_root, recursive = TRUE, showWarnings = FALSE)
   pipeline <- data.frame(
-    Order = c(sprintf("ma%02d", 0:6), "ma07a", "ma07b", sprintf("ma%02d", 8:16), "di02", "ma17", "ro01", sprintf("se%02d", 1:7), sprintf("si%02d", 0:4), "di01"),
+    Order = c(sprintf("ma%02d", 0:6), "ma07a", "ma07b", "ma07c", sprintf("ma%02d", 8:16), "di02", "ma17", "ro01", sprintf("se%02d", 1:7), sprintf("si%02d", 0:4), "di01"),
     Script = c(
       "scripts/ma00_setup.R",
       "scripts/ma01_setup_and_registry.R",
@@ -1450,7 +1584,8 @@ write_pipeline_index <- function() {
       "scripts/ma05_winsorize_common_samples.R",
       "scripts/ma06_prior_predictive_checks.R",
       "scripts/ma07a_fit_brms_named_models.R",
-      "scripts/ma07b_collect_brms_fit_outputs.R",
+      "scripts/ma07b_extract_brms_fit_outputs_workers.R",
+      "scripts/ma07c_collect_brms_fit_outputs.R",
       "scripts/ma08_mcmc_diagnostics.R",
       "scripts/ma09_loo_stacking.R",
       "scripts/ma10_construct_psis_loo_DA.R",
@@ -1532,6 +1667,8 @@ write_pipeline_index <- function() {
     "Sampler protocol: Chapter 3 specifies 4 chains, 3000 iterations, 1000 warmup iterations, fixed seed 42, adapt_delta = 0.95, and max_treedepth = 12 for brms/Stan estimation. Baseline full-sample fits, exact K-fold refits, and sensitivity refits use those defaults unless explicitly overridden and recorded in manifests. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference.",
     "",
     "Execution configuration is centralized in `scripts/ma00_setup.R`: `accrual_base_seed()` and `accrual_seed()` enforce one canonical seed (`ACCRUAL_SEED`, default 42) across baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context-specific offsets from that same canonical seed; `set_accrual_seed()` is the only helper that calls base `set.seed()`; `accrual_sampler_config()` supplies sampler settings; `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings; and `main_model_ids_for_space()` supplies primary model IDs. Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
+    "",
+    "Production exact K-fold defaults are 4 chains, 4 rstan cores, 12000 iterations, 4000 warmup iterations, `adapt_delta = 0.99`, and `max_treedepth = 15` for both grouped-firm and row-level exact K-fold. Lower settings are light/test modes only and must be explicit in the K-fold run mode and task manifest sampler provenance.",
     "",
     "Primary model helpers return M01-M07 for ex-post and M01, M02, M03, M07, M09 for real-time/no-lookahead. M08/M10 remain secondary/robustness unless explicitly included through documented secondary flows, and M11/M12 remain excluded from active primary helpers.",
     "",

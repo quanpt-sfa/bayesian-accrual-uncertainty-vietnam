@@ -2,6 +2,7 @@ dry <- system2("Rscript", c("run.R", "all", "--dry-run"), stdout = TRUE, stderr 
 dry_text <- paste(dry, collapse = "\n")
 
 ordered_ids <- c(
+  "ma07a", "ma07b", "ma07c",
   "ma09a", "ma09b", "ma09c",
   "ma12a", "ma12b", "ma12c",
   "ma13a", "ma13b", "ma13c",
@@ -15,6 +16,7 @@ missing <- ordered_ids[positions < 0]
 if (length(missing)) stop("run.R all --dry-run missing split stage(s): ", paste(missing, collapse = ", "))
 
 groups <- list(
+  c("ma07a", "ma07b", "ma07c"),
   c("ma09a", "ma09b", "ma09c"),
   c("ma12a", "ma12b", "ma12c"),
   c("ma13a", "ma13b", "ma13c"),
@@ -40,11 +42,11 @@ obsolete_stage_lines <- c(
 hits <- obsolete_stage_lines[vapply(obsolete_stage_lines, grepl, logical(1), x = dry_text, fixed = TRUE)]
 if (length(hits)) stop("Dry-run plan still includes obsolete mixed fit/collect stage(s): ", paste(hits, collapse = ", "))
 
-for (id in c("ma09b", "ma12b", "ma13b", "se02b", "si03b", "si04b", "di08b")) {
+for (id in c("ma07a", "ma07b", "ma09b", "ma12b", "ma13b", "se02b", "si03b", "si04b", "di08b")) {
   line <- dry[grepl(paste0(id, " "), dry, fixed = TRUE)]
   if (!length(line) || !grepl("heavy", line, fixed = TRUE)) stop(id, " must be marked heavy in dry-run plan.")
 }
-for (id in c("ma09c", "ma12c", "ma13c", "se02c", "si03c", "si04c", "di08c")) {
+for (id in c("ma07c", "ma09c", "ma12c", "ma13c", "se02c", "si03c", "si04c", "di08c")) {
   line <- dry[grepl(paste0(id, " "), dry, fixed = TRUE)]
   if (!length(line) || !grepl("requires artifacts", line, fixed = TRUE)) stop(id, " must be marked requires artifacts in dry-run plan.")
 }

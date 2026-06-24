@@ -57,16 +57,22 @@ main_steps <- list(
   step("ma05", "scripts/ma05_winsorize_common_samples.R", "Winsorize common samples"),
   step("ma06", "scripts/ma06_prior_predictive_checks.R", "Prior predictive gate"),
   step("ma07a", "scripts/ma07a_fit_brms_named_models.R", "Full-sample baseline brms fit worker stage", heavy = TRUE),
-  step("ma07b", "scripts/ma07b_collect_brms_fit_outputs.R", "Collect baseline brms fit outputs",
+  step("ma07b", "scripts/ma07b_extract_brms_fit_outputs_workers.R", "Extract baseline brms fit outputs with workers", heavy = TRUE,
        requires = c(
          table_artifact("table_ma07_fit_task_manifest.csv"),
          table_artifact("table_ma07_fit_task_status.csv"),
          file.path(output_root, "models")
        ),
        require_reason = "ma07a fit task manifest, task status, and fit artifacts"),
+  step("ma07c", "scripts/ma07c_collect_brms_fit_outputs.R", "Collect extracted baseline brms fit outputs",
+       requires = c(
+         table_artifact("table_ma07_collect_task_manifest.csv"),
+         table_artifact("table_ma07_collect_task_status.csv")
+       ),
+       require_reason = "ma07b extract task manifest, task status, and task-local artifacts"),
   step("ma08", "scripts/ma08_mcmc_diagnostics.R", "MCMC diagnostics for baseline fits",
        requires = c(table_artifact("table_brms_diagnostics_winsor.csv"), file.path(output_root, "models")),
-       require_reason = "baseline fit diagnostics and model files from ma07"),
+       require_reason = "baseline fit diagnostics from ma07c and model files from ma07a"),
   step("ma09a", "scripts/ma09a_plan_loo_savepars_refits.R", "Plan PSIS/LOO save_pars refits, secondary to exact K-fold",
        requires = c(
          table_artifact("table_brms_diagnostics_winsor.csv"),

@@ -73,7 +73,9 @@ for (i in seq_len(nrow(formulas))) {
       metadata_path = safe_task_artifact_path(task_root, task_key, "_metadata.csv"),
       task_log_path = safe_task_log_path(file.path(task_root, "logs"), task_key),
       chains = kfold_cfg$chains, cores = kfold_cfg$cores, iter = kfold_cfg$iter, warmup = kfold_cfg$warmup,
-      adapt_delta = kfold_cfg$adapt_delta, max_treedepth = kfold_cfg$max_treedepth, backend = "rstan",
+      adapt_delta = kfold_cfg$adapt_delta, max_treedepth = kfold_cfg$max_treedepth, refresh = kfold_cfg$refresh,
+      backend = kfold_cfg$backend, sampler_profile = kfold_cfg$sampler_profile,
+      run_mode = kfold_cfg$run_mode, config_source = kfold_cfg$config_source,
       RNG_Context = rng$RNG_Context, RNG_Offset = rng$RNG_Offset, Canonical_Seed = rng$Canonical_Seed,
       Effective_Seed = rng$Effective_Seed, Required = TRUE, stringsAsFactors = FALSE
     )

@@ -15,6 +15,7 @@ The shared worker architecture is centralized in `scripts/ma00_setup.R`:
 
 | original mixed stage | original script | plan stage | worker fit stage | collector stage | evidence role |
 |---|---|---|---|---|---|
+| `ma07` | `scripts/ma07_fit_brms_named_models.R` | `ma07a_fit_brms_named_models.R` | `ma07a_fit_brms_named_models.R` plus `ma07b_extract_brms_fit_outputs_workers.R` for heavy post-fit extraction | `ma07c_collect_brms_fit_outputs.R` | baseline model diagnostics, coefficients, and draw artifacts |
 | `ma09` | `scripts/ma09_loo_stacking.R` | `ma09a_plan_loo_savepars_refits.R` | `ma09b_fit_loo_savepars_refits.R` | `ma09c_collect_loo_stacking.R` | PSIS/LOO secondary evidence |
 | `ma12` | `scripts/ma12_grouped_kfold_firm.R` | `ma12a_plan_grouped_kfold_firm.R` | `ma12b_fit_grouped_kfold_firm_workers.R` | `ma12c_collect_grouped_kfold_firm_scores.R` | primary grouped-firm exact K-fold |
 | `ma13` | `scripts/ma13_row_level_exact_kfold.R` | `ma13a_plan_row_level_exact_kfold.R` | `ma13b_fit_row_level_exact_kfold_workers.R` | `ma13c_collect_row_level_exact_kfold_scores.R` | primary row-level exact K-fold |
@@ -26,7 +27,7 @@ The shared worker architecture is centralized in `scripts/ma00_setup.R`:
 
 ## Write Ownership
 
-Worker scripts may write only task-local fit, prediction, metadata, result, and log artifacts. Collectors own shared tables, validation scores, stacking weights, completed-run pins, global manifests, reports, and manuscript-facing outputs.
+Worker scripts may write only task-local fit, prediction, extraction bundle, metadata, result, and log artifacts. For ma07, this means ma07a owns task-local fit/meta/log files, ma07b owns task-local extraction bundles and temporary draw artifacts, and ma07c alone publishes shared diagnostics, coefficients, hard-gate tables, manifests, and final draw files under the shared draws directory. Collectors own shared tables, validation scores, stacking weights, completed-run pins, global manifests, reports, and manuscript-facing outputs.
 
 The production worker policy is defined once in `ma00_setup.R`. The production profile uses 5 model-level workers with 4 rstan cores per fit under a total active core budget of 20, but tests read those values from `accrual_run_profile_config()` rather than duplicating them.
 

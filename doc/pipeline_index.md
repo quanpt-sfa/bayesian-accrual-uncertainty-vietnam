@@ -12,7 +12,8 @@ Active scripts use the ma/ro/se/si/di reorg prefixes. The execution order is def
 | ma05 | `scripts/ma05_winsorize_common_samples.R` | Winsorize common samples |
 | ma06 | `scripts/ma06_prior_predictive_checks.R` | Baseline prior predictive checks |
 | ma07a | `scripts/ma07a_fit_brms_named_models.R` | Baseline brms fit worker stage |
-| ma07b | `scripts/ma07b_collect_brms_fit_outputs.R` | Collect baseline brms fit outputs |
+| ma07b | `scripts/ma07b_extract_brms_fit_outputs_workers.R` | Extract baseline brms fit outputs with workers |
+| ma07c | `scripts/ma07c_collect_brms_fit_outputs.R` | Collect extracted baseline brms fit outputs |
 | ma08 | `scripts/ma08_mcmc_diagnostics.R` | Baseline MCMC diagnostics |
 | ma09a | `scripts/ma09a_plan_loo_savepars_refits.R` | Plan secondary PSIS/LOO save_pars refits |
 | ma09b | `scripts/ma09b_fit_loo_savepars_refits.R` | Worker fit stage for secondary PSIS/LOO save_pars refits |
@@ -56,6 +57,8 @@ Sensitivity scripts se01-se07 are prepared for full MCMC refits by prior scenari
 Sampler protocol: Chapter 3 specifies 4 chains, 3000 iterations, 1000 warmup iterations, fixed seed 42, adapt_delta = 0.95, and max_treedepth = 12 for brms/Stan estimation. Baseline full-sample fits, exact K-fold refits, and sensitivity refits use those defaults unless explicitly overridden and recorded in manifests. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference.
 
 Execution configuration is centralized in `scripts/ma00_setup.R`: `accrual_base_seed()` and `accrual_seed()` enforce one canonical seed (`ACCRUAL_SEED`, default 42) across baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context-specific offsets from that same canonical seed; `set_accrual_seed()` is the only helper that calls base `set.seed()`; `accrual_sampler_config()` supplies sampler settings; `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings; and `main_model_ids_for_space()` supplies primary model IDs. Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.
+
+Production exact K-fold defaults are 4 chains, 4 rstan cores, 12000 iterations, 4000 warmup iterations, `adapt_delta = 0.99`, and `max_treedepth = 15` for both grouped-firm and row-level exact K-fold. Lower settings are light/test modes only and must be explicit in the K-fold run mode and task manifest sampler provenance.
 
 Primary model helpers return M01-M07 for ex-post and M01, M02, M03, M07, M09 for real-time/no-lookahead. M08/M10 remain secondary/robustness unless explicitly included through documented secondary flows, and M11/M12 remain excluded from active primary helpers.
 

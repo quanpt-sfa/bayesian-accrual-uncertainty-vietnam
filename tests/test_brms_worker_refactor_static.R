@@ -178,6 +178,7 @@ for (forbidden in c("defer_diagnostic_only", "defer_simulation_only", "split_fit
 production_worker_paths <- c(
   "scripts/ma06_prior_predictive_checks.R",
   "scripts/ma07a_fit_brms_named_models.R",
+  "scripts/ma07b_extract_brms_fit_outputs_workers.R",
   "scripts/ma09b_fit_loo_savepars_refits.R",
   "scripts/ma12b_fit_grouped_kfold_firm_workers.R",
   "scripts/ma13b_fit_row_level_exact_kfold_workers.R",

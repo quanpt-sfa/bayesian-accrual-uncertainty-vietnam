@@ -9,6 +9,7 @@ manifest_path <- file.path(tables_dir, "table_ma12_grouped_kfold_task_manifest.c
 status_path <- file.path(tables_dir, "table_ma12_grouped_kfold_task_status.csv")
 if (!file.exists(manifest_path)) stop("[BLOCKER] Missing ma12a task manifest: ", manifest_path)
 tasks <- read.csv(manifest_path, stringsAsFactors = FALSE)
+accrual_assert_kfold_manifest_matches_config(tasks, "grouped_firm", "ma12b grouped K-fold workers")
 
 fit_ma12b_task_worker <- function(task) {
   task <- as.list(task)
@@ -35,7 +36,12 @@ fit_ma12b_task_worker <- function(task) {
     assert_training_factor_level_coverage(train_df, test_df, c("industry", "year"),
                                           paste("ma12b", task$Target_Space, task$Model_ID, "fold", task$Fold_ID))
     formula_str <- fix_formula(task$brms_Formula, prefactor = TRUE)
-    fit <- if (file.exists(task$fit_path)) tryCatch(readRDS(task$fit_path), error = function(e) NULL) else NULL
+    fit <- NULL
+    if (file.exists(task$fit_path)) {
+      if (isTRUE(accrual_assert_reusable_fit_metadata(task, paste("ma12b", task$Task_Key)))) {
+        fit <- tryCatch(readRDS(task$fit_path), error = function(e) NULL)
+      }
+    }
     if (is.null(fit)) {
       fit <- brms::brm(
         formula = brms::bf(stats::as.formula(formula_str)),
@@ -79,12 +85,19 @@ fit_ma12b_task_worker <- function(task) {
   status <- result$status
   reason <- result$reason
   ended <- Sys.time()
-  write.csv(data.frame(Task_Key = task$Task_Key, status = status, reason = reason, backend = "rstan",
+  write.csv(data.frame(Task_Key = task$Task_Key, status = status, reason = reason,
+                       backend = if ("backend" %in% names(task)) task$backend else "rstan",
                        RNG_Context = task$RNG_Context, Effective_Seed = task$Effective_Seed,
                        chains = task$chains, cores = task$cores, iter = task$iter, warmup = task$warmup,
                        adapt_delta = task$adapt_delta, max_treedepth = task$max_treedepth,
+                       refresh = if ("refresh" %in% names(task)) task$refresh else NA_integer_,
+                       sampler_profile = if ("sampler_profile" %in% names(task)) task$sampler_profile else NA_character_,
+                       run_mode = if ("run_mode" %in% names(task)) task$run_mode else NA_character_,
+                       config_source = if ("config_source" %in% names(task)) task$config_source else NA_character_,
                        runtime_seconds = as.numeric(difftime(ended, started, units = "secs")),
-                       stringsAsFactors = FALSE), task$metadata_path, row.names = FALSE)
+                       fit_path = task$fit_path,
+                       result_path = task$result_path,
+                       stringsAsFactors = FALSE), task$metadata_path, row.names = FALSE, fileEncoding = "UTF-8")
   data.frame(Task_Key = task$Task_Key, status = status, reason = reason, Required = task$Required,
              fit_path = task$fit_path, prediction_path = task$prediction_path,
              result_path = task$result_path, stringsAsFactors = FALSE)

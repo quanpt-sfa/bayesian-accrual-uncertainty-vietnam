@@ -10,7 +10,12 @@ worker_scripts <- c(
   "scripts/diagnostics/di08b_fit_mcmc_sampler_calibration_workers.R"
 )
 
+extraction_worker_scripts <- c(
+  "scripts/ma07b_extract_brms_fit_outputs_workers.R"
+)
+
 collector_scripts <- c(
+  "scripts/ma07c_collect_brms_fit_outputs.R",
   "scripts/ma09c_collect_loo_stacking.R",
   "scripts/ma12c_collect_grouped_kfold_firm_scores.R",
   "scripts/ma13c_collect_row_level_exact_kfold_scores.R",
@@ -30,6 +35,14 @@ shared_output_fragments <- c(
   "table_loo_comparison_winsor_corrected.csv"
 )
 
+ma07_shared_output_fragments <- c(
+  "table_brms_diagnostics_winsor.csv",
+  "table_coefficient_summary_winsor.csv",
+  "table_ma07_fit_draw_artifact_audit.csv",
+  "table_ma07_hard_gate_failures.csv",
+  "baseline_manifest.csv"
+)
+
 for (path in worker_scripts) {
   if (!file.exists(path)) stop("Missing worker split script: ", path)
   body <- txt(path)
@@ -46,6 +59,25 @@ for (path in worker_scripts) {
     if (!grepl(fragment, body, fixed = TRUE)) stop(path, " is not a worker fit script; missing ", fragment)
   }
   hits <- shared_output_fragments[vapply(shared_output_fragments, grepl, logical(1), x = body, fixed = TRUE)]
+  if (length(hits)) stop(path, " names collector-owned shared output(s): ", paste(hits, collapse = ", "))
+}
+
+for (path in extraction_worker_scripts) {
+  if (!file.exists(path)) stop("Missing extraction worker split script: ", path)
+  body <- txt(path)
+  if (grepl("BLOCKED_PENDING_SPLIT_IMPLEMENTATION", body, fixed = TRUE)) {
+    stop(path, " still contains the forbidden split-stage placeholder status.")
+  }
+  if (grepl("contract is in place", body, fixed = TRUE)) {
+    stop(path, " still contains worker-contract placeholder prose.")
+  }
+  for (fragment in c("accrual_run_task_pool(", "accrual_fit_worker_config(", "write.csv(status_df")) {
+    if (!grepl(fragment, body, fixed = TRUE)) stop(path, " is not an extraction worker script; missing ", fragment)
+  }
+  for (fragment in c("readRDS(task$fit_path)", "summary(fit)", "loo::loo(fit)", "brms::posterior_epred(fit)", "brms::posterior_predict(fit)", "task_draw_path", "bundle_path")) {
+    if (!grepl(fragment, body, fixed = TRUE)) stop(path, " must preserve task-local heavy extraction fragment: ", fragment)
+  }
+  hits <- ma07_shared_output_fragments[vapply(ma07_shared_output_fragments, grepl, logical(1), x = body, fixed = TRUE)]
   if (length(hits)) stop(path, " names collector-owned shared output(s): ", paste(hits, collapse = ", "))
 }
 
