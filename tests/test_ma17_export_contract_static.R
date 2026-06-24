@@ -21,10 +21,13 @@ for (fragment in c(
   "table_denominator_diagnostics_decision.csv",
   "table_denominator_capped_jaccard.csv",
   "table_da_z_est_vs_z_pred_comparison.csv",
-  "table_3_13_denominator_diagnostics_summary"
+  "table_3_13_denominator_diagnostics_summary",
+  "table_temporal_dependence_firmre_premium.csv",
+  "table_temporal_dependence_decision.csv",
+  "table_3_15_temporal_dependence_robustness_summary"
 )) {
   if (!grepl(fragment, ma17, fixed = TRUE)) {
-    stop("ma17 must consume/export denominator diagnostic fragment: ", fragment)
+    stop("ma17 must consume/export diagnostic robustness fragment: ", fragment)
   }
 }
 

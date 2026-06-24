@@ -1088,7 +1088,7 @@ accrual_extract_brms_mcmc_diagnostics <- function(fit, max_treedepth) {
 }
 
 accrual_simulation_runtime_config <- function(kind) {
-  kind <- match.arg(kind, c("lmer_pilot", "brms_leakage", "brms_recovery", "lmer_temporal"))
+  kind <- match.arg(kind, c("lmer_pilot", "brms_leakage", "brms_recovery", "lmer_temporal", "temporal_robustness"))
   if (identical(kind, "lmer_pilot")) {
     return(list(
       t_grid = env_num_list("ACCRUAL_SIM_T_GRID", c(3, 7, 15)),
@@ -1147,6 +1147,19 @@ accrual_simulation_runtime_config <- function(kind) {
     if (!is.finite(cfg$sd_zero_eps) || cfg$sd_zero_eps <= 0) stop("[BLOCKER] ACCRUAL_SIM_RECOVERY_SD_ZERO_EPS must be positive.")
     validate_rstan_cores(cfg$cores, cfg$chains, "si04 brms parameter recovery")
     return(cfg)
+  }
+  if (identical(kind, "temporal_robustness")) {
+    return(list(
+      t_grid = env_num_list("ACCRUAL_TEMPORAL_T_GRID", env_num_list("ACCRUAL_SIM_TEMPORAL_T_GRID", c(3, 7, 15))),
+      sigma_grid = env_num_list("ACCRUAL_TEMPORAL_SIGMA_FIRM_GRID", env_num_list("ACCRUAL_SIM_TEMPORAL_SIGMA_FIRM_GRID", c(0, 0.10, 0.30))),
+      rho_grid = env_num_list("ACCRUAL_TEMPORAL_RHO_GRID", env_num_list("ACCRUAL_SIM_TEMPORAL_RHO_GRID", c(0, 0.30, 0.60, 0.80))),
+      R = env_int(c("ACCRUAL_TEMPORAL_REPLICATIONS", "ACCRUAL_SIM_TEMPORAL_REPLICATIONS"), 100L, min = 1L),
+      K = env_int(c("ACCRUAL_TEMPORAL_K", "ACCRUAL_SIM_TEMPORAL_K"), 5L, min = 2L),
+      n_firms = env_int(c("ACCRUAL_TEMPORAL_N_FIRMS", "ACCRUAL_SIM_TEMPORAL_N_FIRMS"), 80L, min = 2L),
+      n_industries = env_int(c("ACCRUAL_TEMPORAL_N_INDUSTRIES", "ACCRUAL_SIM_TEMPORAL_N_INDUSTRIES"), 10L, min = 1L),
+      sigma_eps = env_num_list("ACCRUAL_TEMPORAL_SIGMA_EPS", env_num_list("ACCRUAL_SIM_TEMPORAL_SIGMA_EPS", 0.08))[1],
+      seed = env_int(c("ACCRUAL_TEMPORAL_SEED", "ACCRUAL_SIM_TEMPORAL_SEED", "ACCRUAL_SIM_SEED", "ACCRUAL_SEED"), accrual_seed("simulation"), min = 0L)
+    ))
   }
   list(
     t_grid = env_num_list("ACCRUAL_SIM_TEMPORAL_T_GRID", c(3, 7, 15)),

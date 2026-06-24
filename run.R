@@ -161,6 +161,7 @@ main_steps <- list(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv")
        ),
        require_reason = "exact-KFold grouped/row DA outputs"),
+  step("di06", "scripts/diagnostics/di06_temporal_dependence_robustness.R", "Temporal-dependence robustness for row-minus-grouped Firm-RE premium"),
   step("ma17", "scripts/ma17_export_tables_figures.R", "Chapter 3 manuscript table export",
        requires = c(
           table_artifact("table_DA_finite_gate_decision.csv"),

@@ -67,6 +67,8 @@ exact_kfold_reclassification_jaccard_path <- file.path(output_root, "diagnostics
 denominator_diagnostics_decision_path <- file.path(output_root, "diagnostics", "table_denominator_diagnostics_decision.csv")
 denominator_capped_jaccard_path <- file.path(output_root, "diagnostics", "table_denominator_capped_jaccard.csv")
 da_z_est_vs_z_pred_comparison_path <- file.path(output_root, "diagnostics", "table_da_z_est_vs_z_pred_comparison.csv")
+temporal_dependence_premium_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv")
+temporal_dependence_decision_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
 DA_Finite_Gate_Decision <- read_required_gate(finite_gate_path, "gate_decision", "DA finite")
 New_Firm_Predictive_Gate_Decision <- read_required_gate(new_firm_gate_path, "audit_decision", "new-firm predictive")
 Exact_KFold_Reclassification_Decision_Table <- safe_read_csv(exact_kfold_reclassification_decision_path)
@@ -769,6 +771,30 @@ if (!is.null(denominator_decision) && nrow(denominator_decision) > 0 &&
   table_3_13_available <- TRUE
 }
 
+temporal_premium <- safe_read_csv(temporal_dependence_premium_path)
+temporal_decision <- safe_read_csv(temporal_dependence_decision_path)
+table_3_15_available <- FALSE
+if (!is.null(temporal_premium) && nrow(temporal_premium) > 0 &&
+    !is.null(temporal_decision) && nrow(temporal_decision) > 0) {
+  temporal_decision_value <- if ("temporal_decision" %in% names(temporal_decision)) {
+    as.character(temporal_decision$temporal_decision[[1]])
+  } else {
+    NA_character_
+  }
+  table_3_15_cols <- c(
+    "T", "rho", "sigma_firm", "mean_row_firmre_premium",
+    "mean_grouped_firmre_premium", "mean_row_minus_grouped_firmre_premium",
+    "share_row_minus_grouped_positive", "interpretation"
+  )
+  table_3_15 <- temporal_premium %>%
+    select(any_of(table_3_15_cols)) %>%
+    mutate(temporal_decision = temporal_decision_value)
+  if (nrow(table_3_15) > 0) {
+    write_outputs(table_3_15, "table_3_15_temporal_dependence_robustness_summary", "Table 3.15 Temporal Dependence Robustness Summary")
+    table_3_15_available <- TRUE
+  }
+}
+
 ExactKFold_Magnitude_RQ2_Primary_Output_Allowed <- table_3_12_available &&
   any(table_3_12$Primary_Inference_Allowed %in% TRUE &
         grepl("^primary_magnitude", table_3_12$metric_class))
@@ -860,6 +886,9 @@ if (table_3_12_available) {
 if (table_3_13_available) {
   required_stems <- c(required_stems, "table_3_13_denominator_diagnostics_summary")
 }
+if (table_3_15_available) {
+  required_stems <- c(required_stems, "table_3_15_temporal_dependence_robustness_summary")
+}
 
 qc_rows <- list()
 add_qc <- function(id, name, status, details) {
@@ -888,10 +917,14 @@ add_qc("QC16", "denominator diagnostics manuscript table available when di04 dec
        ifelse(file.exists(denominator_diagnostics_decision_path) && !table_3_13_available, "FAIL",
               ifelse(!file.exists(denominator_diagnostics_decision_path), "WARN", "PASS")),
        ifelse(file.exists(denominator_diagnostics_decision_path), file.path(report_dir, "table_3_13_denominator_diagnostics_summary.csv"), "di04 decision not present"))
+add_qc("QC17", "temporal-dependence robustness table available when di06 decision exists",
+       ifelse(file.exists(temporal_dependence_decision_path) && !table_3_15_available, "FAIL",
+              ifelse(!file.exists(temporal_dependence_decision_path), "WARN", "PASS")),
+       ifelse(file.exists(temporal_dependence_decision_path), file.path(report_dir, "table_3_15_temporal_dependence_robustness_summary.csv"), "di06 decision not present"))
 
 report_path <- file.path(report_dir, "chapter3_methods_tables_report.md")
 qc_path <- file.path(report_dir, "chapter3_methods_tables_qc.csv")
-add_qc("QC17", "master report exists", "PASS", report_path)
+add_qc("QC18", "master report exists", "PASS", report_path)
 qc <- bind_rows(qc_rows)
 write.csv(qc, qc_path, row.names = FALSE, fileEncoding = "UTF-8")
 generated_files <- unique(c(generated_files, qc_path, report_path))
@@ -904,6 +937,7 @@ if (any(preprocessing_audit$leakage_risk_classification %in% c("potential_predic
 if (is.null(prior_summary)) add_warning("Prior predictive diagnostics are missing.")
 if (is.null(diag) || is.null(kfold_balance_in)) add_warning("MCMC/fold outputs are not fully available.")
 if (!file.exists(denominator_diagnostics_decision_path)) add_warning("Denominator diagnostics are missing.")
+if (!file.exists(temporal_dependence_decision_path)) add_warning("Temporal-dependence robustness outputs are missing.")
 
 report_lines <- c(
   "# Chapter 3 Methods Tables Report",
