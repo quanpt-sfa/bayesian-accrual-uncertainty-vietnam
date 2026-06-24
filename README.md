@@ -1,150 +1,246 @@
 # Bayesian Accrual Uncertainty Vietnam
 
-Bayesian pipeline for uncertainty-adjusted discretionary accruals using Vietnamese firm-year data.
+Bayesian pipeline for uncertainty-adjusted discretionary accruals using Vietnamese firm-year data. The repository is organized as a reproducible Chapter 3 replication package with explicit run targets, provenance manifests, gate tables, and split fit/collect stages for heavy `brms` workloads.
 
-This repository organizes the accrual uncertainty pipeline into a reproducible root-level structure. The layout is inspired by reproducible Bayesian accruals research workflows, but it does not claim exact equivalence to any external repository.
+## Quickstart
 
-## Repository structure
+1. Restore the R environment:
 
-- `scripts/`: active pipeline scripts.
-- `data/raw/data.xlsx`: canonical local workbook path.
-- `out/`: intermediate tables, fits, diagnostics, logs, and manifests.
-- `accruals/`: final DA and NDA output tables.
-- `reports/`: final narrative reports and session metadata.
-- `doc/`: pipeline, prior, data, and replication documentation.
-- `tests/`: lightweight structural and static validation checks.
+   ```r
+   install.packages("renv")
+   renv::restore()
+   ```
 
-## Data location
+2. Put the raw workbook at `data/raw/data.xlsx`, or set a different path:
 
-The default data path is `data/raw/data.xlsx`. The file is copied locally and ignored by Git by default. To run against a workbook stored elsewhere, set `ACCRUAL_DATA_PATH`.
+   ```powershell
+   $env:ACCRUAL_DATA_PATH = "D:\path\to\data.xlsx"
+   ```
 
-The pipeline reads `Sheet1` for firm-year observations and `Sheet2` for metadata. The metadata loader auto-detects a company-code column from common variants such as `company`, `ticker`, `code`, `Ma`, `Mã`, `Mã CK`, and `StockCode`.
+3. Inspect the pipeline without running any scripts:
 
-## Quick start
+   ```powershell
+   Rscript run.R all --dry-run
+   ```
 
-1. Install or restore the R dependencies used by the pipeline. If a project lockfile is available, restore from it; otherwise install the required packages used by the scripts, including at least `readxl`, `dplyr`, `brms`, `loo`, `sandwich`, and `lmtest`.
-2. Put the raw workbook at `data/raw/data.xlsx`, or set `ACCRUAL_DATA_PATH` to another local path.
-3. Inspect the main Chapter 3 plan without running model fits:
-   `Rscript run.R --dry-run`
-4. Run the main Chapter 3 pipeline. Heavy model-fitting steps require explicit opt-in:
-   `ACCRUAL_RUN_HEAVY=TRUE Rscript run.R main`
-5. Principal outputs are written under `out/interim/winsor/tables/`, `out/interim/winsor/diagnostics/`, `accruals/`, and `reports/chapter3_methods_tables/`.
+4. Run the main Chapter 3 pipeline. Heavy `brms` stages run only when explicitly enabled:
 
-## Main Chapter 3 pipeline
+   ```powershell
+   $env:ACCRUAL_RUN_HEAVY = "TRUE"
+   Rscript run.R main
+   ```
 
-`Rscript run.R` selects the `main` target by default. The main sequence is:
+5. For the production 5-worker x 4-core profile, use the tracked run profile:
 
-1. `ma01` setup and registry
-2. `ma02` build common sample
-3. `ma03` audit corrected COGS and INV handling
-4. `ma04` define named models
-5. `ma05` winsorize common samples
-6. `ma06` prior predictive checks
-7. `ma07` brms fits
-8. `ma08` MCMC diagnostics
-9. `ma09` PSIS/LOO stacking, reported as secondary to exact K-fold evidence
-10. `ma10` PSIS/LOO secondary DA construction
-11. `ma11` posterior predictive checks for the secondary PSIS/LOO DA
-12. `ma12` grouped exact firm K-fold
-13. `ma13` row-level exact K-fold
-14. `ma14` primary exact-KFoldW DA construction from completed-run pins
-15. `ma15` finite-output gate for exact-KFold DA
-16. `ma16` primary validation on exact row-KFold DA
-17. `di02` new-firm predictive integration audit as a reporting gate
-18. `ma17` manuscript table export
+   ```powershell
+   .\run_profiles\run_full_clean_production_5w4c.ps1
+   ```
 
-`ma07` fits the winsorized BRMS configurations and can also backfill diagnostics from the winsorized input samples plus existing fitted `.rds` objects when `ACCRUAL_STEP7_BACKFILL_DIAGNOSTICS_ONLY=TRUE`. Its diagnostics table records `N_Obs` and `N_Firms` from the input winsorized sample, not from `fit$data`, so pooled models retain correct firm counts. Pareto-k warnings do not fail `ma07`; they are carried forward as `PSIS_REVIEW_REQUIRED`, and `ma09` or exact K-fold should review those models before relying on PSIS-LOO.
+Principal outputs are under `out/interim/winsor/tables/`, `out/interim/winsor/diagnostics/`, `accruals/`, and `reports/chapter3_methods_tables/`.
 
-Chapter 3 specifies the estimation protocol as 4 chains, 3000 iterations, 1000 warmup iterations, fixed seed 42, `adapt_delta = 0.95`, and `max_treedepth = 12`. Baseline full-sample `brms` fits, exact K-fold refits, and sensitivity refits use those defaults unless explicitly overridden and recorded in manifests. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference. Heavy steps are skipped only with explicit warnings unless `ACCRUAL_RUN_HEAVY=TRUE`.
+## Repository Structure
 
-Execution configuration is centralized in `scripts/ma00_setup.R`. The pipeline uses one canonical seed, `ACCRUAL_SEED`, with default `42`; `accrual_base_seed()` and `accrual_seed()` return that same seed for baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context offsets from that same base seed; and `set_accrual_seed()` is the only helper allowed to call base `set.seed()`. Branch-specific seed env vars such as `ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, and `ACCRUAL_SIM_SEED` are deprecated and blocked if they differ from `ACCRUAL_SEED`, to avoid branch-specific tuning or cherry-picking concerns. Sampler settings are read through `accrual_sampler_config()`, exact K-fold K/seed/sampler settings through `accrual_kfold_config()`, and primary model sets through `main_model_ids_for_space()`. The helper registry writes `out/manifests/method_design/execution_config_registry.csv`.
+- `run.R`: root orchestrator for `main`, `diagnostics`, `robustness`, `sensitivity`, `simulation`, `reviewer`, and `all`.
+- `scripts/`: active pipeline scripts using the `maNN`, `diNN`, `roNN`, `seNN`, and `siNN` naming scheme.
+- `scripts/ma00_setup.R`: shared configuration, sampler profiles, seed helpers, worker-pool helpers, path helpers, behavioral helpers, and method registries.
+- `data/raw/data.xlsx`: default local raw workbook path; local raw data are not committed.
+- `out/`: generated intermediate tables, fits, diagnostics, logs, and manifests; not committed.
+- `accruals/`: generated final DA/NDA output tables; not committed.
+- `reports/`: tracked audit notes plus generated report outputs where applicable.
+- `doc/`: method authority, pipeline index, replication notes, and audit documentation intended for version control.
+- `tests/`: lightweight static and behavioral checks that do not refit heavy Bayesian models.
+- `run_profiles/`: reproducible PowerShell run profiles for production-style execution.
 
-The row-vs-grouped exact K-fold comparison is primary RQ1 evidence. Script `scripts/ma10_construct_psis_loo_DA.R` remains the secondary PSIS/LOO DA constructor, including for secondary validation panels only. Script `scripts/ma14_construct_exact_kfold_DA.R` is the primary exact-KFoldW DA constructor for RQ2 and reads explicit run-root environment variables or `LATEST_COMPLETED_RUN.txt` pins, never moving `LATEST_RUN.txt`, for primary inference. Script `scripts/ma16_validate_outcomes.R` uses the row exact-KFold DA as the primary validation input and labels any PSIS/LOO validation output as secondary. `LATEST_RUN.txt` is operational only and is not valid provenance for primary inference. Script `scripts/ma15_audit_DA_finite_outputs.R` is a hard finite-output gate before RQ2/export. LOFO is a robustness branch and PSIS reliability is a secondary diagnostics branch; neither is required by the default main target. The new-firm predictive integration audit gates Firm-RE out-of-firm posterior predictive tail flags before manuscript export.
+## Data Contract
 
-## Optional targets
+The default data path is `data/raw/data.xlsx`. The pipeline reads `Sheet1` for firm-year observations and `Sheet2` for metadata. The metadata loader auto-detects common company-code column variants such as `company`, `ticker`, `code`, `Ma`, `Mã`, `Mã CK`, and `StockCode`.
 
-- `Rscript run.R robustness`: grouped PSIS-LOFO robustness only.
-- `Rscript run.R sensitivity`: prior sensitivity workflow only.
-- `Rscript run.R simulation`: leakage simulation workflow only.
-- `Rscript run.R diagnostics`: standalone diagnostics, including PSIS reliability and the new-firm predictive integration audit.
-- `Rscript run.R all`: opt-in combined run, ordered as main, diagnostics, robustness, sensitivity, simulation.
+Raw data are treated as read-only. `run.R` snapshots `data/raw/` before and after execution and warns if raw inputs change during a run.
 
-## Sensitivity pipeline
+## Run Targets
 
-The sensitivity sequence is:
+`Rscript run.R` defaults to `main`. All targets support `--dry-run`.
 
-1. `se01` prior predictive sensitivity gate
-2. `se02` scenario-specific refits
-3. `se03` sensitivity diagnostics
-4. `se04` scenario stacking
-5. `se05` scenario DA construction
-6. `se06` scenario validation
-7. `se07` sensitivity report
+- `Rscript run.R main`: primary Chapter 3 pipeline through manuscript table export.
+- `Rscript run.R diagnostics`: standalone diagnostics, including `di01`, `di02`, `di03`, and split diagnostic calibration `di08a/b/c`.
+- `Rscript run.R robustness`: grouped PSIS-LOFO robustness evidence.
+- `Rscript run.R sensitivity`: sensitivity prior predictive checks, scenario refits, diagnostics, stacking, DA reconstruction, validation, and report.
+- `Rscript run.R simulation`: LMER and BRMS leakage/parameter-recovery simulation targets.
+- `Rscript run.R reviewer`: reviewer-facing supplementary diagnostics and evidence package.
+- `Rscript run.R all`: `main`, selected non-duplicated diagnostics, robustness, sensitivity, simulation, and reviewer targets.
 
-## Simulation / leakage mechanism checks
+In `all`, `di02` is not repeated after `main`; `di08a/b/c` are included as diagnostic-only heavy calibration stages.
 
-Scripts `si00`-`si04` support the RQ3 leakage-mechanism audit. `si00` is a helper module; run simulation through the simulation mode:
+## Main Pipeline
+
+The current `main` target is split-stage where fitting is heavy and collectors own shared outputs:
+
+1. `ma00` shared setup and registries.
+2. `ma01` setup and ten-model registry.
+3. `ma02` common sample construction.
+4. `ma03` data integrity audit.
+5. `ma04` named model formulas.
+6. `ma05` winsorized common samples.
+7. `ma06` prior predictive gate.
+8. `ma07a` baseline `brms` fit worker stage.
+9. `ma07b` baseline fit collector for diagnostics, coefficients, draws, and audit tables.
+10. `ma08` MCMC diagnostics.
+11. `ma09a` secondary PSIS/LOO save-pars refit planning.
+12. `ma09b` secondary PSIS/LOO save-pars refit workers.
+13. `ma09c` secondary PSIS/LOO collector and stacking.
+14. `ma10` secondary PSIS/LOO DA construction.
+15. `ma11` posterior predictive checks for secondary PSIS/LOO DA.
+16. `ma12a` grouped-firm exact K-fold planning.
+17. `ma12b` grouped-firm exact K-fold fit workers.
+18. `ma12c` grouped-firm exact K-fold score/weight collector.
+19. `ma13a` row-level exact K-fold planning.
+20. `ma13b` row-level exact K-fold fit workers.
+21. `ma13c` row-level exact K-fold score/weight collector.
+22. `ma14` primary exact-KFoldW DA construction.
+23. `ma15` finite-output gate.
+24. `ma16` primary validation on exact row-KFold DA.
+25. `di02` new-firm predictive integration reporting gate.
+26. `di03` exact K-fold reclassification/Jaccard audit.
+27. `ma17` Chapter 3 manuscript table export.
+
+`ma09` remains secondary PSIS/LOO evidence. Primary RQ1 comparison is the exact grouped-firm versus exact row-level K-fold evidence from `ma12a/b/c` and `ma13a/b/c`. Primary RQ2 DA construction is `ma14`, gated by `ma15`, `di02`, and model-inclusion provenance.
+
+## Worker Architecture
+
+Heavy independent `brms` workloads use the shared worker architecture in `scripts/ma00_setup.R`:
+
+- `accrual_fit_worker_config()`
+- `accrual_run_task_pool()`
+- `accrual_task_status_blocker()`
+
+Worker stages write only task-local artifacts such as fit RDS, result RDS, metadata CSV, and logs. Collectors write shared CSVs, diagnostics, stacking weights, completed-run pins, reports, and manuscript-facing outputs.
+
+Current split heavy stages:
+
+- `ma07a` / `ma07b`: baseline model fits and collection.
+- `ma09a` / `ma09b` / `ma09c`: secondary PSIS/LOO save-pars refits and stacking collection.
+- `ma12a` / `ma12b` / `ma12c`: primary grouped-firm exact K-fold.
+- `ma13a` / `ma13b` / `ma13c`: primary row-level exact K-fold.
+- `se02a` / `se02b` / `se02c`: sensitivity prior-scenario refits.
+- `si03a` / `si03b` / `si03c`: BRMS leakage confirmation simulation.
+- `si04a` / `si04b` / `si04c`: BRMS parameter recovery simulation.
+- `di08a` / `di08b` / `di08c`: diagnostic-only MCMC sampler calibration.
+
+The default behavior is sequential. Model-level parallelism is opt-in:
 
 ```powershell
-Rscript run.R simulation
+$env:ACCRUAL_ENABLE_MODEL_PARALLEL = "TRUE"
+$env:ACCRUAL_MODEL_PARALLEL_WORKERS = "5"
+$env:ACCRUAL_TOTAL_CORE_BUDGET = "20"
+$env:ACCRUAL_ALLOW_NESTED_RSTAN_CORES = "TRUE"
+$env:ACCRUAL_BASELINE_CORES = "4"
+$env:ACCRUAL_RUN_HEAVY = "TRUE"
+Rscript run.R main
 ```
 
-The BRMS simulation stages `si03` and `si04` are computationally heavy and are skipped unless `ACCRUAL_RUN_HEAVY=TRUE`.
+The active core budget is:
 
-## Exact K-fold and diagnostics
-
-Script `ma12` writes `out/interim/winsor/kfold_firm/LATEST_COMPLETED_RUN.txt` only after a primary-eligible completed grouped exact K-fold refit. Script `ma13` builds an exact row-level K-fold version of the winsorized stack under `out/interim/winsor/row_exact_kfold/` and writes `out/interim/winsor/row_exact_kfold/LATEST_COMPLETED_RUN.txt` only after a full, primary-eligible completed run. Preflight, FAST_MODE, failed, and partial/filtered runs do not update completed-run pins. Scripts `ma12` and `ma13` also write reviewer-grade input/output manifests with file size, mtime, MD5 hash, row counts where applicable, run-root fields, and completed-pin fields.
-
-Script `ma14` constructs exact-KFoldW DA outputs from the completed grouped and row exact K-fold run pins, or from explicit `ACCRUAL_GROUPED_KFOLD_RUN_ROOT` and `ACCRUAL_ROW_KFOLD_RUN_ROOT` values. It refuses old or stale run manifests that lack explicit `Completed_Run_Pin_Eligible = TRUE`. Its primary outputs are `final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv`, `final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv`, and provenance/gate tables under `out/interim/winsor/tables/`, including file-size/mtime/hash manifests and `table_model_primary_inclusion_gate.csv`.
-
-Primary model inclusion is explicit. Full-sample MCMC `PASS`/`OK` models may enter primary exact-KFold DA if exact-refit reliability is acceptable. `FAIL` or `LOW_RELIABILITY` models are excluded. `REVIEW`, `CAUTION`, or `PSIS_REVIEW_REQUIRED` models may remain only with the explicit `MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS` decision in `table_model_primary_inclusion_gate.csv`; PSIS/LOO weights from script `09` are labelled secondary.
-
-The canonical primary model helpers return M01-M07 for ex-post and M01, M02, M03, M07, M09 for real-time/no-lookahead. M08 and M10 remain secondary/robustness unless a documented secondary flow includes them, and M11/M12 are excluded from active primary helpers.
-
-Script `ma15` audits numeric DA columns and writes `table_DA_finite_gate_decision.csv`. `run.R` requires this gate, the model-inclusion gate, and the new-firm predictive gate before manuscript export. Failed gates are not represented as primary RQ2 evidence. The `all` target de-duplicates `di02` so the new-firm audit is not listed or run twice.
-
-Use preflight first to inspect fold assignment and planned tasks without fitting BRMS models:
-
-```powershell
-$env:ACCRUAL_ROW_KFOLD_PREFLIGHT_ONLY = "TRUE"
-Rscript scripts/ma13_row_level_exact_kfold.R
-Remove-Item Env:\ACCRUAL_ROW_KFOLD_PREFLIGHT_ONLY
+```text
+model-level workers x rstan cores per fit
 ```
 
-Script `di01` is light and writes the PSIS reliability gate under `out/interim/winsor/psis_reliability_gate/`:
+On Windows, nested PSOCK workers with `rstan` chain-level cores greater than 1 require explicit `ACCRUAL_ALLOW_NESTED_RSTAN_CORES=TRUE`.
 
-```powershell
-Rscript scripts/diagnostics/di01_psis_reliability_gate.R
-```
+## Exact K-Fold Design
 
-Script `di02` writes the new-firm predictive integration audit under `out/interim/winsor/new_firm_predictive_audit/`. In the main target, `run.R` reads its decision table before manuscript export. If suppression is required for unverified Firm-RE out-of-firm tail flags, the run stops unless `ACCRUAL_ALLOW_NEW_FIRM_SUPPRESSED_TAIL_FLAGS=TRUE` is set for an explicitly suppressed/non-primary export.
+`ma12a` and `ma13a` own fold planning. They write fixed fold-assignment artifacts and task manifests before any model fit runs. Worker stages `ma12b` and `ma13b` read those planned fold assignments; they do not create or randomize folds inside workers. This preserves model-comparison semantics: models within the same target space are scored on the same held-out partitions.
+
+`ma12c` and `ma13c` own shared score tables, stacking weights, and completed-run outputs. `ma14` consumes the completed exact K-fold outputs and refuses stale or non-primary-eligible manifests.
+
+## Configuration and Seeds
+
+Runtime and sampler configuration is centralized in `scripts/ma00_setup.R`.
+
+- Canonical seed: `ACCRUAL_SEED`, default `42`.
+- Context-specific seeds: `accrual_seed_for()`.
+- Sampler profiles: `accrual_sampler_config()`.
+- K-fold profiles: `accrual_kfold_config()`.
+- Runtime profiles: `accrual_runtime_config()`, `accrual_loo_config()`, `accrual_simulation_runtime_config()`.
+- Production profile values: `accrual_run_profile_config("full_clean_production_5w4c")`.
+
+Branch-specific seed variables are deprecated and blocked if they disagree with `ACCRUAL_SEED`.
+
+Chapter 3 default full sampler policy is 4 chains, 3000 iterations, 1000 warmup iterations, `adapt_delta = 0.95`, and `max_treedepth = 12`, unless an explicit profile or environment override is used and recorded in manifests. FAST/smoke modes are not valid for primary inference.
+
+## Gates and Evidence Roles
+
+- `ma06`: prior predictive gate using the Chapter 3 method authority in `doc/method_authority/chapter_3_method_authority.md`.
+- `ma08`: baseline MCMC diagnostics.
+- `ma09`: PSIS/LOO secondary evidence only.
+- `ma12`/`ma13`: primary exact K-fold evidence.
+- `ma14`: primary exact-KFoldW DA construction.
+- `ma15`: hard finite-output gate for exact-KFold DA.
+- `di02`: hard new-firm predictive reporting gate for Firm-RE out-of-firm posterior predictive tail quantities.
+- `di03`: exact row-vs-grouped K-fold reclassification/Jaccard diagnostics.
+- `di08`: diagnostic-only sampler calibration; not primary inference.
+
+Tail flags and posterior-predictive tail quantities remain supplementary/non-primary when the new-firm predictive audit requires suppression.
+
+## Sensitivity, Simulation, and Reviewer Targets
+
+Sensitivity:
+
+1. `se01` prior predictive sensitivity gate.
+2. `se02a/b/c` scenario refit planning, workers, and collection.
+3. `se03` diagnostics.
+4. `se04` stacking.
+5. `se05` DA reconstruction.
+6. `se06` validation.
+7. `se07` report.
+
+Simulation:
+
+- `si01`/`si02`: LMER leakage pilot and report.
+- `si03a/b/c`: BRMS leakage confirmation, split plan/fit/collect.
+- `si04a/b/c`: BRMS parameter recovery, split plan/fit/collect.
+
+Reviewer:
+
+- `di04`: full versus strict model-space stacking diagnostic.
+- `di05`: denominator diagnostics for estimation-scaled DA.
+- `di06`: supplementary top-5 economic-validity validation.
+- `si05`/`si06`: temporal-dependence simulation and report.
+- `di07`: Section 4.7 reviewer evidence package.
 
 ## Outputs
 
-- Intermediate artifacts are written under `out/interim/baseline` and `out/interim/winsor`.
-- Final baseline accrual outputs are written under `accruals/baseline`.
-- Final sensitivity accrual outputs are written under `accruals/sensitivity/<scenario>`.
-- Final reports are written under `reports/`.
+Generated outputs are intentionally ignored by Git unless explicitly documented as tracked source material.
 
-Heavy outputs, fitted objects, and local workbook data are not intended for Git commits.
+- `out/interim/winsor/tables/`: main tables, task manifests/statuses, gates, exact K-fold scores, weights, and DA files.
+- `out/interim/winsor/diagnostics/`: diagnostic tables, reclassification/Jaccard evidence, sampler calibration outputs.
+- `out/interim/winsor/models/`, `draws/`, `kfold_firm/`, `row_exact_kfold/`: heavy fit and task artifacts.
+- `accruals/baseline/` and `accruals/sensitivity/`: final DA/NDA output copies.
+- `reports/chapter3_methods_tables/`: manuscript-ready tables exported by `ma17`.
+- `doc/`: tracked method authority and replication documentation.
 
-## Reproducibility
+Do not commit generated CSV/RDS/log/model artifacts from `out/`, `accruals/`, benchmark folders, or local scratch scripts.
 
-This repository uses `renv` for R package reproducibility.
+## Common Checks
 
-To restore the R environment:
+Light checks that do not refit heavy models:
 
-```r
-install.packages("renv")
-renv::restore()
+```powershell
+Rscript run.R all --dry-run
+Rscript tests/test_run_dry_plan_split_stages_static.R
+Rscript tests/test_split_fit_collect_contract_static.R
+Rscript tests/test_heavy_stage_worker_coverage_static.R
+Rscript tests/test_centralized_runtime_config_static.R
+Rscript tests/test_behavioral_core_helpers.R
+Rscript tests/test_kfold_factor_level_coverage.R
 ```
-### Windows toolchain requirement
 
-This pipeline uses `brms`/Stan models. On Windows, Stan models require a working C++ toolchain through Rtools.
+The static worker tests guard against production placeholders, worker-owned shared outputs, missing split stages, and K-fold workers that attempt to randomize folds inside the fit stage.
 
-For the current lockfile, the recorded R version is 4.6.0. Windows users should install Rtools 4.5, not Rtools 4.4.
+## Windows Toolchain
 
-After installing Rtools, open a new PowerShell session and check:
+This project uses `brms`/Stan through `rstan`. On Windows, install the matching Rtools toolchain. For the current lockfile, use the Rtools version compatible with the recorded R version.
+
+Check the toolchain:
 
 ```powershell
 where make
@@ -153,16 +249,8 @@ Rscript -e "Sys.which('make'); Sys.which('g++')"
 Rscript -e "pkgbuild::check_build_tools(debug = TRUE)"
 ```
 
-If `make` is not found, Stan/brms model compilation will fail at the prior predictive or model-fitting stages.
+If `make` or `g++` is missing, Stan model compilation will fail.
 
-The heavy Bayesian stages are enabled only when:
+## AI Assistance Disclosure
 
-```powershell
-$env:ACCRUAL_DRY_RUN = "FALSE"
-$env:ACCRUAL_RUN_HEAVY = "TRUE"
-Rscript run.R main
-```
-
-## Computational requirements
-
-The light setup, sample-building, and manifest scripts are inexpensive. The `07`, `13`, `15`, `26`, `27`, and `28` stages can be computationally expensive because they trigger Bayesian fitting, simulation fitting, or exact K-fold refits. The repository entrypoint skips those stages with explicit warnings unless `ACCRUAL_RUN_HEAVY=TRUE`. FAST_MODE is for smoke checks only and is not valid for primary RQ1/RQ2 inference.
+See `AI_USE.md` for a concise disclosure of AI-assisted code review/refactoring. Research design, data interpretation, and final responsibility remain with the researcher/project maintainer.
