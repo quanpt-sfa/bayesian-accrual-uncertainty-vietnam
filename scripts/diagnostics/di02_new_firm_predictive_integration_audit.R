@@ -186,7 +186,8 @@ classify_source_code_evidence <- function(path, role) {
 
 source_paths <- data.frame(
   source_role = c(
-    "stacked_DA_draw_constructor",
+    "psis_loo_stacked_DA_draw_constructor",
+    "exact_kfold_DA_draw_constructor",
     "grouped_PSIS_LOFO",
     "exact_grouped_kfold",
     "BRMS_leakage_confirmation",
@@ -195,10 +196,11 @@ source_paths <- data.frame(
   ),
   path = c(
     file.path("scripts", "ma10_construct_psis_loo_DA.R"),
+    file.path("scripts", "ma14_construct_exact_kfold_DA.R"),
     file.path("scripts", "robustness", "ro01_lofo_stacking.R"),
-    file.path("scripts", "ma12_grouped_kfold_firm.R"),
-    file.path("scripts", "simulation", "si03_brms_leakage_confirmation.R"),
-    file.path("scripts", "ma13_row_level_exact_kfold.R"),
+    file.path("scripts", "ma12b_fit_grouped_kfold_firm_workers.R"),
+    file.path("scripts", "simulation", "si03b_fit_brms_leakage_confirmation_workers.R"),
+    file.path("scripts", "ma13b_fit_row_level_exact_kfold_workers.R"),
     file.path("scripts", "diagnostics", "di01_psis_reliability_gate.R")
   ),
   stringsAsFactors = FALSE
@@ -482,7 +484,7 @@ note <- c(
   "",
   "## Source-specific verification",
   "",
-  "Verification is not global. Evidence from `scripts/ma13_row_level_exact_kfold.R` can verify only row-level K-fold new-level scoring behavior; it does not verify posterior predictive tail draws created by `scripts/ma10_construct_psis_loo_DA.R`.",
+  "Verification is not global. Evidence from `scripts/ma13b_fit_row_level_exact_kfold_workers.R` can verify only row-level K-fold new-level scoring behavior; it does not verify posterior predictive tail draws created by `scripts/ma10_construct_psis_loo_DA.R` or exact-KFold DA draws created by `scripts/ma14_construct_exact_kfold_DA.R`.",
   "",
   "Stacked DA predictive/tail quantities are matched to `scripts/ma10_construct_psis_loo_DA.R`. In strict mode, ambiguous stacked predictive/tail columns are treated as potentially Firm-RE out-of-firm quantities and require source-specific u_new verification.",
   "",

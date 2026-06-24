@@ -31,7 +31,7 @@ RQ2_FLAG_SWITCH_HIGH <- 0.10
 RQ2_FLAG_COUNT_REL_CHANGE_MATERIAL <- 0.25
 MIN_FIRMS_PER_FOLD_STABLE <- env_int("ACCRUAL_METHODS_MIN_FIRMS_PER_FOLD_STABLE", 30L, min = 1L)
 
-report_dir <- file.path("reports", "chapter3_methods_tables")
+report_dir <- file.path(reports_root, "chapter3_methods_tables")
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
 warnings_for_author <- character()
 generated_files <- character()
@@ -42,7 +42,7 @@ add_warning <- function(x) {
 }
 
 path_table <- function(file) file.path(output_root, "tables", file)
-path_baseline_table <- function(file) file.path("out", "interim", "baseline", "tables", file)
+path_baseline_table <- function(file) file.path(baseline_root, "tables", file)
 
 safe_read_csv <- function(path) {
   if (!file.exists(path)) return(NULL)
@@ -566,7 +566,7 @@ audit_prediction <- function(path, scheme) {
 }
 prediction_audit <- bind_rows(
   audit_prediction("scripts/robustness/ro01_lofo_stacking.R", "LOFO"),
-  audit_prediction("scripts/ma12_grouped_kfold_firm.R", "grouped_kfold")
+  audit_prediction("scripts/ma12b_fit_grouped_kfold_firm_workers.R", "grouped_kfold")
 )
 if (any(prediction_audit$prediction_rule_classification == "unclear_requires_manual_review")) add_warning("Prediction-rule audit has unclear classifications.")
 if (any(prediction_audit$prediction_rule_classification == "conditional_prediction_leakage_risk")) add_warning("LOFO prediction-rule audit detected conditional/full-fit grouped PSIS risk.")
@@ -589,7 +589,7 @@ preprocessing_audit <- bind_rows(
   ),
   data.frame(
     preprocessing_step = "standardization",
-    script = "scripts/ma12_grouped_kfold_firm.R",
+    script = "scripts/ma12c_collect_grouped_kfold_firm_scores.R",
     sample = "grouped K-fold train/test folds",
     validation_scheme = "grouped_kfold",
     cutoff_or_parameter_source = ifelse(!is.null(kfold_std_audit), "table_winsor_kfold_train_standardization_audit.csv Train_Mean/Train_SD", "missing audit output"),
@@ -597,7 +597,7 @@ preprocessing_audit <- bind_rows(
     computed_using_training_fold_only = !is.null(kfold_std_audit),
     applied_to_heldout_fold = !is.null(kfold_std_audit),
     leakage_risk_classification = ifelse(!is.null(kfold_std_audit), "no_leakage_training_fold_only", "unclear_requires_manual_review"),
-    required_action = ifelse(!is.null(kfold_std_audit), "None for grouped K-fold standardization audit.", "Run scripts/ma12_grouped_kfold_firm.R to produce train-standardization audit."),
+    required_action = ifelse(!is.null(kfold_std_audit), "None for grouped K-fold standardization audit.", "Run split ma12a/ma12b/ma12c stages to produce train-standardization audit."),
     stringsAsFactors = FALSE
   )
 )

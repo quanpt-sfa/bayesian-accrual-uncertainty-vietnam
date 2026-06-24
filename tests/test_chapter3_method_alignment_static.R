@@ -212,10 +212,11 @@ if (length(hits)) stop("di02 still references obsolete script path(s): ", paste(
 
 required_di02_paths <- c(
   "ma10_construct_psis_loo_DA.R",
+  "ma14_construct_exact_kfold_DA.R",
   "robustness\", \"ro01_lofo_stacking.R",
-  "ma12_grouped_kfold_firm.R",
-  "simulation\", \"si03_brms_leakage_confirmation.R",
-  "ma13_row_level_exact_kfold.R",
+  "ma12b_fit_grouped_kfold_firm_workers.R",
+  "simulation\", \"si03b_fit_brms_leakage_confirmation_workers.R",
+  "ma13b_fit_row_level_exact_kfold_workers.R",
   "diagnostics\", \"di01_psis_reliability_gate.R"
 )
 missing <- required_di02_paths[vapply(required_di02_paths, function(x) !grepl(x, di02_text, fixed = TRUE), logical(1))]
