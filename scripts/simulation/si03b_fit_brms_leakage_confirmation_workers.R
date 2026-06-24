@@ -43,7 +43,7 @@ fit_si03b_task_worker <- function(task) {
     out <- data.frame(
       Replication = as.integer(task$Replication),
       model_type = "firm_random_intercept",
-      n_obs = brms::nobs(fit),
+      n_obs = stats::nobs(fit),
       elpd_proxy = sum(colMeans(brms::log_lik(fit))),
       status = "SUCCESS",
       stringsAsFactors = FALSE

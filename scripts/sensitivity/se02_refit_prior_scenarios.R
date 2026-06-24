@@ -324,7 +324,7 @@ for (sidx in seq_len(nrow(scenarios))) {
 
     diag_rows[[length(diag_rows) + 1]] <- cbind(expected_meta, data.frame(
       Fit_Status = "SUCCESS",
-      N_Obs = brms::nobs(fit),
+      N_Obs = stats::nobs(fit),
       elapsed_seconds = elapsed,
       error_message = NA_character_,
       stringsAsFactors = FALSE

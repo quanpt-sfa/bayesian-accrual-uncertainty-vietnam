@@ -98,7 +98,7 @@ fit_ma09b_task_worker <- function(task) {
       task = task,
       loo_raw = loo_raw,
       loo_corrected = loo_corrected,
-      n_obs = brms::nobs(fit),
+      n_obs = stats::nobs(fit),
       refit_raw_elpd = refit_raw_elpd,
       refit_raw_k_above_07 = raw_k,
       corrected_elpd = loo_corrected$estimates["elpd_loo", "Estimate"],

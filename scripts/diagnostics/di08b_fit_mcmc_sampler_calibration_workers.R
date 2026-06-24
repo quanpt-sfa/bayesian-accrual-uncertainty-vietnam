@@ -47,7 +47,7 @@ fit_di08b_task_worker <- function(task) {
       Profile_ID = task$Profile_ID,
       Model_ID = row$Model_ID,
       Target_Space = row$Target_Space,
-      N_Obs = brms::nobs(fit),
+      N_Obs = stats::nobs(fit),
       Max_Rhat = suppressWarnings(max(posterior::summarise_draws(posterior::as_draws_df(fit))$rhat, na.rm = TRUE)),
       stringsAsFactors = FALSE
     )
