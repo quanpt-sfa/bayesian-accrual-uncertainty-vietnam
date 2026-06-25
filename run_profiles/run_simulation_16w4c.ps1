@@ -141,6 +141,14 @@ if ($DryRun) {
     $argsForRun += "--dry-run"
 }
 
+if (-not $DryRun) {
+    $outputRootForMarker = if ([string]::IsNullOrWhiteSpace($env:ACCRUAL_OUTPUT_ROOT)) { "out\interim\winsor" } else { $env:ACCRUAL_OUTPUT_ROOT }
+    $baselineMarker = Join-Path $outputRootForMarker "BASELINE_MA17_COMPLETE.txt"
+    if (!(Test-Path $baselineMarker)) {
+        throw "Simulation pipeline requires successful main pipeline completion through ma17. Missing marker: $baselineMarker"
+    }
+}
+
 $cmdLine = '"' + $RscriptPath + '" ' + ($argsForRun -join " ") + " 2>&1"
 & cmd.exe /d /s /c $cmdLine | Tee-Object -FilePath $consoleLog
 $rscriptExitCode = $LASTEXITCODE

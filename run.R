@@ -25,6 +25,7 @@ valid_targets <- c("main", "robustness", "sensitivity", "simulation", "diagnosti
 if (!target %in% valid_targets) {
   stop("Usage: Rscript run.R [main|robustness|sensitivity|simulation|diagnostics|reviewer|all] [--dry-run]")
 }
+downstream_targets <- c("robustness", "sensitivity", "simulation", "diagnostics", "reviewer")
 
 orch_cfg <- accrual_orchestrator_config()
 dry_run <- cli_dry_run || isTRUE(orch_cfg$dry_run)
@@ -408,10 +409,16 @@ run_step <- function(s) {
   sys.source(s$path, envir = new.env(parent = globalenv()))
   if (identical(s$gate, "da_finite")) check_da_finite_gate()
   if (identical(s$gate, "new_firm_predictive")) check_new_firm_predictive_gate()
+  if (identical(s$id, "ma17")) {
+    write_baseline_ma17_complete_marker(output_root, context = paste0("run.R ", target, "/ma17"))
+  }
   invisible(TRUE)
 }
 
 selected_steps <- steps_for_target(target)
+if (!dry_run && target %in% downstream_targets) {
+  assert_baseline_ma17_complete(output_root, context = paste0("run.R target ", target))
+}
 write_config_registry_if_available()
 print_header(selected_steps)
 
@@ -420,7 +427,16 @@ if (dry_run) {
   quit(save = "no", status = 0)
 }
 
-invisible(lapply(selected_steps, run_step))
+if (target %in% downstream_targets) {
+  invisible(lapply(selected_steps, run_step))
+} else if (identical(target, "all")) {
+  invisible(lapply(main_steps, run_step))
+  assert_baseline_ma17_complete(output_root, context = "run.R target all")
+  downstream_steps_for_all <- c(diagnostics_steps_for_all, robustness_steps, sensitivity_steps, simulation_steps, reviewer_steps)
+  invisible(lapply(downstream_steps_for_all, run_step))
+} else {
+  invisible(lapply(selected_steps, run_step))
+}
 
 # --- Raw-data read-only verification ---
 if (!identical(.raw_before, .raw_snapshot())) {

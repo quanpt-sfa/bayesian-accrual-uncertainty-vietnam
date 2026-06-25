@@ -613,6 +613,42 @@ write_task_status <- function(path, status_rows) {
   write_csv_safely(as.data.frame(status_rows, stringsAsFactors = FALSE), path, row.names = FALSE)
 }
 
+git_commit_or_na <- function() {
+  tryCatch(system("git rev-parse HEAD", intern = TRUE)[1], error = function(e) NA_character_)
+}
+
+baseline_ma17_marker_path <- function(root = output_root) {
+  file.path(root, "BASELINE_MA17_COMPLETE.txt")
+}
+
+write_baseline_ma17_complete_marker <- function(root = output_root, context = "main pipeline") {
+  marker <- baseline_ma17_marker_path(root)
+  dir.create(dirname(marker), recursive = TRUE, showWarnings = FALSE)
+  lines <- c(
+    "BASELINE_MA17_COMPLETE",
+    paste0("context=", context),
+    paste0("timestamp=", format(Sys.time(), "%Y-%m-%d %H:%M:%S %z")),
+    paste0("output_root=", root),
+    paste0("git_commit=", git_commit_or_na())
+  )
+  writeLines(lines, marker, useBytes = TRUE)
+  invisible(marker)
+}
+
+assert_baseline_ma17_complete <- function(root = output_root, context = "downstream branch") {
+  marker <- baseline_ma17_marker_path(root)
+  if (!file.exists(marker)) {
+    stop(
+      "[BASELINE COMPLETION BLOCKER] ",
+      context,
+      " requires successful completion of the main pipeline through ma17. Missing marker: ",
+      marker,
+      ". Run `Rscript run.R main` first."
+    )
+  }
+  invisible(TRUE)
+}
+
 default_total_core_budget <- function() {
   physical <- parallel::detectCores(logical = FALSE)
   if (!is.na(physical) && is.finite(physical) && physical >= 1L) return(as.integer(physical))

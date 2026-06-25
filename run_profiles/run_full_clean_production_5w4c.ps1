@@ -250,6 +250,7 @@ try {
     Invoke-RscriptChecked -Context "test_run_dry_plan_split_stages_static.R" -Arguments @("tests/test_run_dry_plan_split_stages_static.R")
     Invoke-RscriptChecked -Context "test_ma10_safe_csv_and_profile_failfast_static.R" -Arguments @("tests/test_ma10_safe_csv_and_profile_failfast_static.R")
     Invoke-RscriptChecked -Context "test_repo_wide_csv_writer_static.R" -Arguments @("tests/test_repo_wide_csv_writer_static.R")
+    Invoke-RscriptChecked -Context "test_baseline_completion_gate_static.R" -Arguments @("tests/test_baseline_completion_gate_static.R")
 
     if (Test-Path "tests/test_gitignore_artifact_hygiene_static.R") {
         Invoke-RscriptChecked -Context "test_gitignore_artifact_hygiene_static.R" -Arguments @("tests/test_gitignore_artifact_hygiene_static.R")
@@ -263,6 +264,10 @@ try {
 
     Write-Host "Running main pipeline..."
     Invoke-RscriptChecked -Context "Main pipeline" -Arguments @("run.R", "main")
+    $baselineMarker = Join-Path $env:ACCRUAL_OUTPUT_ROOT "BASELINE_MA17_COMPLETE.txt"
+    if (!(Test-Path $baselineMarker)) {
+        throw "Main pipeline completed without BASELINE_MA17_COMPLETE marker: $baselineMarker"
+    }
 
     Write-Host "Running sensitivity pipeline..."
     Invoke-RscriptChecked -Context "Sensitivity pipeline" -Arguments @("run.R", "sensitivity")
