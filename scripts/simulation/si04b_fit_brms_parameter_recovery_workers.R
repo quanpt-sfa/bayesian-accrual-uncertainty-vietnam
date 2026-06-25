@@ -81,6 +81,9 @@ reconcile_si04b_status_table <- function(status_df, tasks_df) {
   if (!nrow(status_df)) return(status_df)
   rows <- lapply(seq_len(nrow(status_df)), function(i) {
     status_row <- status_df[i, , drop = FALSE]
+    if ("status" %in% names(status_row) && identical(as.character(status_row$status[[1]]), "SUCCESS")) {
+      return(status_row)
+    }
     task_idx <- match(status_row$Task_Key[[1]], tasks_df$Task_Key)
     if (is.na(task_idx)) return(status_row)
     task <- as.list(tasks_df[task_idx, , drop = FALSE])
@@ -91,6 +94,48 @@ reconcile_si04b_status_table <- function(status_df, tasks_df) {
     )
   })
   do.call(rbind, rows)
+}
+
+merge_si04b_status_rows <- function(new_status, prior_status, manifest_tasks) {
+  if (is.null(prior_status) || !nrow(prior_status)) {
+    merged <- new_status
+  } else if (is.null(new_status) || !nrow(new_status)) {
+    merged <- prior_status
+  } else {
+    # Filtered retry/reconcile runs replace rows for Task_Key values present in new_status,
+    # keep prior rows for untouched tasks, and append any new task rows.
+    all_cols <- unique(c(names(prior_status), names(new_status)))
+    align_cols <- function(df) {
+      missing <- setdiff(all_cols, names(df))
+      for (col in missing) df[[col]] <- NA
+      df[, all_cols, drop = FALSE]
+    }
+    prior_status <- align_cols(prior_status)
+    new_status <- align_cols(new_status)
+    keep_prior <- !prior_status$Task_Key %in% new_status$Task_Key
+    merged <- rbind(prior_status[keep_prior, , drop = FALSE], new_status)
+  }
+  if (nrow(merged) && "Task_Key" %in% names(merged) && "Task_Key" %in% names(manifest_tasks)) {
+    missing_keys <- setdiff(manifest_tasks$Task_Key, merged$Task_Key)
+    if (length(missing_keys)) {
+      missing_rows <- lapply(missing_keys, function(key) {
+        task <- as.list(manifest_tasks[match(key, manifest_tasks$Task_Key), , drop = FALSE])
+        si04b_status_row(task, "BLOCKED_MISSING_FIT", "MISSING_STATUS_ROW")
+      })
+      missing_status <- do.call(rbind, missing_rows)
+      all_cols <- unique(c(names(merged), names(missing_status)))
+      align_cols <- function(df) {
+        missing <- setdiff(all_cols, names(df))
+        for (col in missing) df[[col]] <- NA
+        df[, all_cols, drop = FALSE]
+      }
+      merged <- rbind(align_cols(merged), align_cols(missing_status))
+    }
+    manifest_order <- match(merged$Task_Key, manifest_tasks$Task_Key)
+    merged <- merged[order(is.na(manifest_order), manifest_order, merged$Task_Key), , drop = FALSE]
+    rownames(merged) <- NULL
+  }
+  merged
 }
 
 select_si04b_tasks <- function(tasks_df) {
@@ -147,21 +192,22 @@ extract_si04b_diagnostics <- function(fit, max_treedepth) {
   )
 }
 
-tasks <- select_si04b_tasks(tasks)
-if (!nrow(tasks)) stop("[BLOCKER] si04b selected zero tasks after task filters.")
+manifest_tasks <- tasks
+selected_tasks <- select_si04b_tasks(manifest_tasks)
+if (!nrow(selected_tasks)) stop("[BLOCKER] si04b selected zero tasks after task filters.")
 
 if (env_flag("ACCRUAL_RECONCILE_ONLY", "FALSE")) {
   message("[si04b] ACCRUAL_RECONCILE_ONLY=TRUE; reconciling existing task artifacts without fitting.")
   prior <- if (file.exists(status_path)) read.csv(status_path, stringsAsFactors = FALSE) else data.frame()
-  rows <- lapply(seq_len(nrow(tasks)), function(i) {
-    task <- as.list(tasks[i, , drop = FALSE])
+  rows <- lapply(seq_len(nrow(selected_tasks)), function(i) {
+    task <- as.list(selected_tasks[i, , drop = FALSE])
     prior_idx <- if (nrow(prior) && "Task_Key" %in% names(prior)) match(task$Task_Key, prior$Task_Key) else NA_integer_
     prior_status <- if (!is.na(prior_idx) && "status" %in% names(prior)) prior$status[[prior_idx]] else "FAILED"
     prior_reason <- if (!is.na(prior_idx) && "reason" %in% names(prior)) prior$reason[[prior_idx]] else "RECONCILE_ONLY"
     si04b_status_row(task, prior_status, prior_reason)
   })
-  status <- do.call(rbind, rows)
-  status <- reconcile_si04b_status_table(status, tasks)
+  status <- merge_si04b_status_rows(do.call(rbind, rows), prior, manifest_tasks)
+  status <- reconcile_si04b_status_table(status, manifest_tasks)
   write_task_status(status_path, status)
   accrual_task_status_blocker(status, required_col = "Required", context = "si04b brms recovery reconcile-only")
   phase_end("si04b", "Fit BRMS parameter recovery workers")
@@ -265,6 +311,7 @@ fit_si04b_task_worker <- function(task) {
                        stringsAsFactors = FALSE), task$metadata_path, row.names = FALSE)
   si04b_status_row(task, status, reason)
 }
+tasks <- selected_tasks
 parallel_cfg <- accrual_fit_worker_config("simulation", max(as.integer(tasks$cores), na.rm = TRUE), "si04b brms recovery workers")
 results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_si04b_task_worker, parallel_cfg,
                                  export_names = c("fit_si04b_task_worker", "sim_cfg", "dgp_cfg", "recovery_prior",
@@ -272,8 +319,10 @@ results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_si04b_t
                                                   "reconcile_si04b_task_artifacts", "si04b_status_row"),
                                  packages = c("brms", "posterior"),
                                  context = "si04b brms recovery workers")
-status <- do.call(rbind, results)
-status <- reconcile_si04b_status_table(status, tasks)
+new_status <- do.call(rbind, results)
+prior_status <- if (file.exists(status_path)) read.csv(status_path, stringsAsFactors = FALSE) else data.frame()
+status <- merge_si04b_status_rows(new_status, prior_status, manifest_tasks)
+status <- reconcile_si04b_status_table(status, manifest_tasks)
 write_task_status(status_path, status)
 accrual_task_status_blocker(status, required_col = "Required", context = "si04b brms recovery workers")
 phase_end("si04b", "Fit BRMS parameter recovery workers")
