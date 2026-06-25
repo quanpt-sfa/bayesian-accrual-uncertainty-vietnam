@@ -599,10 +599,13 @@ safe_task_log_path <- function(root, task_key) {
   safe_task_artifact_path(root, task_key, ".log")
 }
 
-write_csv_safely <- function(x, path, row.names = FALSE, ...) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  write.csv(x, path, row.names = row.names, ...)
-  invisible(path)
+write_csv_safely <- function(x, file, row.names = FALSE, ...) {
+  if (missing(file) || length(file) != 1L || is.na(file) || !nzchar(file)) {
+    stop("[BLOCKER] write_csv_safely requires a single non-empty file path.")
+  }
+  dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+  write.csv(x, file = file, row.names = row.names, ...)
+  invisible(file)
 }
 
 write_task_manifest <- function(path, tasks) {

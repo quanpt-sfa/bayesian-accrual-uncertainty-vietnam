@@ -18,10 +18,10 @@ safe_csv_scripts <- c(
 )
 
 for (fragment in c(
-  "write_csv_safely <- function(x, path, row.names = FALSE, ...)",
-  "dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)",
-  "write.csv(x, path, row.names = row.names, ...)",
-  "invisible(path)"
+  "write_csv_safely <- function(x, file, row.names = FALSE, ...)",
+  "dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)",
+  "write.csv(x, file = file, row.names = row.names, ...)",
+  "invisible(file)"
 )) {
   if (!grepl(fragment, ma00, fixed = TRUE)) {
     stop("ma00 missing safe CSV writer fragment: ", fragment)

@@ -48,6 +48,25 @@ assert_true(all(is.finite(w_sym)) && all(w_sym >= 0) && abs(sum(w_sym) - 1) < 1e
             "Symmetric-case stacking weights must be finite, non-negative, and sum to 1.")
 assert_equal(unname(w_sym), c(0.5, 0.5), "Symmetric two-model case should return approximately equal weights.", tolerance = 1e-4)
 
+tmp_csv_dir <- file.path(tempdir(), paste0("safe_csv_helper_test_", Sys.getpid()))
+tmp_csv_named <- file.path(tmp_csv_dir, "named", "safe.csv")
+tmp_csv_positional <- file.path(tmp_csv_dir, "positional", "safe.csv")
+named_return <- write_csv_safely(data.frame(a = 1), file = tmp_csv_named)
+positional_return <- write_csv_safely(data.frame(a = 1), tmp_csv_positional)
+assert_equal(named_return, tmp_csv_named, "write_csv_safely(file=) must invisibly return the file path.")
+assert_equal(positional_return, tmp_csv_positional, "write_csv_safely(positional file) must invisibly return the file path.")
+assert_true(file.exists(tmp_csv_named), "write_csv_safely(file=) must create the CSV file.")
+assert_true(file.exists(tmp_csv_positional), "write_csv_safely(positional file) must create the CSV file.")
+missing_file_error <- tryCatch(
+  {
+    write_csv_safely(data.frame(a = 1))
+    NA_character_
+  },
+  error = conditionMessage
+)
+assert_true(!is.na(missing_file_error) && grepl("[BLOCKER]", missing_file_error, fixed = TRUE),
+            "write_csv_safely() without file must fail with [BLOCKER].")
+
 test_lines <- readLines("tests/test_behavioral_core_helpers.R", warn = FALSE)
 check_lines <- test_lines[!grepl("artifact_patterns|test_lines|check_lines|hits <-|Behavioral helper test", test_lines)]
 test_body <- paste(check_lines, collapse = "\n")

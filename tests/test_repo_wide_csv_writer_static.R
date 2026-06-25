@@ -12,10 +12,11 @@ if (!length(active_scripts)) stop("No active scripts found under scripts/.")
 ma00_path <- "scripts/ma00_setup.R"
 ma00 <- txt(ma00_path)
 for (fragment in c(
-  "write_csv_safely <- function(x, path, row.names = FALSE, ...)",
-  "dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)",
-  "write.csv(x, path, row.names = row.names, ...)",
-  "invisible(path)"
+  "write_csv_safely <- function(x, file, row.names = FALSE, ...)",
+  "[BLOCKER] write_csv_safely requires a single non-empty file path.",
+  "dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)",
+  "write.csv(x, file = file, row.names = row.names, ...)",
+  "invisible(file)"
 )) {
   if (!grepl(fragment, ma00, fixed = TRUE)) {
     stop("ma00 missing central safe CSV writer fragment: ", fragment)
@@ -27,12 +28,7 @@ direct_write_hits <- unlist(lapply(active_scripts, function(path) {
   hit_idx <- grep("write\\.csv\\(", lines)
   if (!length(hit_idx)) return(character())
   if (identical(path, ma00_path)) {
-    helper_start <- grep("^write_csv_safely <- function\\(", lines)
-    helper_hits <- hit_idx[
-      length(helper_start) == 1L &
-        hit_idx > helper_start &
-        hit_idx <= helper_start + 4L
-    ]
+    helper_hits <- hit_idx[grepl("write.csv(x, file = file, row.names = row.names, ...)", lines[hit_idx], fixed = TRUE)]
     hit_idx <- setdiff(hit_idx, helper_hits)
   }
   if (!length(hit_idx)) return(character())
@@ -42,6 +38,35 @@ direct_write_hits <- unlist(lapply(active_scripts, function(path) {
 if (length(direct_write_hits)) {
   stop("Active scripts must not call write.csv() directly outside write_csv_safely():\n",
        paste(direct_write_hits, collapse = "\n"))
+}
+
+path_arg_hits <- unlist(lapply(active_scripts, function(path) {
+  exprs <- parse(path, keep.source = TRUE)
+  pd <- utils::getParseData(exprs)
+  call_ids <- pd$id[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == "write_csv_safely"]
+  if (!length(call_ids)) return(character())
+  hit_ids <- unlist(lapply(call_ids, function(call_id) {
+    function_expr_id <- pd$parent[pd$id == call_id]
+    call_expr_id <- pd$parent[pd$id == function_expr_id]
+    if (!length(call_expr_id)) return(integer())
+    direct_children <- pd[pd$parent == call_expr_id, , drop = FALSE]
+    direct_children <- direct_children[order(direct_children$id), , drop = FALSE]
+    path_symbol_idx <- which(direct_children$token == "SYMBOL_SUB" & direct_children$text == "path")
+    if (!length(path_symbol_idx)) return(integer())
+    path_symbol_idx <- path_symbol_idx[path_symbol_idx < nrow(direct_children)]
+    path_symbol_idx <- path_symbol_idx[direct_children$token[path_symbol_idx + 1L] == "EQ_SUB"]
+    if (!length(path_symbol_idx)) return(integer())
+    direct_children$line1[path_symbol_idx]
+  }), use.names = FALSE)
+  hit_ids <- unique(hit_ids)
+  if (!length(hit_ids)) return(character())
+  lines <- readLines(path, warn = FALSE)
+  paste0(path, ":", hit_ids, ": ", trimws(lines[hit_ids]))
+}), use.names = FALSE)
+
+if (length(path_arg_hits)) {
+  stop("Active scripts must call write_csv_safely() with file= or positional file, not path=:\n",
+       paste(path_arg_hits, collapse = "\n"))
 }
 
 local_helper_hits <- unlist(lapply(active_scripts, function(path) {
