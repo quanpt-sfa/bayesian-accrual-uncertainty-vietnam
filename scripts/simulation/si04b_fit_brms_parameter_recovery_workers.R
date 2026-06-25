@@ -11,6 +11,15 @@ tasks <- read.csv(manifest_path, stringsAsFactors = FALSE)
 sim_cfg <- accrual_simulation_runtime_config("brms_recovery")
 dgp_cfg <- accrual_simulation_dgp_config("brms_recovery")
 
+si04b_recovery_targets <- function(dgp_cfg) {
+  data.frame(
+    parameter = c("dREV_scaled_std", "PPE_scaled_std", "ROA_lag_std"),
+    true_value = c(dgp_cfg$beta_drev, dgp_cfg$beta_ppe, dgp_cfg$beta_roa),
+    recovery_role = c("primary_accrual_driver", "primary_accrual_driver", "performance_control"),
+    stringsAsFactors = FALSE
+  )
+}
+
 read_rds_checked <- function(path) {
   tryCatch(
     list(ok = TRUE, value = readRDS(path), reason = NA_character_),
@@ -261,7 +270,9 @@ fit_si04b_task_worker <- function(task) {
     saveRDS(fit, task$fit_path)
     fx <- brms::fixef(fit)
     fit_diag <- extract_si04b_diagnostics(fit, as.integer(task$max_treedepth))
+    recovery_targets <- si04b_recovery_targets(dgp_cfg)
     out <- data.frame(
+      Task_Key = task$Task_Key,
       T = T_val,
       sigma_firm = sigma_firm,
       Replication = as.integer(task$Replication),
@@ -270,15 +281,17 @@ fit_si04b_task_worker <- function(task) {
       dgp_n_industries = n_industries,
       dgp_sigma_eps = sim_cfg$sigma_eps,
       dgp_beta_roa = beta_roa,
-      parameter = c("dREV_scaled_std", "PPE_scaled_std"),
-      true_value = c(beta_drev, beta_ppe),
-      estimate = c(fx["dREV_scaled_std", "Estimate"], fx["PPE_scaled_std", "Estimate"]),
+      parameter = recovery_targets$parameter,
+      true_value = recovery_targets$true_value,
+      recovery_role = recovery_targets$recovery_role,
+      estimate = fx[recovery_targets$parameter, "Estimate"],
       n_obs = stats::nobs(fit),
       max_rhat = fit_diag$max_rhat,
       min_ess_bulk = fit_diag$min_ess_bulk,
       min_ess_tail = fit_diag$min_ess_tail,
       total_divergent = fit_diag$total_divergent,
       max_treedepth_hits = fit_diag$max_treedepth_hits,
+      backfilled_from_fit = FALSE,
       fit_path = task$fit_path,
       status = "SUCCESS",
       stringsAsFactors = FALSE
@@ -315,6 +328,7 @@ tasks <- selected_tasks
 parallel_cfg <- accrual_fit_worker_config("simulation", max(as.integer(tasks$cores), na.rm = TRUE), "si04b brms recovery workers")
 results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_si04b_task_worker, parallel_cfg,
                                  export_names = c("fit_si04b_task_worker", "sim_cfg", "dgp_cfg", "recovery_prior",
+                                                  "si04b_recovery_targets",
                                                   "extract_si04b_diagnostics", "read_rds_checked",
                                                   "reconcile_si04b_task_artifacts", "si04b_status_row"),
                                  packages = c("brms", "posterior"),
