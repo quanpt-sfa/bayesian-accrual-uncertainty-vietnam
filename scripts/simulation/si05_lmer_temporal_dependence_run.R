@@ -33,11 +33,7 @@ sigma_eps <- sim_cfg$sigma_eps
 shock_size <- sim_cfg$shock_size
 
 safe_seed <- function(context, offset) {
-  if (exists("set_accrual_seed", mode = "function")) {
-    set_accrual_seed(context, offset = offset)
-  } else {
-    set.seed(1000003L + as.integer(offset))
-  }
+  set_accrual_seed(context, offset = offset)
 }
 
 simulate_accrual_panel_ar1 <- function(n_firms = 200, T = 7, sigma_firm = 0.10,

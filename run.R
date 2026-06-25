@@ -255,16 +255,7 @@ reviewer_steps <- list(
        heavy = TRUE),
   step("di07", "scripts/diagnostics/di07_section4_7_reviewer_package.R",
        "Assemble Section 4.7 reviewer-required evidence package",
-       requires = c(
-         file.path(output_root, "diagnostics", "table_denominator_sd_mu_distribution.csv"),
-         file.path(output_root, "diagnostics", "table_denominator_capped_jaccard.csv"),
-         file.path(output_root, "diagnostics", "table_da_z_est_vs_z_pred_comparison.csv"),
-         file.path(output_root, "diagnostics", "table_denominator_diagnostics_decision.csv"),
-         file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity.csv"),
-         file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv"),
-         file.path(output_root, "diagnostics", "table_top_tail_group_outcome_means.csv"),
-         file.path(output_root, "diagnostics", "table_top_tail_set_counts_exact_kfold.csv")
-       ),
+       requires = accrual_section47_required_artifacts(output_root),
        require_reason = "canonical denominator and economic-validity reviewer artifacts")
 )
 

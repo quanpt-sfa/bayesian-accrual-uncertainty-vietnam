@@ -23,33 +23,7 @@ dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(notes_dir, recursive = TRUE, showWarnings = FALSE)
 
-artifact_spec <- data.frame(
-  artifact_id = c(
-    "denominator_sd_mu_distribution", "denominator_capped_jaccard", "da_z_est_vs_z_pred_comparison", "denominator_decision",
-    "economic_validity", "economic_validity_decision", "economic_validity_means", "economic_validity_counts", "economic_validity_note",
-    "temporal_firmre_premium", "temporal_decision"
-  ),
-  source_path = c(
-    file.path(output_root, "diagnostics", "table_denominator_sd_mu_distribution.csv"),
-    file.path(output_root, "diagnostics", "table_denominator_capped_jaccard.csv"),
-    file.path(output_root, "diagnostics", "table_da_z_est_vs_z_pred_comparison.csv"),
-    file.path(output_root, "diagnostics", "table_denominator_diagnostics_decision.csv"),
-    file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity.csv"),
-    file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv"),
-    file.path(output_root, "diagnostics", "table_top_tail_group_outcome_means.csv"),
-    file.path(output_root, "diagnostics", "table_top_tail_set_counts_exact_kfold.csv"),
-    file.path(output_root, "diagnostics", "economic_validity_top_tail_reviewer_note.md"),
-    file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv"),
-    file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
-  ),
-  artifact_class = c(
-    rep("di04_denominator", 4),
-    rep("di05_economic_validity", 5),
-    rep("temporal_dependence_optional", 2)
-  ),
-  required = c(rep(TRUE, 9), rep(FALSE, 2)),
-  stringsAsFactors = FALSE
-)
+artifact_spec <- accrual_section47_reviewer_artifact_spec(output_root)
 
 destination_for <- function(path) {
   ext <- tolower(tools::file_ext(path))

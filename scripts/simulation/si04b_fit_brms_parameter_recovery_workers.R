@@ -9,6 +9,7 @@ status_path <- file.path(root, "tables", "table_si04_brms_recovery_task_status.c
 if (!file.exists(manifest_path)) stop("[BLOCKER] Missing si04a task manifest: ", manifest_path)
 tasks <- read.csv(manifest_path, stringsAsFactors = FALSE)
 sim_cfg <- accrual_simulation_runtime_config("brms_recovery")
+dgp_cfg <- accrual_simulation_dgp_config("brms_recovery")
 
 recovery_prior <- function() {
   c(
@@ -48,7 +49,7 @@ fit_si04b_task_worker <- function(task) {
   reason <- NA_character_
   writeLines(c("si04b task log", paste("Task_Key:", task$Task_Key), paste("Effective_Seed:", task$Effective_Seed)), task$task_log_path)
   result <- tryCatch({
-    set.seed(as.integer(task$Effective_Seed))
+    set_accrual_effective_seed(task$Effective_Seed, context = task$Task_Key)
     T_val <- as.integer(task$T)
     sigma_firm <- as.numeric(task$sigma_firm)
     n_firms <- as.integer(sim_cfg$n_firms)
@@ -58,9 +59,9 @@ fit_si04b_task_worker <- function(task) {
     df <- expand.grid(company = firms, year = years, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
     df$industry <- paste0("I", ((match(df$company, firms) - 1L) %% n_industries) + 1L)
     for (v in pred_vars) df[[v]] <- rnorm(nrow(df))
-    beta_drev <- 0.04
-    beta_ppe <- -0.03
-    beta_roa <- 0.02
+    beta_drev <- dgp_cfg$beta_drev
+    beta_ppe <- dgp_cfg$beta_ppe
+    beta_roa <- dgp_cfg$beta_roa
     firm_effect <- rnorm(n_firms, mean = 0, sd = sigma_firm)
     names(firm_effect) <- firms
     df$TA_scaled <- beta_drev * df$dREV_scaled +
@@ -90,6 +91,11 @@ fit_si04b_task_worker <- function(task) {
       T = T_val,
       sigma_firm = sigma_firm,
       Replication = as.integer(task$Replication),
+      dgp_design_source = dgp_cfg$design_source,
+      dgp_n_firms = n_firms,
+      dgp_n_industries = n_industries,
+      dgp_sigma_eps = sim_cfg$sigma_eps,
+      dgp_beta_roa = beta_roa,
       parameter = c("dREV_scaled_std", "PPE_scaled_std"),
       true_value = c(beta_drev, beta_ppe),
       estimate = c(fx["dREV_scaled_std", "Estimate"], fx["PPE_scaled_std", "Estimate"]),
@@ -115,6 +121,7 @@ fit_si04b_task_worker <- function(task) {
                        RNG_Context = task$RNG_Context, Effective_Seed = task$Effective_Seed,
                        chains = task$chains, cores = task$cores, iter = task$iter, warmup = task$warmup,
                        adapt_delta = task$adapt_delta, max_treedepth = task$max_treedepth,
+                       dgp_design_source = dgp_cfg$design_source,
                        runtime_seconds = as.numeric(difftime(ended, started, units = "secs")),
                        stringsAsFactors = FALSE), task$metadata_path, row.names = FALSE)
   data.frame(Task_Key = task$Task_Key, status = status, reason = reason, Required = task$Required,
@@ -122,7 +129,7 @@ fit_si04b_task_worker <- function(task) {
 }
 parallel_cfg <- accrual_fit_worker_config("simulation", max(as.integer(tasks$cores), na.rm = TRUE), "si04b brms recovery workers")
 results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_si04b_task_worker, parallel_cfg,
-                                 export_names = c("fit_si04b_task_worker", "sim_cfg", "recovery_prior", "extract_si04b_diagnostics"),
+                                 export_names = c("fit_si04b_task_worker", "sim_cfg", "dgp_cfg", "recovery_prior", "extract_si04b_diagnostics"),
                                  packages = c("brms", "posterior"),
                                  context = "si04b brms recovery workers")
 status <- do.call(rbind, results)

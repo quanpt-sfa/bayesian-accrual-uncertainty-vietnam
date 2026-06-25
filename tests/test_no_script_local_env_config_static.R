@@ -34,16 +34,22 @@ if (length(parser_hits)) {
   stop("Script-local env parser/helper definitions are not allowed: ", paste(parser_hits, collapse = ", "))
 }
 
+set_seed_hits <- non_ma00[vapply(non_ma00, function(path) grepl("\\bset\\.seed\\s*\\(", txt(path), perl = TRUE), logical(1))]
+if (length(set_seed_hits)) {
+  stop("Direct set.seed() outside ma00_setup.R is not allowed; use set_accrual_seed() or set_accrual_effective_seed(): ",
+       paste(set_seed_hits, collapse = ", "))
+}
+
 required_usage <- list(
   "run.R" = c("source(\"scripts/ma00_setup.R\")", "accrual_orchestrator_config()"),
-  "scripts/ma09_loo_stacking.R" = c("accrual_loo_config()", "loo_cfg$compare_original_weights"),
-  "scripts/ma12_grouped_kfold_firm.R" = c("accrual_kfold_filter_config(\"grouped_firm\")", "filter_cfg$target_space_filter"),
-  "scripts/ma13_row_level_exact_kfold.R" = c("accrual_kfold_filter_config(\"row\")", "filter_cfg$target_space_filter"),
+  "scripts/ma09a_plan_loo_savepars_refits.R" = c("accrual_loo_config()", "loo_cfg$chains", "loo_cfg$warmup"),
+  "scripts/ma12a_plan_grouped_kfold_firm.R" = c("accrual_exact_kfold_run_context(\"grouped_firm\"", "filter_cfg$target_space_filter"),
+  "scripts/ma13a_plan_row_level_exact_kfold.R" = c("accrual_exact_kfold_run_context(\"row\"", "filter_cfg$target_space_filter"),
   "scripts/simulation/si01_lmer_pilot_run.R" = c("accrual_simulation_runtime_config(\"lmer_pilot\")"),
-  "scripts/simulation/si03_brms_leakage_confirmation.R" = c("accrual_simulation_runtime_config(\"brms_leakage\")"),
-  "scripts/simulation/si04_brms_parameter_recovery.R" = c("accrual_simulation_runtime_config(\"brms_recovery\")"),
+  "scripts/simulation/si03a_plan_brms_leakage_confirmation.R" = c("accrual_simulation_runtime_config(\"brms_leakage\")"),
+  "scripts/simulation/si04a_plan_brms_parameter_recovery.R" = c("accrual_simulation_runtime_config(\"brms_recovery\")"),
   "scripts/simulation/si05_lmer_temporal_dependence_run.R" = c("accrual_simulation_runtime_config(\"lmer_temporal\")"),
-  "scripts/diagnostics/di08_mcmc_sampler_calibration.R" = c("accrual_calibration_profile_grid()", "env_list(\"ACCRUAL_CALIBRATION_TARGETS\""),
+  "scripts/diagnostics/di08a_plan_mcmc_sampler_calibration.R" = c("accrual_calibration_profile_grid()"),
   "scripts/ma15_audit_DA_finite_outputs.R" = c("env_flag(\"ACCRUAL_DA_FINITE_GATE_STRICT\"")
 )
 for (path in names(required_usage)) {

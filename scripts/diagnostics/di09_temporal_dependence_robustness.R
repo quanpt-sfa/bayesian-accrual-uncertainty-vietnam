@@ -62,7 +62,7 @@ file_hash_or_na <- function(path) {
 
 safe_seed <- function(offset) {
   seed <- (base_seed + as.integer(offset)) %% .Machine$integer.max
-  set.seed(seed)
+  set_accrual_effective_seed(seed, context = "di09_temporal_dependence")
   seed
 }
 

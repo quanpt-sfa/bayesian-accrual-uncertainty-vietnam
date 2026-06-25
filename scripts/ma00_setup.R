@@ -300,6 +300,16 @@ set_accrual_seed <- function(context, offset = 0L) {
   invisible(seed_value)
 }
 
+set_accrual_effective_seed <- function(seed, context = "unknown") {
+  seed_value <- suppressWarnings(as.integer(seed))
+  if (length(seed_value) != 1L || is.na(seed_value)) {
+    stop("[BLOCKER] Effective seed for ", context, " must be one integer value. Got: ",
+         paste(seed, collapse = ", "))
+  }
+  base::set.seed(seed_value)
+  invisible(seed_value)
+}
+
 accrual_rng_metadata_list <- function(context = "global", offset = 0L) {
   list(
     RNG_Context = context,
@@ -535,6 +545,49 @@ accrual_heavy_fit_stage_registry <- function() {
 accrual_task_cache_key <- function(...) {
   raw_key <- stable_task_key(...)
   gsub("[^A-Za-z0-9_.=-]+", "_", raw_key)
+}
+
+accrual_section47_reviewer_artifact_spec <- function(root = output_root) {
+  data.frame(
+    artifact_id = c(
+      "denominator_sd_mu_distribution",
+      "denominator_capped_jaccard",
+      "da_z_est_vs_z_pred_comparison",
+      "denominator_decision",
+      "economic_validity",
+      "economic_validity_decision",
+      "economic_validity_means",
+      "economic_validity_counts",
+      "economic_validity_note",
+      "temporal_firmre_premium",
+      "temporal_decision"
+    ),
+    source_path = c(
+      file.path(root, "diagnostics", "table_denominator_sd_mu_distribution.csv"),
+      file.path(root, "diagnostics", "table_denominator_capped_jaccard.csv"),
+      file.path(root, "diagnostics", "table_da_z_est_vs_z_pred_comparison.csv"),
+      file.path(root, "diagnostics", "table_denominator_diagnostics_decision.csv"),
+      file.path(root, "diagnostics", "table_top_tail_group_economic_validity.csv"),
+      file.path(root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv"),
+      file.path(root, "diagnostics", "table_top_tail_group_outcome_means.csv"),
+      file.path(root, "diagnostics", "table_top_tail_set_counts_exact_kfold.csv"),
+      file.path(root, "diagnostics", "economic_validity_top_tail_reviewer_note.md"),
+      file.path(root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv"),
+      file.path(root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
+    ),
+    artifact_class = c(
+      rep("di04_denominator", 4),
+      rep("di05_economic_validity", 5),
+      rep("temporal_dependence_optional", 2)
+    ),
+    required = c(rep(TRUE, 9), rep(FALSE, 2)),
+    stringsAsFactors = FALSE
+  )
+}
+
+accrual_section47_required_artifacts <- function(root = output_root) {
+  spec <- accrual_section47_reviewer_artifact_spec(root)
+  spec$source_path[spec$required]
 }
 
 safe_task_artifact_path <- function(root, task_key, suffix) {
@@ -1175,6 +1228,28 @@ accrual_simulation_runtime_config <- function(kind) {
   )
 }
 
+accrual_simulation_dgp_config <- function(kind = c("brms_leakage", "brms_recovery")) {
+  kind <- match.arg(kind)
+  if (identical(kind, "brms_leakage")) {
+    return(list(
+      design_source = "scripts/ma00_setup.R::accrual_simulation_dgp_config",
+      n_firms = 24L,
+      years = 2016:2020,
+      n_industries = 6L,
+      beta_drev = 0.02,
+      beta_ppe = -0.03,
+      sigma_eps = 0.08,
+      model_type = "firm_random_intercept"
+    ))
+  }
+  list(
+    design_source = "scripts/ma00_setup.R::accrual_simulation_dgp_config",
+    beta_drev = 0.04,
+    beta_ppe = -0.03,
+    beta_roa = 0.02
+  )
+}
+
 accrual_calibration_profile_grid <- function() {
   grid <- data.frame(
     sampler_profile = c("baseline_current", "remediation_default", "longer_warmup", "very_long_if_needed"),
@@ -1771,7 +1846,7 @@ write_pipeline_index <- function() {
     "",
     "Sampler protocol: Chapter 3 baseline brms/Stan estimation uses the centralized sampler profiles in `scripts/ma00_setup.R`, with fixed seed 42 unless explicitly overridden and recorded in manifests. FAST_MODE/smoke runs are excluded from primary inference.",
     "",
-    "Execution configuration is centralized in `scripts/ma00_setup.R`: `accrual_base_seed()` and `accrual_seed()` enforce one canonical seed (`ACCRUAL_SEED`, default 42) across baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context-specific offsets from that same canonical seed; `set_accrual_seed()` is the only helper that calls base `set.seed()`; `accrual_sampler_config()` supplies sampler settings; `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings; and `main_model_ids_for_space()` supplies primary model IDs. Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
+    "Execution configuration is centralized in `scripts/ma00_setup.R`: `accrual_base_seed()` and `accrual_seed()` enforce one canonical seed (`ACCRUAL_SEED`, default 42) across baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context-specific offsets from that same canonical seed; `set_accrual_seed()` and `set_accrual_effective_seed()` are the only helpers that call base `set.seed()`; `accrual_sampler_config()` supplies sampler settings; `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings; and `main_model_ids_for_space()` supplies primary model IDs. Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
     "",
     "Production exact K-fold defaults are 4 chains, 4 rstan cores, 12000 iterations, 4000 warmup iterations, `adapt_delta = 0.99`, and `max_treedepth = 15` for both grouped-firm and row-level exact K-fold. Lower settings are light/test modes only and must be explicit in the K-fold run mode and task manifest sampler provenance.",
     "",

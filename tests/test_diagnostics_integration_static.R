@@ -149,6 +149,17 @@ for (fragment in c(
 }
 
 di07 <- txt("scripts/diagnostics/di07_section4_7_reviewer_package.R")
+ma00 <- txt("scripts/ma00_setup.R")
+if (!grepl("accrual_section47_reviewer_artifact_spec <- function", ma00, fixed = TRUE) ||
+    !grepl("accrual_section47_required_artifacts <- function", ma00, fixed = TRUE)) {
+  stop("ma00_setup.R must own the shared Section 4.7 reviewer artifact contract.")
+}
+if (!grepl("accrual_section47_required_artifacts(output_root)", reviewer_text, fixed = TRUE)) {
+  stop("run.R di07 requires must use accrual_section47_required_artifacts(output_root).")
+}
+if (!grepl("accrual_section47_reviewer_artifact_spec(output_root)", di07, fixed = TRUE)) {
+  stop("di07 reviewer package must use accrual_section47_reviewer_artifact_spec(output_root).")
+}
 for (fragment in c(
   "table_denominator_sd_mu_distribution.csv",
   "table_denominator_capped_jaccard.csv",
@@ -160,8 +171,8 @@ for (fragment in c(
   "table_temporal_dependence_firmre_premium.csv",
   "table_temporal_dependence_decision.csv"
 )) {
-  if (!grepl(fragment, di07, fixed = TRUE)) {
-    stop("di07 reviewer package missing canonical artifact fragment: ", fragment)
+  if (!grepl(fragment, ma00, fixed = TRUE)) {
+    stop("shared Section 4.7 artifact spec missing canonical artifact fragment: ", fragment)
   }
 }
 
@@ -192,7 +203,8 @@ canonical_packaged <- c(
 for (artifact in canonical_packaged) {
   produced_earlier <- (grepl(artifact, di04_body, fixed = TRUE) && di04_reviewer_pos < di07_pos) ||
     (grepl(artifact, di05_body, fixed = TRUE) && di05_reviewer_pos < di07_pos)
-  declared_require <- grepl(artifact, di07_step_text, fixed = TRUE)
+  declared_require <- grepl("accrual_section47_required_artifacts(output_root)", di07_step_text, fixed = TRUE) &&
+    grepl(artifact, ma00, fixed = TRUE)
   if (!produced_earlier && !declared_require) {
     stop("di07 canonical artifact is neither produced by an earlier reviewer step nor declared as a di07 require: ", artifact)
   }

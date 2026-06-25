@@ -38,6 +38,21 @@ if (length(archived_or_legacy)) {
        paste(archived_or_legacy, collapse = ", "))
 }
 
+obsolete_mixed_stage <- c(
+  "scripts/ma09_loo_stacking.R",
+  "scripts/ma12_grouped_kfold_firm.R",
+  "scripts/ma13_row_level_exact_kfold.R",
+  "scripts/sensitivity/se02_refit_prior_scenarios.R",
+  "scripts/simulation/si03_brms_leakage_confirmation.R",
+  "scripts/simulation/si04_brms_parameter_recovery.R",
+  "scripts/diagnostics/di08_mcmc_sampler_calibration.R"
+)
+bad_obsolete <- intersect(obsolete_mixed_stage, written$Script)
+if (length(bad_obsolete)) {
+  stop("pipeline_index.csv must not list obsolete mixed-stage scripts as active: ",
+       paste(bad_obsolete, collapse = ", "))
+}
+
 for (fragment in c(
   "scripts/ma07a_fit_brms_named_models.R",
   "scripts/ma07b_extract_brms_fit_outputs_workers.R",

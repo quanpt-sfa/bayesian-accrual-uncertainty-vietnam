@@ -8,6 +8,7 @@ manifest_path <- file.path(root, "tables", "table_si03_brms_leakage_task_manifes
 status_path <- file.path(root, "tables", "table_si03_brms_leakage_task_status.csv")
 if (!file.exists(manifest_path)) stop("[BLOCKER] Missing si03a task manifest: ", manifest_path)
 tasks <- read.csv(manifest_path, stringsAsFactors = FALSE)
+dgp_cfg <- accrual_simulation_dgp_config("brms_leakage")
 fit_si03b_task_worker <- function(task) {
   task <- as.list(task)
   dir.create(dirname(task$fit_path), recursive = TRUE, showWarnings = FALSE)
@@ -17,13 +18,15 @@ fit_si03b_task_worker <- function(task) {
   reason <- NA_character_
   writeLines(c("si03b task log", paste("Task_Key:", task$Task_Key), paste("Effective_Seed:", task$Effective_Seed)), task$task_log_path)
   result <- tryCatch({
-    set.seed(as.integer(task$Effective_Seed))
-    n_firms <- 24L
-    years <- 2016:2020
+    set_accrual_effective_seed(task$Effective_Seed, context = task$Task_Key)
+    n_firms <- as.integer(dgp_cfg$n_firms)
+    years <- dgp_cfg$years
     df <- expand.grid(company = paste0("F", seq_len(n_firms)), year = years, KEEP.OUT.ATTRS = FALSE)
-    df$industry <- paste0("I", ((seq_len(nrow(df)) - 1L) %% 6L) + 1L)
+    df$industry <- paste0("I", ((seq_len(nrow(df)) - 1L) %% as.integer(dgp_cfg$n_industries)) + 1L)
     for (v in pred_vars) df[[v]] <- rnorm(nrow(df))
-    df$TA_scaled <- 0.02 * df$dREV_scaled - 0.03 * df$PPE_scaled + rnorm(nrow(df), sd = 0.08)
+    df$TA_scaled <- dgp_cfg$beta_drev * df$dREV_scaled +
+      dgp_cfg$beta_ppe * df$PPE_scaled +
+      rnorm(nrow(df), sd = dgp_cfg$sigma_eps)
     df <- standardize_predictors(df)
     fit <- brms::brm(
       formula = brms::bf(TA_scaled ~ dREV_scaled_std + PPE_scaled_std + ROA_lag_std + (1 | company)),
@@ -42,7 +45,15 @@ fit_si03b_task_worker <- function(task) {
     saveRDS(fit, task$fit_path)
     out <- data.frame(
       Replication = as.integer(task$Replication),
-      model_type = "firm_random_intercept",
+      model_type = dgp_cfg$model_type,
+      dgp_design_source = dgp_cfg$design_source,
+      dgp_n_firms = n_firms,
+      dgp_year_start = min(years),
+      dgp_year_end = max(years),
+      dgp_n_industries = as.integer(dgp_cfg$n_industries),
+      dgp_beta_drev = dgp_cfg$beta_drev,
+      dgp_beta_ppe = dgp_cfg$beta_ppe,
+      dgp_sigma_eps = dgp_cfg$sigma_eps,
       n_obs = stats::nobs(fit),
       elpd_proxy = sum(colMeans(brms::log_lik(fit))),
       status = "SUCCESS",
@@ -60,6 +71,7 @@ fit_si03b_task_worker <- function(task) {
                        RNG_Context = task$RNG_Context, Effective_Seed = task$Effective_Seed,
                        chains = task$chains, cores = task$cores, iter = task$iter, warmup = task$warmup,
                        adapt_delta = task$adapt_delta, max_treedepth = task$max_treedepth,
+                       dgp_design_source = dgp_cfg$design_source,
                        runtime_seconds = as.numeric(difftime(ended, started, units = "secs")),
                        stringsAsFactors = FALSE), task$metadata_path, row.names = FALSE)
   data.frame(Task_Key = task$Task_Key, status = status, reason = reason, Required = task$Required,
@@ -67,7 +79,7 @@ fit_si03b_task_worker <- function(task) {
 }
 parallel_cfg <- accrual_fit_worker_config("simulation", max(as.integer(tasks$cores), na.rm = TRUE), "si03b brms leakage workers")
 results <- accrual_run_task_pool(split(tasks, seq_len(nrow(tasks))), fit_si03b_task_worker, parallel_cfg,
-                                 export_names = "fit_si03b_task_worker", packages = "brms",
+                                 export_names = c("fit_si03b_task_worker", "dgp_cfg"), packages = "brms",
                                  context = "si03b brms leakage workers")
 status <- do.call(rbind, results)
 write_task_status(status_path, status)
