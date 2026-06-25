@@ -427,6 +427,12 @@ if (dry_run) {
   quit(save = "no", status = 0)
 }
 
+if (target %in% c("main", "all")) {
+  stale_marker <- baseline_ma17_marker_path(output_root)
+  unlink(baseline_ma17_marker_path(output_root), force = TRUE)
+  message("[BASELINE MARKER] Cleared stale marker before ", target, " execution: ", stale_marker)
+}
+
 if (target %in% downstream_targets) {
   invisible(lapply(selected_steps, run_step))
 } else if (identical(target, "all")) {

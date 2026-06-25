@@ -24,6 +24,9 @@ for (fragment in c(
   "assert_baseline_ma17_complete(output_root, context = paste0(\"run.R target \", target))",
   "if (identical(s$id, \"ma17\"))",
   "write_baseline_ma17_complete_marker(output_root, context = paste0(\"run.R \", target, \"/ma17\"))",
+  "if (target %in% c(\"main\", \"all\"))",
+  "unlink(baseline_ma17_marker_path(output_root), force = TRUE)",
+  "Cleared stale marker before",
   "invisible(lapply(main_steps, run_step))",
   "assert_baseline_ma17_complete(output_root, context = \"run.R target all\")",
   "downstream_steps_for_all <- c(diagnostics_steps_for_all, robustness_steps, sensitivity_steps, simulation_steps, reviewer_steps)"
@@ -40,12 +43,20 @@ if (guard_pos < 0 || registry_pos < 0 || guard_pos > registry_pos) {
 }
 
 dry_run_pos <- regexpr("if (dry_run)", run_body, fixed = TRUE)[1]
+dry_run_quit_pos <- regexpr("quit(save = \"no\", status = 0)", run_body, fixed = TRUE)[1]
+cleanup_target_pos <- regexpr("if (target %in% c(\"main\", \"all\"))", run_body, fixed = TRUE)[1]
+cleanup_unlink_pos <- regexpr("unlink(baseline_ma17_marker_path(output_root), force = TRUE)", run_body, fixed = TRUE)[1]
 all_main_pos <- regexpr("invisible(lapply(main_steps, run_step))", run_body, fixed = TRUE)[1]
 all_assert_pos <- regexpr("assert_baseline_ma17_complete(output_root, context = \"run.R target all\")", run_body, fixed = TRUE)[1]
 all_downstream_pos <- regexpr("downstream_steps_for_all <- c(diagnostics_steps_for_all, robustness_steps, sensitivity_steps, simulation_steps, reviewer_steps)", run_body, fixed = TRUE)[1]
 if (dry_run_pos < 0 || all_main_pos < 0 || all_assert_pos < 0 || all_downstream_pos < 0 ||
     !(dry_run_pos < all_main_pos && all_main_pos < all_assert_pos && all_assert_pos < all_downstream_pos)) {
   stop("run.R target all must dry-run first, then run main, assert marker, then define downstream steps.")
+}
+
+if (dry_run_quit_pos < 0 || cleanup_target_pos < 0 || cleanup_unlink_pos < 0 ||
+    !(dry_run_quit_pos < cleanup_target_pos && cleanup_target_pos < cleanup_unlink_pos && cleanup_unlink_pos < all_main_pos)) {
+  stop("run.R must clear stale baseline marker after dry-run handling and before running main_steps for target all.")
 }
 
 if (grepl("assert_baseline_ma17_complete(output_root, context = paste0(\"run.R target \", target))\\s*[\\s\\S]*?if \\(dry_run\\)", run_body, perl = TRUE)) {
