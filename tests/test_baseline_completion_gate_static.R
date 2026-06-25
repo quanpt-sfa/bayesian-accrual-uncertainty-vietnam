@@ -79,31 +79,77 @@ for (path in profile_paths) {
   }
 }
 
-production_profile <- txt("run_profiles/run_full_clean_production_5w4c.ps1")
+main_profile_paths <- profile_paths[vapply(profile_paths, function(path) {
+  body <- txt(path)
+  grepl("Invoke-RscriptChecked -Context \"Main pipeline\" -Arguments @(\"run.R\", \"main\")", body, fixed = TRUE) &&
+    grepl("BASELINE_MA17_COMPLETE.txt", body, fixed = TRUE)
+}, logical(1))]
+if (!length(main_profile_paths)) {
+  stop("No current main production profile runs `run.R main` and checks BASELINE_MA17_COMPLETE.txt.")
+}
+if (!"run_profiles/run_01_main_production_10w4c.ps1" %in% main_profile_paths) {
+  stop("Documented main production profile must be covered: run_profiles/run_01_main_production_10w4c.ps1")
+}
+
+main_profile <- txt("run_profiles/run_01_main_production_10w4c.ps1")
 for (fragment in c(
   "Invoke-RscriptChecked -Context \"Main pipeline\" -Arguments @(\"run.R\", \"main\")",
   "$baselineMarker = Join-Path $env:ACCRUAL_OUTPUT_ROOT \"BASELINE_MA17_COMPLETE.txt\"",
   "Main pipeline completed without BASELINE_MA17_COMPLETE marker",
-  "Invoke-RscriptChecked -Context \"Sensitivity pipeline\" -Arguments @(\"run.R\", \"sensitivity\")"
+  "$latestPointer = \"out/runs/LATEST_MAIN_10W4C_RUN_ROOT.txt\"",
+  "$run_end_path = \"$run_root/manifests/run_completion_main_10w4c_$run_id.csv\""
 )) {
-  if (!grepl(fragment, production_profile, fixed = TRUE)) {
-    stop("production profile missing baseline marker check fragment: ", fragment)
+  if (!grepl(fragment, main_profile, fixed = TRUE)) {
+    stop("main production profile missing baseline marker/pointer fragment: ", fragment)
   }
 }
-prod_main_pos <- regexpr("Invoke-RscriptChecked -Context \"Main pipeline\" -Arguments @(\"run.R\", \"main\")", production_profile, fixed = TRUE)[1]
-prod_marker_pos <- regexpr("$baselineMarker = Join-Path $env:ACCRUAL_OUTPUT_ROOT \"BASELINE_MA17_COMPLETE.txt\"", production_profile, fixed = TRUE)[1]
-prod_sens_pos <- regexpr("Invoke-RscriptChecked -Context \"Sensitivity pipeline\" -Arguments @(\"run.R\", \"sensitivity\")", production_profile, fixed = TRUE)[1]
-if (!(prod_main_pos < prod_marker_pos && prod_marker_pos < prod_sens_pos)) {
-  stop("production profile must check BASELINE_MA17_COMPLETE after main and before sensitivity.")
+main_run_pos <- regexpr("Invoke-RscriptChecked -Context \"Main pipeline\" -Arguments @(\"run.R\", \"main\")", main_profile, fixed = TRUE)[1]
+main_marker_pos <- regexpr("$baselineMarker = Join-Path $env:ACCRUAL_OUTPUT_ROOT \"BASELINE_MA17_COMPLETE.txt\"", main_profile, fixed = TRUE)[1]
+main_pointer_pos <- regexpr("$latestPointer = \"out/runs/LATEST_MAIN_10W4C_RUN_ROOT.txt\"", main_profile, fixed = TRUE)[1]
+main_completion_pos <- regexpr("$run_end_path = \"$run_root/manifests/run_completion_main_10w4c_$run_id.csv\"", main_profile, fixed = TRUE)[1]
+if (!(main_run_pos < main_marker_pos && main_marker_pos < main_pointer_pos && main_marker_pos < main_completion_pos)) {
+  stop("main production profile must check BASELINE_MA17_COMPLETE after main and before latest pointer/completion manifest writes.")
 }
 
-simulation_profile <- txt("run_profiles/run_simulation_16w4c.ps1")
-for (fragment in c(
-  "BASELINE_MA17_COMPLETE.txt",
-  "Simulation pipeline requires successful main pipeline completion through ma17"
-)) {
-  if (!grepl(fragment, simulation_profile, fixed = TRUE)) {
-    stop("simulation profile missing downstream marker guard fragment: ", fragment)
+downstream_profile_paths <- profile_paths[vapply(profile_paths, function(path) {
+  body <- txt(path)
+  grepl("$argsForRun = @(\"run.R\", \"", body, fixed = TRUE) &&
+    !grepl("$argsForRun = @(\"run.R\", \"main\")", body, fixed = TRUE) &&
+    grepl("BASELINE_MA17_COMPLETE.txt", body, fixed = TRUE)
+}, logical(1))]
+expected_downstream_profiles <- paste0(
+  "run_profiles/",
+  c(
+    "run_02_sensitivity_after_main_10w4c.ps1",
+    "run_03_diagnostics_after_main_10w4c.ps1",
+    "run_04_simulation_after_main_10w4c.ps1"
+  )
+)
+missing_downstream_profiles <- setdiff(expected_downstream_profiles, downstream_profile_paths)
+if (length(missing_downstream_profiles)) {
+  stop("Documented downstream production profile(s) missing from marker-gate coverage: ",
+       paste(missing_downstream_profiles, collapse = ", "))
+}
+
+for (path in expected_downstream_profiles) {
+  body <- txt(path)
+  for (fragment in c(
+    "$pointer = \"out/runs/LATEST_MAIN_10W4C_RUN_ROOT.txt\"",
+    "latest main pointer was not found",
+    "$baselineMarker = Join-Path $env:ACCRUAL_OUTPUT_ROOT \"BASELINE_MA17_COMPLETE.txt\"",
+    "requires successful main pipeline completion through ma17",
+    "Missing marker: $baselineMarker"
+  )) {
+    if (!grepl(fragment, body, fixed = TRUE)) {
+      stop(path, " missing downstream baseline marker guard fragment: ", fragment)
+    }
+  }
+  pointer_pos <- regexpr("$pointer = \"out/runs/LATEST_MAIN_10W4C_RUN_ROOT.txt\"", body, fixed = TRUE)[1]
+  read_pointer_pos <- regexpr("$RunRoot = (Get-Content $pointer -Raw).Trim()", body, fixed = TRUE)[1]
+  marker_pos <- regexpr("$baselineMarker = Join-Path $env:ACCRUAL_OUTPUT_ROOT \"BASELINE_MA17_COMPLETE.txt\"", body, fixed = TRUE)[1]
+  downstream_run_pos <- regexpr("$argsForRun = @(\"run.R\", \"", body, fixed = TRUE)[1]
+  if (!(pointer_pos < read_pointer_pos && read_pointer_pos < marker_pos && marker_pos < downstream_run_pos)) {
+    stop(path, " must resolve the latest main pointer, check BASELINE_MA17_COMPLETE, then run its downstream branch.")
   }
 }
 
