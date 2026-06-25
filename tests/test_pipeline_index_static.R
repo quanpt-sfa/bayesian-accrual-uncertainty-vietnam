@@ -1,6 +1,7 @@
 source("scripts/ma00_setup.R")
 
 pipeline <- write_pipeline_index()
+registry <- accrual_pipeline_index_registry()
 index_path <- file.path(method_design_root, "pipeline_index.csv")
 if (!file.exists(index_path)) {
   stop("write_pipeline_index() did not create pipeline_index.csv at: ", index_path)
@@ -24,6 +25,9 @@ for (col in required_cols) {
 if (nrow(pipeline) != nrow(written)) {
   stop("write_pipeline_index() returned ", nrow(pipeline),
        " rows but pipeline_index.csv has ", nrow(written), " rows.")
+}
+if (!identical(registry$Script, pipeline$Script)) {
+  stop("write_pipeline_index() output must derive from accrual_pipeline_index_registry() without script drift.")
 }
 
 missing_scripts <- written$Script[!file.exists(written$Script)]
@@ -51,6 +55,31 @@ bad_obsolete <- intersect(obsolete_mixed_stage, written$Script)
 if (length(bad_obsolete)) {
   stop("pipeline_index.csv must not list obsolete mixed-stage scripts as active: ",
        paste(bad_obsolete, collapse = ", "))
+}
+
+dry_run_output <- system2("Rscript", c("run.R", "all", "--dry-run"), stdout = TRUE, stderr = TRUE)
+plan_lines <- grep("^\\s*[0-9]+\\.\\s+", dry_run_output, value = TRUE)
+run_scripts <- unique(sub("^\\s*[0-9]+\\.\\s+[^ ]+\\s+([^ ]+\\.R)\\s+-.*$", "\\1", plan_lines))
+run_scripts <- run_scripts[grepl("^scripts/.*\\.R$", run_scripts)]
+if (!length(run_scripts)) {
+  stop("Could not parse active script paths from `Rscript run.R all --dry-run`.")
+}
+
+registry_scripts <- unique(registry$Script)
+missing_from_registry <- setdiff(run_scripts, registry_scripts)
+if (length(missing_from_registry)) {
+  stop("run.R all --dry-run includes active scripts missing from accrual_pipeline_index_registry(): ",
+       paste(missing_from_registry, collapse = ", "))
+}
+
+optional_reference_scripts <- c(
+  "scripts/simulation/si00_helpers.R"
+)
+unexpected_registry_only <- setdiff(registry_scripts, c(run_scripts, optional_reference_scripts))
+if (length(unexpected_registry_only)) {
+  stop("accrual_pipeline_index_registry() includes active scripts not shown in run.R all --dry-run: ",
+       paste(unexpected_registry_only, collapse = ", "),
+       ". Add only explicitly documented optional/reference entries to the exception list.")
 }
 
 for (fragment in c(

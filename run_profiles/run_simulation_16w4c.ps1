@@ -121,8 +121,12 @@ $consoleLog = "logs\simulation_15w4c_$timestamp.log"
 
 Write-Host ""
 Write-Host "Configuration:"
-Write-Host " Workers          : $env:ACCRUAL_MODEL_PARALLEL_WORKERS"
-Write-Host " Cores per fit    : $coresPerFit"
+$effectiveWorkers = [int]$env:ACCRUAL_MODEL_PARALLEL_WORKERS
+$effectiveCoresPerFit = [int]$env:ACCRUAL_SIM_RECOVERY_CORES
+$effectiveCoreRequest = $effectiveWorkers * $effectiveCoresPerFit
+Write-Host " Workers          : $effectiveWorkers"
+Write-Host " Cores per fit    : $effectiveCoresPerFit"
+Write-Host " Core request     : $effectiveWorkers workers * $effectiveCoresPerFit cores = $effectiveCoreRequest"
 Write-Host " Total core budget: $env:ACCRUAL_TOTAL_CORE_BUDGET"
 Write-Host " Force refit      : $env:ACCRUAL_FORCE_REFIT"
 Write-Host " BRMS backend     : $env:ACCRUAL_BRMS_BACKEND"
