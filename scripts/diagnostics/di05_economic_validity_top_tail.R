@@ -283,11 +283,10 @@ note <- c(
 writeLines(note, note_path, useBytes = TRUE)
 
 input_paths <- c(sets_path, rt_sample_path, raw_path)
-output_paths <- c(membership_path, counts_path, means_path, validity_path, decision_path, io_manifest_path, note_path)
-write.csv(data.frame(path = output_paths, status = "pending", stringsAsFactors = FALSE),
-          io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
+output_paths <- c(membership_path, counts_path, means_path, validity_path, decision_path, note_path)
 io_paths <- c(input_paths, output_paths)
-io_manifest <- data.frame(
+io_manifest <- rbind(
+data.frame(
   script_name = script_name,
   script_version = script_version,
   git_commit = git_commit_or_na(),
@@ -302,6 +301,23 @@ io_manifest <- data.frame(
   md5 = vapply(io_paths, file_hash_or_na, character(1)),
   output_root = output_root,
   stringsAsFactors = FALSE
+),
+data.frame(
+  script_name = script_name,
+  script_version = script_version,
+  git_commit = git_commit_or_na(),
+  start_time = as.character(script_start_time),
+  end_time = as.character(Sys.time()),
+  runtime_seconds = as.numeric(difftime(Sys.time(), script_start_time, units = "secs")),
+  io_class = "output",
+  path = io_manifest_path,
+  exists = TRUE,
+  file_size_bytes = NA_real_,
+  modified_time = NA_character_,
+  md5 = "self_referential_manifest",
+  output_root = output_root,
+  stringsAsFactors = FALSE
+)
 )
 write.csv(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 

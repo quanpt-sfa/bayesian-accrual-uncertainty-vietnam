@@ -25,16 +25,11 @@ dir.create(notes_dir, recursive = TRUE, showWarnings = FALSE)
 
 artifact_spec <- data.frame(
   artifact_id = c(
-    "full_vs_strict_weights", "full_vs_strict_shift", "full_vs_strict_exclusions", "full_vs_strict_note",
     "denominator_sd_mu_distribution", "denominator_capped_jaccard", "da_z_est_vs_z_pred_comparison", "denominator_decision",
     "economic_validity", "economic_validity_decision", "economic_validity_means", "economic_validity_counts", "economic_validity_note",
     "temporal_firmre_premium", "temporal_decision"
   ),
   source_path = c(
-    file.path(output_root, "diagnostics", "table_full_vs_strict_stacking_weights.csv"),
-    file.path(output_root, "diagnostics", "table_full_vs_strict_firmre_shift.csv"),
-    file.path(output_root, "diagnostics", "table_strict_model_exclusions.csv"),
-    file.path(output_root, "diagnostics", "full_vs_strict_stacking_note.md"),
     file.path(output_root, "diagnostics", "table_denominator_sd_mu_distribution.csv"),
     file.path(output_root, "diagnostics", "table_denominator_capped_jaccard.csv"),
     file.path(output_root, "diagnostics", "table_da_z_est_vs_z_pred_comparison.csv"),
@@ -48,12 +43,11 @@ artifact_spec <- data.frame(
     file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
   ),
   artifact_class = c(
-    rep("full_vs_strict_legacy_reviewer", 4),
     rep("di04_denominator", 4),
     rep("di05_economic_validity", 5),
     rep("temporal_dependence_optional", 2)
   ),
-  required = c(rep(TRUE, 13), rep(FALSE, 2)),
+  required = c(rep(TRUE, 9), rep(FALSE, 2)),
   stringsAsFactors = FALSE
 )
 
@@ -95,13 +89,12 @@ checklist <- artifact_spec %>%
 summary_lines <- c(
   "# Section 4.7 Reviewer Evidence Package",
   "",
-  "This package assembles reviewer-facing diagnostics for exact-KFold model-space sensitivity, denominator mechanics, economic-validity top-tail membership checks, and optional temporal-dependence robustness.",
+  "This package assembles reviewer-facing diagnostics for denominator mechanics, economic-validity top-tail membership checks, and optional temporal-dependence robustness.",
   "",
   paste0("Generated at: ", Sys.time()),
   paste0("Output root: ", output_root),
   "",
   "## Included Artifact Classes",
-  "- full_vs_strict_legacy_reviewer: full admissible versus strict clean model-space stacking weights.",
   "- di04_denominator: canonical SD(mu) denominator distribution, capped Jaccard, z-est versus z-pred comparison, and decision.",
   "- di05_economic_validity: canonical RowOnlyTop5, GroupedOnlyTop5, and CommonTop5 supplementary economic-validity outputs.",
   "- temporal_dependence_optional: gated AR(1) temporal-dependence robustness outputs, included when ACCRUAL_RUN_TEMPORAL_ROBUSTNESS=TRUE has been run.",

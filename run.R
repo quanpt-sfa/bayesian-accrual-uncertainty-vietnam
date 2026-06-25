@@ -226,28 +226,20 @@ simulation_steps <- list(
 )
 
 reviewer_steps <- list(
-  step("rv04", "scripts/diagnostics/rv04_full_vs_strict_model_space_stacking.R",
-       "Full vs strict model-space stacking diagnostic",
-       requires = c(
-         table_artifact("table_model_primary_inclusion_gate.csv"),
-         table_artifact("table_DA_exact_kfold_weight_audit.csv"),
-         table_artifact("table_mcmc_diagnostics_gate_winsor.csv")
-       ),
-       require_reason = "model inclusion gate, exact-KFold weight audit, and baseline MCMC diagnostics gate"),
-  step("rv05", "scripts/diagnostics/rv05_legacy_denominator_diagnostics_z_est.R",
-       "Denominator diagnostics for estimation-scaled DA",
+  step("di04", "scripts/diagnostics/di04_denominator_diagnostics.R",
+       "Canonical denominator diagnostics for exact-KFold DA",
        requires = c(
          table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv"),
-         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv"),
-         file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv")
+         table_artifact("final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv")
        ),
-       require_reason = "exact-KFold grouped/row DA outputs and di03 membership sets"),
-  step("rv06", "scripts/diagnostics/rv06_legacy_outcome_validation_top5_membership.R",
-       "Supplementary economic-validity validation for top-5 membership",
+       require_reason = "exact-KFold grouped/row DA outputs"),
+  step("di05", "scripts/diagnostics/di05_economic_validity_top_tail.R",
+       "Canonical economic-validity check for exact-KFold top-tail groups",
        requires = c(
-         file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv")
+         file.path(output_root, "diagnostics", "table_exact_kfold_reclassification_sets.csv"),
+         file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv")
        ),
-       require_reason = "di03 membership sets"),
+       require_reason = "di03 membership sets and winsor no-lookahead sample"),
   step("rv09", "scripts/diagnostics/di09_temporal_dependence_robustness.R",
        "Temporal-dependence robustness for row-minus-grouped Firm-RE premium",
        heavy = TRUE),
@@ -262,7 +254,18 @@ reviewer_steps <- list(
        ),
        require_reason = "si05 temporal-dependence replication results"),
   step("di07", "scripts/diagnostics/di07_section4_7_reviewer_package.R",
-       "Assemble Section 4.7 reviewer-required evidence package")
+       "Assemble Section 4.7 reviewer-required evidence package",
+       requires = c(
+         file.path(output_root, "diagnostics", "table_denominator_sd_mu_distribution.csv"),
+         file.path(output_root, "diagnostics", "table_denominator_capped_jaccard.csv"),
+         file.path(output_root, "diagnostics", "table_da_z_est_vs_z_pred_comparison.csv"),
+         file.path(output_root, "diagnostics", "table_denominator_diagnostics_decision.csv"),
+         file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity.csv"),
+         file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv"),
+         file.path(output_root, "diagnostics", "table_top_tail_group_outcome_means.csv"),
+         file.path(output_root, "diagnostics", "table_top_tail_set_counts_exact_kfold.csv")
+       ),
+       require_reason = "canonical denominator and economic-validity reviewer artifacts")
 )
 
 diagnostics_steps <- list(

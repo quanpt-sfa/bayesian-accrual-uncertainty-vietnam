@@ -25,6 +25,18 @@ phase_ids <- function(path) {
   sub('phase_begin\\("', "", hits)
 }
 
+step_pairs <- function(text) {
+  hits <- regmatches(text, gregexpr('step\\("[^"]+",\\s*"[^"]+"', text, perl = TRUE))[[1]]
+  if (!length(hits) || identical(hits, character(0))) {
+    return(data.frame(id = character(), path = character(), stringsAsFactors = FALSE))
+  }
+  data.frame(
+    id = sub('step\\("([^"]+)".*', "\\1", hits),
+    path = sub('step\\("[^"]+",\\s*"([^"]+)".*', "\\1", hits),
+    stringsAsFactors = FALSE
+  )
+}
+
 run_text <- txt("run.R")
 main_text <- extract_block(run_text, "main_steps <- list", "robustness_steps <- list")
 reviewer_text <- extract_block(run_text, "reviewer_steps <- list", "diagnostics_steps <- list")
@@ -43,11 +55,21 @@ for (stale in c(
   "scripts/diagnostics/di04_full_vs_strict_model_space_stacking.R",
   "scripts/diagnostics/di05_denominator_diagnostics_z_est.R",
   "scripts/diagnostics/di06_outcome_validation_top5_membership.R",
-  "scripts/diagnostics/di06_temporal_dependence_robustness.R"
+  "scripts/diagnostics/di06_temporal_dependence_robustness.R",
+  "scripts/diagnostics/rv04_full_vs_strict_model_space_stacking.R",
+  "scripts/diagnostics/rv05_legacy_denominator_diagnostics_z_est.R",
+  "scripts/diagnostics/rv06_legacy_outcome_validation_top5_membership.R",
+  "archive/legacy_diagnostics"
 )) {
   if (grepl(stale, run_text, fixed = TRUE)) {
     stop("run.R must not reference stale diagnostic namespace path: ", stale)
   }
+}
+
+rv_in_scripts <- list.files("scripts/diagnostics", pattern = "^rv.*\\.R$", full.names = TRUE)
+if (length(rv_in_scripts)) {
+  stop("Legacy rv*.R scripts must not exist directly under scripts/diagnostics: ",
+       paste(rv_in_scripts, collapse = ", "))
 }
 
 if (grepl("scripts/diagnostics/di09_temporal_dependence_robustness.R", main_text, fixed = TRUE)) {
@@ -56,20 +78,20 @@ if (grepl("scripts/diagnostics/di09_temporal_dependence_robustness.R", main_text
 if (!grepl("scripts/diagnostics/di05_economic_validity_top_tail.R", main_text, fixed = TRUE)) {
   stop("Main pipeline must include canonical di05 economic-validity diagnostic.")
 }
-if (!grepl("scripts/diagnostics/rv04_full_vs_strict_model_space_stacking.R", reviewer_text, fixed = TRUE) ||
-    !grepl("scripts/diagnostics/rv05_legacy_denominator_diagnostics_z_est.R", reviewer_text, fixed = TRUE) ||
-    !grepl("scripts/diagnostics/rv06_legacy_outcome_validation_top5_membership.R", reviewer_text, fixed = TRUE) ||
-    !grepl("scripts/diagnostics/di09_temporal_dependence_robustness.R", reviewer_text, fixed = TRUE)) {
-  stop("Reviewer branch must use rv*/di09 diagnostic paths.")
+if (!grepl("scripts/diagnostics/di04_denominator_diagnostics.R", reviewer_text, fixed = TRUE) ||
+    !grepl("scripts/diagnostics/di05_economic_validity_top_tail.R", reviewer_text, fixed = TRUE) ||
+    !grepl("scripts/diagnostics/di09_temporal_dependence_robustness.R", reviewer_text, fixed = TRUE) ||
+    !grepl("scripts/diagnostics/di07_section4_7_reviewer_package.R", reviewer_text, fixed = TRUE)) {
+  stop("Reviewer branch must use only canonical di04/di05/di09/di07 diagnostics.")
 }
 
 main_review_text <- paste(main_text, reviewer_text, sep = "\n")
-main_review_ids <- regmatches(main_review_text, gregexpr('step\\("[^"]+"', main_review_text, perl = TRUE))[[1]]
-main_review_ids <- sub('step\\("', "", main_review_ids)
-main_review_ids <- sub('"$', "", main_review_ids)
-dupes <- unique(main_review_ids[duplicated(main_review_ids)])
-if (length(dupes)) {
-  stop("run.R main/reviewer step ids must be unique; duplicate id(s): ", paste(dupes, collapse = ", "))
+main_review_steps <- step_pairs(main_review_text)
+for (id in unique(main_review_steps$id)) {
+  mapped_paths <- unique(main_review_steps$path[main_review_steps$id == id])
+  if (length(mapped_paths) > 1L) {
+    stop("run.R step id maps to multiple script roles: ", id, " -> ", paste(mapped_paths, collapse = ", "))
+  }
 }
 
 canonical_diag_paths <- unique(grep("^scripts/diagnostics/di[0-9][0-9a-z]*_.*\\.R$", all_referenced, value = TRUE))
@@ -134,7 +156,41 @@ for (fragment in c(
   }
 }
 
+di04_body <- txt("scripts/diagnostics/di04_denominator_diagnostics.R")
+di05_body <- txt("scripts/diagnostics/di05_economic_validity_top_tail.R")
+di07_pos <- regexpr('step("di07"', reviewer_text, fixed = TRUE)[1]
+if (di07_pos < 0) stop("reviewer_steps must include di07 reviewer package.")
+di07_step_text <- substr(reviewer_text, di07_pos, nchar(reviewer_text))
+di04_reviewer_pos <- regexpr("scripts/diagnostics/di04_denominator_diagnostics.R", reviewer_text, fixed = TRUE)[1]
+di05_reviewer_pos <- regexpr("scripts/diagnostics/di05_economic_validity_top_tail.R", reviewer_text, fixed = TRUE)[1]
+if (!(di04_reviewer_pos > 0 && di04_reviewer_pos < di07_pos)) {
+  stop("reviewer_steps must run canonical di04 before di07 or explicitly satisfy all di04 package artifacts.")
+}
+if (!(di05_reviewer_pos > 0 && di05_reviewer_pos < di07_pos)) {
+  stop("reviewer_steps must run canonical di05 before di07 or explicitly satisfy all di05 package artifacts.")
+}
+
+canonical_packaged <- c(
+  "table_denominator_sd_mu_distribution.csv",
+  "table_denominator_capped_jaccard.csv",
+  "table_da_z_est_vs_z_pred_comparison.csv",
+  "table_denominator_diagnostics_decision.csv",
+  "table_top_tail_group_economic_validity.csv",
+  "table_top_tail_group_economic_validity_decision.csv",
+  "table_top_tail_group_outcome_means.csv",
+  "table_top_tail_set_counts_exact_kfold.csv"
+)
+for (artifact in canonical_packaged) {
+  produced_earlier <- (grepl(artifact, di04_body, fixed = TRUE) && di04_reviewer_pos < di07_pos) ||
+    (grepl(artifact, di05_body, fixed = TRUE) && di05_reviewer_pos < di07_pos)
+  declared_require <- grepl(artifact, di07_step_text, fixed = TRUE)
+  if (!produced_earlier && !declared_require) {
+    stop("di07 canonical artifact is neither produced by an earlier reviewer step nor declared as a di07 require: ", artifact)
+  }
+}
+
 for (path in c("scripts/diagnostics/di04_denominator_diagnostics.R",
+               "scripts/diagnostics/di05_economic_validity_top_tail.R",
                "scripts/diagnostics/di09_temporal_dependence_robustness.R")) {
   body <- txt(path)
   if (grepl('status = "pending"', body, fixed = TRUE)) {
