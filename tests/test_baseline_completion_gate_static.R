@@ -1,6 +1,6 @@
 txt <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
 
-ma00 <- txt("scripts/ma00_setup.R")
+baseline_marker <- txt("scripts/utils/baseline_marker.R")
 run_body <- txt("run.R")
 profile_paths <- list.files("run_profiles", pattern = "\\.ps1$", full.names = TRUE)
 profile_paths <- gsub("\\\\", "/", profile_paths)
@@ -13,7 +13,7 @@ for (fragment in c(
   "\"[BASELINE COMPLETION BLOCKER] \"",
   "git_commit_or_na <- function()"
 )) {
-  if (!grepl(fragment, ma00, fixed = TRUE)) {
+  if (!grepl(fragment, baseline_marker, fixed = TRUE)) {
     stop("ma00 missing baseline completion marker helper fragment: ", fragment)
   }
 }

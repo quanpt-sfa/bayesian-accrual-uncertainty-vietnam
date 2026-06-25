@@ -9,8 +9,8 @@ active_scripts <- script_paths[
 
 if (!length(active_scripts)) stop("No active scripts found under scripts/.")
 
-ma00_path <- "scripts/ma00_setup.R"
-ma00 <- txt(ma00_path)
+io_helper_path <- "scripts/utils/io_helpers.R"
+io_helpers <- txt(io_helper_path)
 for (fragment in c(
   "write_csv_safely <- function(x, file, row.names = FALSE, ...)",
   "[BLOCKER] write_csv_safely requires a single non-empty file path.",
@@ -18,7 +18,7 @@ for (fragment in c(
   "write.csv(x, file = file, row.names = row.names, ...)",
   "invisible(file)"
 )) {
-  if (!grepl(fragment, ma00, fixed = TRUE)) {
+  if (!grepl(fragment, io_helpers, fixed = TRUE)) {
     stop("ma00 missing central safe CSV writer fragment: ", fragment)
   }
 }
@@ -27,7 +27,7 @@ direct_write_hits <- unlist(lapply(active_scripts, function(path) {
   lines <- readLines(path, warn = FALSE)
   hit_idx <- grep("write\\.csv\\(", lines)
   if (!length(hit_idx)) return(character())
-  if (identical(path, ma00_path)) {
+  if (identical(path, io_helper_path)) {
     helper_hits <- hit_idx[grepl("write.csv(x, file = file, row.names = row.names, ...)", lines[hit_idx], fixed = TRUE)]
     hit_idx <- setdiff(hit_idx, helper_hits)
   }
@@ -70,7 +70,7 @@ if (length(path_arg_hits)) {
 }
 
 local_helper_hits <- unlist(lapply(active_scripts, function(path) {
-  if (identical(path, ma00_path)) return(character())
+  if (identical(path, io_helper_path)) return(character())
   lines <- readLines(path, warn = FALSE)
   hit_idx <- grep("\\bwrite_csv_[A-Za-z0-9_]*\\s*<-\\s*function\\(", lines, perl = TRUE)
   if (!length(hit_idx)) return(character())

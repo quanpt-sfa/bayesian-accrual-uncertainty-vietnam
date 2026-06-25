@@ -178,6 +178,9 @@ try {
         Invoke-TestIfExists "tests/test_repo_wide_csv_writer_static.R"
         Invoke-TestIfExists "tests/test_baseline_completion_gate_static.R"
         Invoke-TestIfExists "tests/test_ma10_safe_csv_and_profile_failfast_static.R"
+        Invoke-TestIfExists "tests/test_test_config_hygiene_static.R"
+        Invoke-TestIfExists "tests/test_run_profile_registry_static.R"
+        Invoke-TestIfExists "tests/test_run_profile_simulation_after_main_static.R"
         Write-Host "Preflight tests passed."
     }
 

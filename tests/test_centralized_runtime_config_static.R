@@ -2,14 +2,14 @@ source("scripts/ma00_setup.R")
 
 txt <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
 
-ma00 <- txt("scripts/ma00_setup.R")
+sampler_config <- txt("scripts/config/sampler_config.R")
 ma06 <- txt("scripts/ma06_prior_predictive_checks.R")
 se01 <- txt("scripts/sensitivity/se01_prior_predictive.R")
 
-if (!grepl('"prior_predictive"', ma00, fixed = TRUE) ||
-    !grepl("ACCRUAL_PRIOR_PRED_CHAINS", ma00, fixed = TRUE) ||
-    !grepl("ACCRUAL_PRIOR_PRED_CORES", ma00, fixed = TRUE) ||
-    !grepl("ACCRUAL_PRIOR_PRED_REFRESH", ma00, fixed = TRUE)) {
+if (!grepl('"prior_predictive"', sampler_config, fixed = TRUE) ||
+    !grepl("ACCRUAL_PRIOR_PRED_CHAINS", sampler_config, fixed = TRUE) ||
+    !grepl("ACCRUAL_PRIOR_PRED_CORES", sampler_config, fixed = TRUE) ||
+    !grepl("ACCRUAL_PRIOR_PRED_REFRESH", sampler_config, fixed = TRUE)) {
   stop("ma00_setup.R must define the centralized prior_predictive sampler profile.")
 }
 

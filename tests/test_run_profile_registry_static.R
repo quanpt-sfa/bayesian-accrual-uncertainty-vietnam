@@ -82,6 +82,16 @@ for (profile_id in names(registry)) {
     if (!(main_pos < marker_pos && marker_pos < pointer_pos && marker_pos < completion_pos)) {
       stop(path, " must check the baseline marker after main and before pointer/completion writes.")
     }
+    for (preflight_test in c(
+      "tests/test_test_config_hygiene_static.R",
+      "tests/test_run_profile_registry_static.R",
+      "tests/test_run_profile_simulation_after_main_static.R"
+    )) {
+      preflight_fragment <- paste0("Invoke-TestIfExists \"", preflight_test, "\"")
+      if (!grepl(preflight_fragment, body, fixed = TRUE)) {
+        stop(path, " must include production preflight regression guard: ", preflight_test)
+      }
+    }
   } else {
     pointer_pos <- regexpr(paste0("$pointer = \"", entry$latest_main_pointer, "\""), body, fixed = TRUE)[1]
     read_pointer_pos <- regexpr("$RunRoot = (Get-Content $pointer -Raw).Trim()", body, fixed = TRUE)[1]

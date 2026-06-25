@@ -82,4 +82,4 @@ Primary model helpers return M01-M07 for ex-post and M01, M02, M03, M07, M09 for
 
 LOFO (`scripts/robustness/ro01_lofo_stacking.R`) is an opt-in robustness branch, not a default main step. Sensitivity scripts se01-se07, simulation scripts si00-si06, diagnostic sampler calibration di08a-di08c, and temporal robustness di09 are opt-in/heavy branches. PSIS reliability (`scripts/diagnostics/di01_psis_reliability_gate.R`) is secondary diagnostics, not the primary RQ1 comparison.
 
-The machine-readable pipeline index is written to `out/manifests/method_design/pipeline_index.csv`.
+The machine-readable pipeline index is written to `out/runs/main_10w4c_20260625_173901_b913abd/manifests/method_design/pipeline_index.csv`.

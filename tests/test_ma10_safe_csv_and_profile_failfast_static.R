@@ -2,7 +2,7 @@ txt <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
 
 source("scripts/ma00_setup.R")
 
-ma00 <- txt("scripts/ma00_setup.R")
+io_helpers <- txt("scripts/utils/io_helpers.R")
 ma10 <- txt("scripts/ma10_construct_psis_loo_DA.R")
 safe_csv_scripts <- c(
   "scripts/ma10_construct_psis_loo_DA.R",
@@ -24,7 +24,7 @@ for (fragment in c(
   "write.csv(x, file = file, row.names = row.names, ...)",
   "invisible(file)"
 )) {
-  if (!grepl(fragment, ma00, fixed = TRUE)) {
+  if (!grepl(fragment, io_helpers, fixed = TRUE)) {
     stop("ma00 missing safe CSV writer fragment: ", fragment)
   }
 }
