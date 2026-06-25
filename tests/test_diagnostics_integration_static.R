@@ -41,6 +41,7 @@ run_text <- txt("run.R")
 main_text <- extract_block(run_text, "main_steps <- list", "robustness_steps <- list")
 reviewer_text <- extract_block(run_text, "reviewer_steps <- list", "diagnostics_steps <- list")
 diagnostics_text <- extract_block(run_text, "diagnostics_steps <- list", "diagnostics_steps_for_all <- list")
+reviewer_pairs <- step_pairs(reviewer_text)
 
 all_referenced <- unique(c(
   "run.R",
@@ -83,6 +84,14 @@ if (!grepl("scripts/diagnostics/di04_denominator_diagnostics.R", reviewer_text, 
     !grepl("scripts/diagnostics/di09_temporal_dependence_robustness.R", reviewer_text, fixed = TRUE) ||
     !grepl("scripts/diagnostics/di07_section4_7_reviewer_package.R", reviewer_text, fixed = TRUE)) {
   stop("Reviewer branch must use only canonical di04/di05/di09/di07 diagnostics.")
+}
+rv_reviewer_ids <- reviewer_pairs$id[grepl("^rv", reviewer_pairs$id)]
+if (length(rv_reviewer_ids)) {
+  stop("reviewer_steps must not contain rv* step ids: ", paste(unique(rv_reviewer_ids), collapse = ", "))
+}
+simulation_reviewer_paths <- reviewer_pairs$path[grepl("^scripts/simulation/", reviewer_pairs$path)]
+if (length(simulation_reviewer_paths)) {
+  stop("reviewer_steps must not run simulation scripts: ", paste(unique(simulation_reviewer_paths), collapse = ", "))
 }
 
 main_review_text <- paste(main_text, reviewer_text, sep = "\n")

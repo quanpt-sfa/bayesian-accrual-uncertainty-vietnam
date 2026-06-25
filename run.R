@@ -222,7 +222,17 @@ simulation_steps <- list(
          file.path(output_root, "simulation", "brms_parameter_recovery", "tables", "table_si04_brms_recovery_task_manifest.csv"),
          file.path(output_root, "simulation", "brms_parameter_recovery", "tables", "table_si04_brms_recovery_task_status.csv")
        ),
-       require_reason = "si04a manifest and si04b task status")
+       require_reason = "si04a manifest and si04b task status"),
+  step("si05", "scripts/simulation/si05_lmer_temporal_dependence_run.R",
+       "LMER temporal-dependence persistent-shock simulation",
+       heavy = TRUE),
+  step("si06", "scripts/simulation/si06_lmer_temporal_dependence_report.R",
+       "Report temporal-dependence mechanism simulation",
+       requires = c(
+         file.path(output_root, "simulation", "lmer_temporal_dependence", "tables",
+                   "table_lmer_temporal_dependence_rep_results.csv")
+       ),
+       require_reason = "si05 temporal-dependence replication results")
 )
 
 reviewer_steps <- list(
@@ -240,19 +250,9 @@ reviewer_steps <- list(
          file.path(input_winsor_root, "tables", "final_common_realtime_sample_winsor.csv")
        ),
        require_reason = "di03 membership sets and winsor no-lookahead sample"),
-  step("rv09", "scripts/diagnostics/di09_temporal_dependence_robustness.R",
+  step("di09", "scripts/diagnostics/di09_temporal_dependence_robustness.R",
        "Temporal-dependence robustness for row-minus-grouped Firm-RE premium",
        heavy = TRUE),
-  step("si05", "scripts/simulation/si05_lmer_temporal_dependence_run.R",
-       "LMER temporal-dependence persistent-shock simulation",
-       heavy = TRUE),
-  step("si06", "scripts/simulation/si06_lmer_temporal_dependence_report.R",
-       "Report temporal-dependence mechanism simulation",
-       requires = c(
-         file.path(output_root, "simulation", "lmer_temporal_dependence", "tables",
-                   "table_lmer_temporal_dependence_rep_results.csv")
-       ),
-       require_reason = "si05 temporal-dependence replication results"),
   step("di07", "scripts/diagnostics/di07_section4_7_reviewer_package.R",
        "Assemble Section 4.7 reviewer-required evidence package",
        requires = c(
