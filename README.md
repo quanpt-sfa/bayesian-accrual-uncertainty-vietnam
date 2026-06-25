@@ -30,10 +30,13 @@ Bayesian pipeline for uncertainty-adjusted discretionary accruals using Vietname
    Rscript run.R main
    ```
 
-5. For the production 5-worker x 4-core profile, use the tracked run profile:
+5. For the production 10-worker x 4-core workflow, run the numbered profiles. Downstream profiles require the main profile to complete through `ma17` and write `BASELINE_MA17_COMPLETE.txt` first:
 
    ```powershell
-   .\run_profiles\run_full_clean_production_5w4c.ps1
+   .\run_profiles\run_01_main_production_10w4c.ps1
+   .\run_profiles\run_02_sensitivity_after_main_10w4c.ps1
+   .\run_profiles\run_03_diagnostics_after_main_10w4c.ps1
+   .\run_profiles\run_04_simulation_after_main_10w4c.ps1
    ```
 
 Principal outputs are under `out/interim/winsor/tables/`, `out/interim/winsor/diagnostics/`, `accruals/`, and `reports/chapter3_methods_tables/`.
@@ -130,8 +133,8 @@ The default behavior is sequential. Model-level parallelism is opt-in:
 
 ```powershell
 $env:ACCRUAL_ENABLE_MODEL_PARALLEL = "TRUE"
-$env:ACCRUAL_MODEL_PARALLEL_WORKERS = "5"
-$env:ACCRUAL_TOTAL_CORE_BUDGET = "20"
+$env:ACCRUAL_MODEL_PARALLEL_WORKERS = "10"
+$env:ACCRUAL_TOTAL_CORE_BUDGET = "40"
 $env:ACCRUAL_ALLOW_NESTED_RSTAN_CORES = "TRUE"
 $env:ACCRUAL_BASELINE_CORES = "4"
 $env:ACCRUAL_RUN_HEAVY = "TRUE"
@@ -161,7 +164,7 @@ Runtime and sampler configuration is centralized in `scripts/ma00_setup.R`.
 - Sampler profiles: `accrual_sampler_config()`.
 - K-fold profiles: `accrual_kfold_config()`.
 - Runtime profiles: `accrual_runtime_config()`, `accrual_loo_config()`, `accrual_simulation_runtime_config()`.
-- Production profile values: `accrual_run_profile_config("full_clean_production_5w4c")`.
+- Production profile values: `accrual_run_profile_registry()` and `accrual_run_profile_config("run_01_main_production_10w4c")`.
 
 Branch-specific seed variables are deprecated and blocked if they disagree with `ACCRUAL_SEED`.
 

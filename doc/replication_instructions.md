@@ -30,7 +30,7 @@ The split stages are:
 - `si03a`/`si03b`/`si03c` and `si04a`/`si04b`/`si04c` for brms simulation branches.
 - `di08a`/`di08b`/`di08c` for diagnostic-only sampler calibration.
 
-The production worker policy comes from `accrual_run_profile_config("full_clean_production_5w4c")`. No validation-target semantics, formulas, priors, likelihoods, simulation DGPs, or parameter recovery estimands are changed by the split.
+The production worker policy comes from `accrual_run_profile_registry()`. The current workflow is split into numbered 10w4c profiles: run `run_01_main_production_10w4c.ps1` first, then run downstream sensitivity, diagnostics, or simulation profiles only after `BASELINE_MA17_COMPLETE.txt` and the latest-main pointer exist. No validation-target semantics, formulas, priors, likelihoods, simulation DGPs, or parameter recovery estimands are changed by the split.
 
 ## Sensitivity analysis
 

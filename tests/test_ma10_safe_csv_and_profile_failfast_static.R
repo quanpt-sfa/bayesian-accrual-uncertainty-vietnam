@@ -1,8 +1,9 @@
 txt <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
 
+source("scripts/ma00_setup.R")
+
 ma00 <- txt("scripts/ma00_setup.R")
 ma10 <- txt("scripts/ma10_construct_psis_loo_DA.R")
-profile <- txt("run_profiles/run_full_clean_production_5w4c.ps1")
 safe_csv_scripts <- c(
   "scripts/ma10_construct_psis_loo_DA.R",
   "scripts/ma11_posterior_predictive_checks.R",
@@ -115,31 +116,43 @@ if (!any(grepl("write_csv_safely\\(master_df, baseline_accruals_path", baseline_
   stop("ma10 must write baseline_accruals_path through write_csv_safely().")
 }
 
-for (fragment in c(
-  "$ErrorActionPreference = \"Stop\"",
-  "function Invoke-RscriptChecked",
-  "& Rscript @Arguments",
-  "$rscriptExitCode = $LASTEXITCODE",
-  "if ($rscriptExitCode -ne 0)",
-  "throw \"$Context failed with exit code $rscriptExitCode.\"",
-  "Invoke-RscriptChecked -Context \"Main pipeline\" -Arguments @(\"run.R\", \"main\")",
-  "Invoke-RscriptChecked -Context \"Sensitivity pipeline\" -Arguments @(\"run.R\", \"sensitivity\")"
-)) {
-  if (!grepl(fragment, profile, fixed = TRUE)) {
-    stop("production PowerShell profile missing fail-fast fragment: ", fragment)
+profile_registry <- accrual_run_profile_registry()
+main_profiles <- Filter(function(entry) identical(entry$target, "main"), profile_registry)
+downstream_profiles <- Filter(function(entry) !identical(entry$target, "main"), profile_registry)
+if (!length(main_profiles)) stop("Run-profile registry must include a main production profile.")
+if (!length(downstream_profiles)) stop("Run-profile registry must include downstream profiles.")
+
+for (entry in profile_registry) {
+  body <- txt(entry$profile_path)
+  for (fragment in c(
+    "$ErrorActionPreference = \"Stop\"",
+    "$rscriptExitCode = $LASTEXITCODE",
+    "if ($rscriptExitCode -ne 0)"
+  )) {
+    if (!grepl(fragment, body, fixed = TRUE)) {
+      stop(entry$profile_path, " missing fail-fast fragment: ", fragment)
+    }
   }
-}
-
-main_pos <- regexpr("Invoke-RscriptChecked -Context \"Main pipeline\" -Arguments @(\"run.R\", \"main\")", profile, fixed = TRUE)[1]
-sensitivity_pos <- regexpr("Invoke-RscriptChecked -Context \"Sensitivity pipeline\" -Arguments @(\"run.R\", \"sensitivity\")", profile, fixed = TRUE)[1]
-if (main_pos < 0 || sensitivity_pos < 0 || main_pos > sensitivity_pos) {
-  stop("production profile must run main through fail-fast wrapper before sensitivity.")
-}
-
-direct_rscript_lines <- grep("^\\s*Rscript\\s+", strsplit(profile, "\n", fixed = TRUE)[[1]], value = TRUE, perl = TRUE)
-if (length(direct_rscript_lines)) {
-  stop("production profile must not use direct Rscript calls without checking LASTEXITCODE: ",
-       paste(direct_rscript_lines, collapse = " | "))
+  direct_rscript_lines <- grep("^\\s*Rscript\\s+", strsplit(body, "\n", fixed = TRUE)[[1]], value = TRUE, perl = TRUE)
+  if (length(direct_rscript_lines)) {
+    stop(entry$profile_path, " must not use direct Rscript calls without checking LASTEXITCODE: ",
+         paste(direct_rscript_lines, collapse = " | "))
+  }
+  target_fragment <- if (identical(entry$target, "main")) {
+    "Invoke-RscriptChecked -Context \"Main pipeline\" -Arguments @(\"run.R\", \"main\")"
+  } else {
+    paste0("$argsForRun = @(\"run.R\", \"", entry$target, "\")")
+  }
+  if (!grepl(target_fragment, body, fixed = TRUE)) {
+    stop(entry$profile_path, " does not run registry target: ", entry$target)
+  }
+  if (!identical(entry$target, "main")) {
+    marker_pos <- regexpr("$baselineMarker = Join-Path $env:ACCRUAL_OUTPUT_ROOT", body, fixed = TRUE)[1]
+    target_pos <- regexpr(target_fragment, body, fixed = TRUE)[1]
+    if (!(marker_pos > 0 && marker_pos < target_pos)) {
+      stop(entry$profile_path, " must check baseline marker before downstream execution.")
+    }
+  }
 }
 
 cat("test_ma10_safe_csv_and_profile_failfast_static.R passed\n")

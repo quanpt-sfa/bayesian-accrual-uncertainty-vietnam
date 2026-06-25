@@ -38,18 +38,19 @@ kfold_env_names <- c(
 
 with_temp_env(stats::setNames(as.list(rep(NA_character_, length(kfold_env_names))), kfold_env_names), {
   source("scripts/ma00_setup.R")
+  expected <- accrual_production_sampler_defaults("grouped_kfold", "FULL_MODE")
   grouped_cfg <- accrual_kfold_config("grouped_firm")
   row_cfg <- accrual_kfold_config("row")
   for (cfg_name in c("grouped_cfg", "row_cfg")) {
     cfg <- get(cfg_name)
-    if (!identical(cfg$chains, 4L) ||
-        !identical(cfg$cores, 4L) ||
-        !identical(cfg$iter, 12000L) ||
-        !identical(cfg$warmup, 4000L) ||
-        !isTRUE(all.equal(cfg$adapt_delta, 0.99, tolerance = 1e-12)) ||
-        !identical(cfg$max_treedepth, 15L) ||
-        !identical(cfg$refresh, 500L)) {
-      stop(cfg_name, " FULL_MODE default must be production K-fold config 4/4/12000/4000/0.99/15/500.")
+    if (!identical(cfg$chains, expected$chains) ||
+        !identical(cfg$cores, expected$cores) ||
+        !identical(cfg$iter, expected$iter) ||
+        !identical(cfg$warmup, expected$warmup) ||
+        !isTRUE(all.equal(cfg$adapt_delta, expected$adapt_delta, tolerance = 1e-12)) ||
+        !identical(cfg$max_treedepth, expected$max_treedepth) ||
+        !identical(cfg$refresh, expected$refresh)) {
+      stop(cfg_name, " FULL_MODE default must match accrual_production_sampler_defaults().")
     }
   }
 
@@ -101,13 +102,13 @@ with_temp_env(stats::setNames(as.list(rep(NA_character_, length(kfold_env_names)
     manifest <- get(manifest_name)
     missing_cols <- setdiff(required_cols, names(manifest))
     if (length(missing_cols)) stop(manifest_name, " missing sampler provenance columns: ", paste(missing_cols, collapse = ", "))
-    if (any(manifest$chains != 4L) ||
-        any(manifest$cores != 4L) ||
-        any(manifest$iter != 12000L) ||
-        any(manifest$warmup != 4000L) ||
-        any(abs(manifest$adapt_delta - 0.99) > 1e-12) ||
-        any(manifest$max_treedepth != 15L) ||
-        any(manifest$refresh != 500L) ||
+    if (any(manifest$chains != expected$chains) ||
+        any(manifest$cores != expected$cores) ||
+        any(manifest$iter != expected$iter) ||
+        any(manifest$warmup != expected$warmup) ||
+        any(abs(manifest$adapt_delta - expected$adapt_delta) > 1e-12) ||
+        any(manifest$max_treedepth != expected$max_treedepth) ||
+        any(manifest$refresh != expected$refresh) ||
         any(manifest$run_mode != "FULL_MODE")) {
       stop(manifest_name, " did not write production exact K-fold sampler defaults.")
     }

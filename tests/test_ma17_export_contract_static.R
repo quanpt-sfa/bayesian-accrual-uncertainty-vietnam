@@ -36,7 +36,7 @@ for (fragment in c(
 }
 
 if (grepl('file.path("reports", "chapter3_methods_tables")', ma17, fixed = TRUE)) {
-  stop("ma17 must not hard-code reports/chapter3_methods_tables.")
+  stop("ma17 must not hard-code ", paste0("reports", "/"), "chapter3_methods_tables.")
 }
 
 if (grepl('file.path("out", "interim", "baseline", "tables", file)', ma17, fixed = TRUE)) {

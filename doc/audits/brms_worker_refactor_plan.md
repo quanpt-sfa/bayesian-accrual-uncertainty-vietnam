@@ -8,7 +8,7 @@ The shared worker architecture is centralized in `scripts/ma00_setup.R`:
 - `accrual_sampler_config()`
 - `accrual_kfold_config()`
 - `accrual_simulation_runtime_config()`
-- `accrual_run_profile_config("full_clean_production_5w4c")`
+- `accrual_run_profile_registry()`
 - `accrual_heavy_fit_stage_registry()`
 
 ## Split Stages
@@ -29,6 +29,6 @@ The shared worker architecture is centralized in `scripts/ma00_setup.R`:
 
 Worker scripts may write only task-local fit, prediction, extraction bundle, metadata, result, and log artifacts. For ma07, this means ma07a owns task-local fit/meta/log files, ma07b owns task-local extraction bundles and temporary draw artifacts, and ma07c alone publishes shared diagnostics, coefficients, hard-gate tables, manifests, and final draw files under the shared draws directory. Collectors own shared tables, validation scores, stacking weights, completed-run pins, global manifests, reports, and manuscript-facing outputs.
 
-The production worker policy is defined once in `ma00_setup.R`. The production profile uses 5 model-level workers with 4 rstan cores per fit under a total active core budget of 20, but tests read those values from `accrual_run_profile_config()` rather than duplicating them.
+The production worker policy is defined once in `ma00_setup.R`. The current numbered production profiles use 10 model-level workers with 4 rstan cores per fit under a total active core budget of 40, and tests read those values from `accrual_run_profile_registry()` rather than duplicating them.
 
 No validation-target semantics changed. PSIS/LOO remains secondary evidence. Exact grouped firm K-fold and exact row-level K-fold remain the primary RQ1 validation evidence.
