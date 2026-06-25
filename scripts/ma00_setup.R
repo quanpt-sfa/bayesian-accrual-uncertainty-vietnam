@@ -1668,86 +1668,94 @@ write_run_manifest <- function(path, scenario, prior_set_id, family, model_struc
   path
 }
 
-write_pipeline_index <- function() {
-  dir.create(method_design_root, recursive = TRUE, showWarnings = FALSE)
-  pipeline <- data.frame(
-    Order = c(sprintf("ma%02d", 0:6), "ma07a", "ma07b", "ma07c", sprintf("ma%02d", 8:16), "di02", "ma17", "ro01", sprintf("se%02d", 1:7), sprintf("si%02d", 0:4), "di01"),
-    Script = c(
-      "scripts/ma00_setup.R",
-      "scripts/ma01_setup_and_registry.R",
-      "scripts/ma02_build_common_sample.R",
-      "scripts/ma03_audit_data_integrity.R",
-      "scripts/ma04_define_named_models.R",
-      "scripts/ma05_winsorize_common_samples.R",
-      "scripts/ma06_prior_predictive_checks.R",
-      "scripts/ma07a_fit_brms_named_models.R",
-      "scripts/ma07b_extract_brms_fit_outputs_workers.R",
-      "scripts/ma07c_collect_brms_fit_outputs.R",
-      "scripts/ma08_mcmc_diagnostics.R",
-      "scripts/ma09_loo_stacking.R",
-      "scripts/ma10_construct_psis_loo_DA.R",
-      "scripts/ma11_posterior_predictive_checks.R",
-      "scripts/ma12_grouped_kfold_firm.R",
-      "scripts/ma13_row_level_exact_kfold.R",
-      "scripts/ma14_construct_exact_kfold_DA.R",
-      "scripts/ma15_audit_DA_finite_outputs.R",
-      "scripts/ma16_validate_outcomes.R",
-      "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R",
-      "scripts/ma17_export_tables_figures.R",
-      "scripts/robustness/ro01_lofo_stacking.R",
-      "scripts/sensitivity/se01_prior_predictive.R",
-      "scripts/sensitivity/se02_refit_prior_scenarios.R",
-      "scripts/sensitivity/se03_mcmc_diagnostics.R",
-      "scripts/sensitivity/se04_stacking.R",
-      "scripts/sensitivity/se05_construct_DA.R",
-      "scripts/sensitivity/se06_validation.R",
-      "scripts/sensitivity/se07_report.R",
-      "scripts/simulation/si00_helpers.R",
-      "scripts/simulation/si01_lmer_pilot_run.R",
-      "scripts/simulation/si02_lmer_pilot_report.R",
-      "scripts/simulation/si03_brms_leakage_confirmation.R",
-      "scripts/simulation/si04_brms_parameter_recovery.R",
-      "scripts/diagnostics/di01_psis_reliability_gate.R"
-    ),
-    Role = c(
-      "Shared helpers and registries",
-      "Setup and model registry",
-      "Build common samples",
-      "COGS/INV audit",
-      "Define model formulas",
-      "Winsorize common samples",
-      "Baseline prior predictive checks",
-      "Baseline brms fit worker stage",
-      "Collect baseline brms fit outputs",
-      "Baseline MCMC diagnostics",
-      "Baseline LOO stacking",
-      "Secondary PSIS/LOO uncertainty-adjusted DA",
-      "Posterior predictive checks for secondary PSIS/LOO DA",
-      "Baseline exact grouped K-fold",
-      "Main row-level exact K-fold method-matching arm",
-      "Primary exact-KFoldW DA construction from completed-run pins",
-      "Hard finite-output gate for exact-KFold DA",
-      "Primary validation on exact row-KFold DA",
-      "Main new-firm predictive integration reporting gate",
-      "Chapter 3 manuscript table export",
-      "Optional grouped PSIS-LOFO robustness",
-      "Sensitivity prior predictive gate",
-      "Sensitivity full refits by prior scenario",
-      "Sensitivity MCMC diagnostics gate",
-      "Sensitivity LOO/stacking by scenario",
-      "Sensitivity DA reconstruction",
-      "Sensitivity validation/outcome tests",
-      "Sensitivity report",
-      "Simulation helper functions for leakage pilot scripts",
-      "LMER leakage pilot simulation run",
-      "LMER leakage pilot simulation report",
-      "BRMS leakage confirmation simulation",
-      "BRMS parameter recovery simulation",
-      "Optional secondary PSIS reliability diagnostics"
-    ),
-    Active = TRUE,
+accrual_pipeline_index_registry <- function() {
+  rows <- list(
+    c("ma00", "scripts/ma00_setup.R", "Setup helpers, runtime config, and shared registries"),
+    c("ma01", "scripts/ma01_setup_and_registry.R", "Setup and ten-model registry"),
+    c("ma02", "scripts/ma02_build_common_sample.R", "Build common samples"),
+    c("ma03", "scripts/ma03_audit_data_integrity.R", "Data integrity audit"),
+    c("ma04", "scripts/ma04_define_named_models.R", "Define named model formulas"),
+    c("ma05", "scripts/ma05_winsorize_common_samples.R", "Winsorize common samples"),
+    c("ma06", "scripts/ma06_prior_predictive_checks.R", "Prior predictive gate with task-worker support"),
+    c("ma07a", "scripts/ma07a_fit_brms_named_models.R", "Full-sample baseline brms fit worker stage"),
+    c("ma07b", "scripts/ma07b_extract_brms_fit_outputs_workers.R", "Extract baseline brms fit outputs with workers"),
+    c("ma07c", "scripts/ma07c_collect_brms_fit_outputs.R", "Collect extracted baseline brms fit outputs"),
+    c("ma08", "scripts/ma08_mcmc_diagnostics.R", "MCMC diagnostics for baseline fits"),
+    c("ma09a", "scripts/ma09a_plan_loo_savepars_refits.R", "Plan PSIS/LOO save_pars refits"),
+    c("ma09b", "scripts/ma09b_fit_loo_savepars_refits.R", "Fit PSIS/LOO save_pars refits with workers"),
+    c("ma09c", "scripts/ma09c_collect_loo_stacking.R", "Collect PSIS/LOO stacking evidence"),
+    c("ma10", "scripts/ma10_construct_psis_loo_DA.R", "Construct PSIS/LOO secondary uncertainty-adjusted DA"),
+    c("ma11", "scripts/ma11_posterior_predictive_checks.R", "Posterior predictive checks for secondary PSIS/LOO DA"),
+    c("ma12a", "scripts/ma12a_plan_grouped_kfold_firm.R", "Plan grouped exact firm K-fold run and fold assignments"),
+    c("ma12b", "scripts/ma12b_fit_grouped_kfold_firm_workers.R", "Fit grouped exact firm K-fold tasks with workers"),
+    c("ma12c", "scripts/ma12c_collect_grouped_kfold_firm_scores.R", "Collect grouped exact firm K-fold scores and completed-run contract"),
+    c("ma13a", "scripts/ma13a_plan_row_level_exact_kfold.R", "Plan row-level exact K-fold run and fold assignments"),
+    c("ma13b", "scripts/ma13b_fit_row_level_exact_kfold_workers.R", "Fit row-level exact K-fold tasks with workers"),
+    c("ma13c", "scripts/ma13c_collect_row_level_exact_kfold_scores.R", "Collect row-level exact K-fold scores and completed-run contract"),
+    c("ma14", "scripts/ma14_construct_exact_kfold_DA.R", "Primary exact-KFoldW DA construction from completed-run pins"),
+    c("ma15", "scripts/ma15_audit_DA_finite_outputs.R", "Hard finite-output gate for exact-KFold DA"),
+    c("ma16", "scripts/ma16_validate_outcomes.R", "Outcome validation on primary exact row-KFold DA"),
+    c("di02", "scripts/diagnostics/di02_new_firm_predictive_integration_audit.R", "New-firm predictive integration reporting gate"),
+    c("di03", "scripts/diagnostics/di03_exact_kfold_reclassification_audit.R", "Exact K-fold reclassification/Jaccard diagnostics"),
+    c("di04", "scripts/diagnostics/di04_denominator_diagnostics.R", "Denominator diagnostics for estimation-scaled exact-KFold DA"),
+    c("di05", "scripts/diagnostics/di05_economic_validity_top_tail.R", "Economic-validity check for exact-KFold top-tail groups"),
+    c("ma17", "scripts/ma17_export_tables_figures.R", "Chapter 3 manuscript table export"),
+    c("ro01", "scripts/robustness/ro01_lofo_stacking.R", "Optional grouped PSIS-LOFO robustness"),
+    c("se01", "scripts/sensitivity/se01_prior_predictive.R", "Sensitivity prior predictive gate"),
+    c("se02a", "scripts/sensitivity/se02a_plan_prior_scenario_refits.R", "Plan sensitivity prior-scenario refits"),
+    c("se02b", "scripts/sensitivity/se02b_fit_prior_scenario_workers.R", "Fit sensitivity prior-scenario models with workers"),
+    c("se02c", "scripts/sensitivity/se02c_collect_prior_scenario_outputs.R", "Collect sensitivity prior-scenario outputs"),
+    c("se03", "scripts/sensitivity/se03_mcmc_diagnostics.R", "Sensitivity MCMC diagnostics gate"),
+    c("se04", "scripts/sensitivity/se04_stacking.R", "Sensitivity LOO/stacking by scenario"),
+    c("se05", "scripts/sensitivity/se05_construct_DA.R", "Sensitivity DA reconstruction"),
+    c("se06", "scripts/sensitivity/se06_validation.R", "Sensitivity validation/outcome tests"),
+    c("se07", "scripts/sensitivity/se07_report.R", "Sensitivity report"),
+    c("si00", "scripts/simulation/si00_helpers.R", "Simulation helper functions"),
+    c("si01", "scripts/simulation/si01_lmer_pilot_run.R", "LMER leakage pilot simulation run"),
+    c("si02", "scripts/simulation/si02_lmer_pilot_report.R", "LMER leakage pilot simulation report"),
+    c("si03a", "scripts/simulation/si03a_plan_brms_leakage_confirmation.R", "Plan BRMS leakage confirmation simulation"),
+    c("si03b", "scripts/simulation/si03b_fit_brms_leakage_confirmation_workers.R", "Fit BRMS leakage confirmation simulation with workers"),
+    c("si03c", "scripts/simulation/si03c_collect_brms_leakage_confirmation.R", "Collect BRMS leakage confirmation simulation"),
+    c("si04a", "scripts/simulation/si04a_plan_brms_parameter_recovery.R", "Plan BRMS parameter recovery simulation"),
+    c("si04b", "scripts/simulation/si04b_fit_brms_parameter_recovery_workers.R", "Fit BRMS parameter recovery simulation with workers"),
+    c("si04c", "scripts/simulation/si04c_collect_brms_parameter_recovery.R", "Collect BRMS parameter recovery simulation"),
+    c("si05", "scripts/simulation/si05_lmer_temporal_dependence_run.R", "LMER temporal-dependence persistent-shock simulation"),
+    c("si06", "scripts/simulation/si06_lmer_temporal_dependence_report.R", "Report temporal-dependence mechanism simulation"),
+    c("di01", "scripts/diagnostics/di01_psis_reliability_gate.R", "Optional secondary PSIS reliability diagnostics"),
+    c("di07", "scripts/diagnostics/di07_section4_7_reviewer_package.R", "Assemble Section 4.7 reviewer evidence package"),
+    c("di08a", "scripts/diagnostics/di08a_plan_mcmc_sampler_calibration.R", "Plan diagnostic MCMC sampler calibration"),
+    c("di08b", "scripts/diagnostics/di08b_fit_mcmc_sampler_calibration_workers.R", "Fit diagnostic MCMC sampler calibration with workers"),
+    c("di08c", "scripts/diagnostics/di08c_collect_mcmc_sampler_calibration.R", "Collect diagnostic MCMC sampler calibration"),
+    c("di09", "scripts/diagnostics/di09_temporal_dependence_robustness.R", "Temporal-dependence robustness for row-minus-grouped Firm-RE premium")
+  )
+  row_lengths <- lengths(rows)
+  if (any(row_lengths != 3L)) {
+    stop("[BLOCKER] Pipeline index registry rows must each contain Order, Script, and Role. Bad rows: ",
+         paste(which(row_lengths != 3L), collapse = ", "))
+  }
+  matrix_rows <- do.call(rbind, rows)
+  data.frame(
+    Order = matrix_rows[, 1],
+    Script = matrix_rows[, 2],
+    Role = matrix_rows[, 3],
     stringsAsFactors = FALSE
   )
+}
+
+write_pipeline_index <- function() {
+  dir.create(method_design_root, recursive = TRUE, showWarnings = FALSE)
+  pipeline <- accrual_pipeline_index_registry()
+  lengths <- c(Order = length(pipeline$Order), Script = length(pipeline$Script), Role = length(pipeline$Role))
+  if (length(unique(lengths)) != 1L) {
+    stop("[BLOCKER] Pipeline index registry has mismatched field lengths: ",
+         paste(names(lengths), lengths, sep = "=", collapse = ", "))
+  }
+  if (any(is.na(pipeline$Order) | !nzchar(pipeline$Order)) ||
+      any(is.na(pipeline$Script) | !nzchar(pipeline$Script)) ||
+      any(is.na(pipeline$Role) | !nzchar(pipeline$Role))) {
+    stop("[BLOCKER] Pipeline index registry contains missing Order, Script, or Role values.")
+  }
+  pipeline$Active <- TRUE
   write.csv(pipeline, file.path(method_design_root, "pipeline_index.csv"), row.names = FALSE)
 
   readme_lines <- c(
@@ -1761,7 +1769,7 @@ write_pipeline_index <- function() {
     "",
     "Sensitivity scripts se01-se07 are prepared for full MCMC refits by prior scenario. Heavy MCMC is not run unless `ACCRUAL_DRY_RUN=FALSE` and the relevant script is launched intentionally.",
     "",
-    "Sampler protocol: Chapter 3 specifies 4 chains, 3000 iterations, 1000 warmup iterations, fixed seed 42, adapt_delta = 0.95, and max_treedepth = 12 for brms/Stan estimation. Baseline full-sample fits, exact K-fold refits, and sensitivity refits use those defaults unless explicitly overridden and recorded in manifests. FAST_MODE/smoke runs use 2 chains, 1000 iterations, and 500 warmup iterations and are excluded from primary inference.",
+    "Sampler protocol: Chapter 3 baseline brms/Stan estimation uses the centralized sampler profiles in `scripts/ma00_setup.R`, with fixed seed 42 unless explicitly overridden and recorded in manifests. FAST_MODE/smoke runs are excluded from primary inference.",
     "",
     "Execution configuration is centralized in `scripts/ma00_setup.R`: `accrual_base_seed()` and `accrual_seed()` enforce one canonical seed (`ACCRUAL_SEED`, default 42) across baseline, grouped exact K-fold, row exact K-fold, sensitivity, and simulation branches; `accrual_seed_for()` derives deterministic context-specific offsets from that same canonical seed; `set_accrual_seed()` is the only helper that calls base `set.seed()`; `accrual_sampler_config()` supplies sampler settings; `accrual_kfold_config()` supplies exact K-fold K/seed/sampler settings; and `main_model_ids_for_space()` supplies primary model IDs. Branch-specific seed env vars (`ACCRUAL_BASELINE_SEED`, `ACCRUAL_KFOLD_FIRM_SEED`, `ACCRUAL_ROW_KFOLD_SEED`, `ACCRUAL_SENS_SEED`, `ACCRUAL_SIM_SEED`) are deprecated and blocked if they differ from `ACCRUAL_SEED`. The helper writes `out/manifests/method_design/execution_config_registry.csv`.",
     "",
@@ -1769,7 +1777,7 @@ write_pipeline_index <- function() {
     "",
     "Primary model helpers return M01-M07 for ex-post and M01, M02, M03, M07, M09 for real-time/no-lookahead. M08/M10 remain secondary/robustness unless explicitly included through documented secondary flows, and M11/M12 remain excluded from active primary helpers.",
     "",
-    "`Rscript run.R` runs the `main` target by default. The main target includes grouped exact firm K-fold (`scripts/ma12_grouped_kfold_firm.R`) and row-level exact K-fold (`scripts/ma13_row_level_exact_kfold.R`) as adjacent primary RQ1 evidence steps, then constructs primary exact-KFoldW DA (`scripts/ma14_construct_exact_kfold_DA.R`), applies the finite-output gate (`scripts/ma15_audit_DA_finite_outputs.R`), runs validation on the primary exact row-KFold DA, the new-firm predictive integration reporting gate, and the corrected Chapter 3 manuscript export path `scripts/ma17_export_tables_figures.R`.",
+    "`Rscript run.R` runs the `main` target by default. The main target includes split grouped exact firm K-fold planning, worker fitting, and collection (`scripts/ma12a_plan_grouped_kfold_firm.R`, `scripts/ma12b_fit_grouped_kfold_firm_workers.R`, `scripts/ma12c_collect_grouped_kfold_firm_scores.R`) plus split row-level exact K-fold planning, worker fitting, and collection (`scripts/ma13a_plan_row_level_exact_kfold.R`, `scripts/ma13b_fit_row_level_exact_kfold_workers.R`, `scripts/ma13c_collect_row_level_exact_kfold_scores.R`) as adjacent primary RQ1 evidence steps. It then constructs primary exact-KFoldW DA (`scripts/ma14_construct_exact_kfold_DA.R`), applies the finite-output gate (`scripts/ma15_audit_DA_finite_outputs.R`), runs validation on the primary exact row-KFold DA, the new-firm predictive integration reporting gate, exact-KFold reclassification diagnostics, denominator/economic-validity diagnostics, and the corrected Chapter 3 manuscript export path `scripts/ma17_export_tables_figures.R`.",
     "",
     "`scripts/ma10_construct_psis_loo_DA.R` remains the PSIS/LOO secondary DA constructor, including secondary validation panels only. Scripts `ma12` and `ma13` write `LATEST_COMPLETED_RUN.txt` only for completed primary-eligible exact-refit runs, and script `ma14` uses those pins or explicit run-root environment variables instead of moving `LATEST_RUN.txt` for primary inference. `LATEST_RUN.txt` is operational only and should not be used as primary provenance. Scripts `ma12` and `ma13` write reviewer-grade input/output manifests with file size, mtime, MD5 hash, row counts where applicable, run-root fields, and completed-pin fields.",
     "",
@@ -1777,7 +1785,7 @@ write_pipeline_index <- function() {
     "",
     "`scripts/ma15_audit_DA_finite_outputs.R` writes `table_DA_finite_gate_decision.csv` and is a hard RQ2/export gate. Script `di02` is a hard new-firm tail-suppression gate; if unverified Firm-RE out-of-firm posterior predictive tail quantities require suppression, export stops unless the explicit suppression override is set and the outputs are labelled non-primary. `Rscript run.R all --dry-run` de-duplicates `scripts/diagnostics/di02_new_firm_predictive_integration_audit.R` so the new-firm audit appears once.",
     "",
-    "LOFO (`scripts/robustness/ro01_lofo_stacking.R`) is an opt-in robustness branch, not a default main step. Sensitivity scripts se01-se07 and simulation scripts si00-si04 are opt-in branches. PSIS reliability (`scripts/diagnostics/di01_psis_reliability_gate.R`) is secondary diagnostics, not the primary RQ1 comparison.",
+    "LOFO (`scripts/robustness/ro01_lofo_stacking.R`) is an opt-in robustness branch, not a default main step. Sensitivity scripts se01-se07, simulation scripts si00-si06, diagnostic sampler calibration di08a-di08c, and temporal robustness di09 are opt-in/heavy branches. PSIS reliability (`scripts/diagnostics/di01_psis_reliability_gate.R`) is secondary diagnostics, not the primary RQ1 comparison.",
     "",
     paste0("The machine-readable pipeline index is written to `", file.path(method_design_root, "pipeline_index.csv"), "`.")
   )
