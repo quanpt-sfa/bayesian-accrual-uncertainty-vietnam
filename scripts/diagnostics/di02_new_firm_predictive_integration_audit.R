@@ -544,13 +544,13 @@ run_manifest <- data.frame(
   stringsAsFactors = FALSE
 )
 
-write.csv(source_audit, file.path(tables_dir, "table_new_firm_predictive_source_code_audit.csv"), row.names = FALSE)
-write.csv(artifact_inventory, file.path(tables_dir, "table_new_firm_predictive_artifact_inventory.csv"), row.names = FALSE)
-write.csv(quantity_inventory, file.path(tables_dir, "table_new_firm_predictive_quantity_inventory.csv"), row.names = FALSE)
-write.csv(audit, file.path(tables_dir, "table_new_firm_predictive_integration_audit.csv"), row.names = FALSE)
-write.csv(decision, file.path(tables_dir, "table_new_firm_predictive_integration_decision.csv"), row.names = FALSE)
-write.csv(input_manifest, file.path(logs_dir, "new_firm_predictive_input_manifest.csv"), row.names = FALSE)
-write.csv(run_manifest, file.path(logs_dir, "new_firm_predictive_run_manifest.csv"), row.names = FALSE)
+write_csv_safely(source_audit, file.path(tables_dir, "table_new_firm_predictive_source_code_audit.csv"), row.names = FALSE)
+write_csv_safely(artifact_inventory, file.path(tables_dir, "table_new_firm_predictive_artifact_inventory.csv"), row.names = FALSE)
+write_csv_safely(quantity_inventory, file.path(tables_dir, "table_new_firm_predictive_quantity_inventory.csv"), row.names = FALSE)
+write_csv_safely(audit, file.path(tables_dir, "table_new_firm_predictive_integration_audit.csv"), row.names = FALSE)
+write_csv_safely(decision, file.path(tables_dir, "table_new_firm_predictive_integration_decision.csv"), row.names = FALSE)
+write_csv_safely(input_manifest, file.path(logs_dir, "new_firm_predictive_input_manifest.csv"), row.names = FALSE)
+write_csv_safely(run_manifest, file.path(logs_dir, "new_firm_predictive_run_manifest.csv"), row.names = FALSE)
 writeLines(note, file.path(logs_dir, "new_firm_predictive_integration_reviewer_note.md"))
 writeLines(capture.output(sessionInfo()), file.path(logs_dir, "sessionInfo.txt"))
 

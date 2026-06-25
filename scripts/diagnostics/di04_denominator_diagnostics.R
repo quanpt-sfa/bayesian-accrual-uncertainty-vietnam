@@ -373,11 +373,11 @@ decision <- decision_summary %>%
   ) %>%
   select(all_of("diagnostic_decision"), everything())
 
-write.csv(distribution, distribution_path, row.names = FALSE, fileEncoding = "UTF-8")
-write.csv(comparison, comparison_path, row.names = FALSE, fileEncoding = "UTF-8")
-write.csv(capped_jaccard, capped_jaccard_path, row.names = FALSE, fileEncoding = "UTF-8")
-write.csv(z_est_vs_z_pred, z_est_vs_z_pred_path, row.names = FALSE, fileEncoding = "UTF-8")
-write.csv(decision, decision_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(distribution, distribution_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(comparison, comparison_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(capped_jaccard, capped_jaccard_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(z_est_vs_z_pred, z_est_vs_z_pred_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(decision, decision_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 note <- c(
   "# Denominator Diagnostics Reviewer Note",
@@ -433,7 +433,7 @@ data.frame(
   stringsAsFactors = FALSE
 )
 )
-write.csv(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 cat("[SUCCESS] di04 denominator diagnostics written under ", diagnostics_dir, "\n", sep = "")
 phase_end("di04", "Denominator diagnostics for exact-KFold DA")

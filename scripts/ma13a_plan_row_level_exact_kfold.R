@@ -61,7 +61,7 @@ for (i in seq_len(nrow(sample_rows))) {
     stringsAsFactors = FALSE
   )
 }
-write.csv(do.call(rbind, fold_parts), fold_assignment_path, row.names = FALSE)
+write_csv_safely(do.call(rbind, fold_parts), fold_assignment_path, row.names = FALSE)
 rows <- list()
 idx <- 0L
 for (i in seq_len(nrow(formulas))) {

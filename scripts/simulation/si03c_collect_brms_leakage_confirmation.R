@@ -17,6 +17,6 @@ replications <- do.call(rbind, lapply(manifest$result_path, function(path) {
 summary <- aggregate(elpd_proxy ~ model_type, replications, mean)
 names(summary)[names(summary) == "elpd_proxy"] <- "mean_elpd_proxy"
 summary$n_replications <- as.integer(table(replications$model_type)[summary$model_type])
-write.csv(replications, file.path(root, "tables", "table_brms_leakage_replications.csv"), row.names = FALSE)
-write.csv(summary, file.path(root, "tables", "table_brms_leakage_summary.csv"), row.names = FALSE)
+write_csv_safely(replications, file.path(root, "tables", "table_brms_leakage_replications.csv"), row.names = FALSE)
+write_csv_safely(summary, file.path(root, "tables", "table_brms_leakage_summary.csv"), row.names = FALSE)
 phase_end("si03c", "Collect BRMS leakage confirmation")

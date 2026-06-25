@@ -262,7 +262,7 @@ for (i in seq_len(nrow(grid))) {
 }
 
 replications <- bind_rows(replication_rows)
-write.csv(replications, replications_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(replications, replications_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 usable_pairs <- replications %>%
   filter(.data$fit_status == "SUCCESS") %>%
@@ -345,7 +345,7 @@ if (nrow(usable_pairs) > 0) {
     stringsAsFactors = FALSE
   )
 }
-write.csv(premium_summary, premium_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(premium_summary, premium_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 usable_n <- nrow(usable_pairs)
 decision_value <- "FAIL_TEMPORAL_ROBUSTNESS_UNAVAILABLE"
@@ -389,7 +389,7 @@ decision <- data.frame(
   grouped_validation_interpretation = "Grouped firm K-fold is out-of-firm prediction because held-out firms have no training observations.",
   stringsAsFactors = FALSE
 )
-write.csv(decision, decision_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(decision, decision_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 note <- c(
   "# Temporal Dependence Robustness Note",
@@ -460,7 +460,7 @@ data.frame(
   stringsAsFactors = FALSE
 )
 )
-write.csv(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 cat("[SUCCESS] Temporal-dependence robustness outputs written under ", temporal_root, "\n", sep = "")
 phase_end("di09", "Temporal-dependence robustness diagnostic")

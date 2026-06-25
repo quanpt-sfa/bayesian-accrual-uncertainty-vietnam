@@ -40,7 +40,7 @@ artifact_spec$destination_path <- vapply(artifact_spec$source_path, destination_
 missing <- artifact_spec$required & !artifact_spec$exists
 if (any(missing)) {
   manifest_path <- file.path(tables_dir, "reviewer_required_artifact_manifest.csv")
-  write.csv(artifact_spec, manifest_path, row.names = FALSE)
+  write_csv_safely(artifact_spec, manifest_path, row.names = FALSE)
   stop("[BLOCKER] Missing reviewer-required artifact(s): ",
        paste(artifact_spec$source_path[missing], collapse = "; "),
        ". Partial manifest written to: ", manifest_path)
@@ -77,8 +77,8 @@ summary_lines <- c(
   paste0("- Required artifacts present: ", sum(artifact_spec$exists), " / ", nrow(artifact_spec))
 )
 
-write.csv(checklist, file.path(tables_dir, "table_4_7_execution_checklist.csv"), row.names = FALSE)
-write.csv(artifact_spec, file.path(tables_dir, "reviewer_required_artifact_manifest.csv"), row.names = FALSE)
+write_csv_safely(checklist, file.path(tables_dir, "table_4_7_execution_checklist.csv"), row.names = FALSE)
+write_csv_safely(artifact_spec, file.path(tables_dir, "reviewer_required_artifact_manifest.csv"), row.names = FALSE)
 writeLines(summary_lines, file.path(notes_dir, "section4_7_results_summary.md"), useBytes = TRUE)
 
 cat("[SUCCESS] Reviewer package written under ", reviewer_root, "\n", sep = "")

@@ -182,7 +182,7 @@ collect_rows <- lapply(seq_len(nrow(fit_manifest)), function(i) {
   )
 })
 collect_manifest <- bind_rows(collect_rows)
-write.csv(collect_manifest, collect_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(collect_manifest, collect_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 fit_status_lookup <- split(fit_status, fit_status$task_key)
 
@@ -409,7 +409,7 @@ statuses <- accrual_run_task_pool(
   context = "ma07b baseline fit output extraction"
 )
 status_df <- bind_rows(statuses) %>% arrange(collect_task_index)
-write.csv(status_df, collect_status_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(status_df, collect_status_path, row.names = FALSE, fileEncoding = "UTF-8")
 accrual_task_status_blocker(status_df, required_col = "Required", context = "ma07b baseline fit output extraction")
 
 cat("[SUCCESS] ma07b extraction completed. Task status: ", collect_status_path, "\n", sep = "")

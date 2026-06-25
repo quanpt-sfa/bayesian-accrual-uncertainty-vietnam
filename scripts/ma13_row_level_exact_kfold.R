@@ -129,7 +129,7 @@ write_input_file_manifest <- function() {
     Git_Commit = git_commit_or_na(),
     stringsAsFactors = FALSE
   )
-  write.csv(man, file.path(logs_dir, "row_exact_kfold_input_file_manifest.csv"), row.names = FALSE)
+  write_csv_safely(man, file.path(logs_dir, "row_exact_kfold_input_file_manifest.csv"), row.names = FALSE)
 }
 
 write_output_file_manifest <- function(final_status = NA_character_) {
@@ -175,7 +175,7 @@ write_output_file_manifest <- function(final_status = NA_character_) {
     Git_Commit = git_commit_or_na(),
     stringsAsFactors = FALSE
   )
-  write.csv(man, file.path(logs_dir, "row_exact_kfold_output_file_manifest.csv"), row.names = FALSE)
+  write_csv_safely(man, file.path(logs_dir, "row_exact_kfold_output_file_manifest.csv"), row.names = FALSE)
 }
 
 standardize_fold_data <- function(train_df, test_df) {
@@ -382,9 +382,9 @@ planned_tasks <- do.call(rbind, lapply(seq_len(nrow(eligible)), function(i) {
   }))
 }))
 
-write.csv(fold_assignment, file.path(tables_dir, "table_winsor_row_exact_kfold_fold_assignment.csv"), row.names = FALSE)
-write.csv(fold_balance, file.path(tables_dir, "table_winsor_row_exact_kfold_balance.csv"), row.names = FALSE)
-write.csv(planned_tasks, file.path(tables_dir, "table_winsor_row_exact_kfold_planned_tasks.csv"), row.names = FALSE)
+write_csv_safely(fold_assignment, file.path(tables_dir, "table_winsor_row_exact_kfold_fold_assignment.csv"), row.names = FALSE)
+write_csv_safely(fold_balance, file.path(tables_dir, "table_winsor_row_exact_kfold_balance.csv"), row.names = FALSE)
+write_csv_safely(planned_tasks, file.path(tables_dir, "table_winsor_row_exact_kfold_planned_tasks.csv"), row.names = FALSE)
 write_input_file_manifest()
 
 write_manifest <- function(status, extra_note = NA_character_) {
@@ -443,8 +443,8 @@ write_manifest <- function(status, extra_note = NA_character_) {
     N_RealTime_Obs = nrow(df_rt),
     stringsAsFactors = FALSE
   )
-  write.csv(manifest, file.path(tables_dir, "row_exact_kfold_run_manifest.csv"), row.names = FALSE)
-  write.csv(manifest, file.path(logs_dir, "row_exact_kfold_run_manifest.csv"), row.names = FALSE)
+  write_csv_safely(manifest, file.path(tables_dir, "row_exact_kfold_run_manifest.csv"), row.names = FALSE)
+  write_csv_safely(manifest, file.path(logs_dir, "row_exact_kfold_run_manifest.csv"), row.names = FALSE)
 }
 
 write_reviewer_note <- function(status) {
@@ -717,9 +717,9 @@ fold_diagnostics <- bind_rows(lapply(results, `[[`, "fold_diag"))
 standardization_audit <- bind_rows(lapply(results, `[[`, "standardization_audit"))
 obs_scores <- bind_rows(lapply(results, `[[`, "obs_scores"))
 
-write.csv(fold_diagnostics, file.path(tables_dir, "table_winsor_row_exact_kfold_refit_diagnostics.csv"), row.names = FALSE)
-write.csv(standardization_audit, file.path(tables_dir, "table_winsor_row_exact_kfold_train_standardization_audit.csv"), row.names = FALSE)
-write.csv(obs_scores, file.path(tables_dir, "table_winsor_row_exact_kfold_observation_scores.csv"), row.names = FALSE)
+write_csv_safely(fold_diagnostics, file.path(tables_dir, "table_winsor_row_exact_kfold_refit_diagnostics.csv"), row.names = FALSE)
+write_csv_safely(standardization_audit, file.path(tables_dir, "table_winsor_row_exact_kfold_train_standardization_audit.csv"), row.names = FALSE)
+write_csv_safely(obs_scores, file.path(tables_dir, "table_winsor_row_exact_kfold_observation_scores.csv"), row.names = FALSE)
 
 model_scores <- if (nrow(obs_scores) > 0) {
   obs_scores %>%
@@ -776,7 +776,7 @@ model_scores <- if (nrow(obs_scores) > 0) {
 } else {
   data.frame()
 }
-write.csv(model_scores, file.path(tables_dir, "table_winsor_row_exact_kfold_model_scores.csv"), row.names = FALSE)
+write_csv_safely(model_scores, file.path(tables_dir, "table_winsor_row_exact_kfold_model_scores.csv"), row.names = FALSE)
 
 build_row_weights <- function(target_space) {
   included <- model_scores %>%
@@ -828,8 +828,8 @@ build_row_weights <- function(target_space) {
 
 weights_ep <- build_row_weights("ex_post")
 weights_rt <- build_row_weights("real_time")
-write.csv(weights_ep, file.path(tables_dir, "table_winsor_row_exact_kfold_weights_ex_post.csv"), row.names = FALSE)
-write.csv(weights_rt, file.path(tables_dir, "table_winsor_row_exact_kfold_weights_no_lookahead.csv"), row.names = FALSE)
+write_csv_safely(weights_ep, file.path(tables_dir, "table_winsor_row_exact_kfold_weights_ex_post.csv"), row.names = FALSE)
+write_csv_safely(weights_rt, file.path(tables_dir, "table_winsor_row_exact_kfold_weights_no_lookahead.csv"), row.names = FALSE)
 
 read_firm_kfold_weight <- function(file_name) {
   latest_path <- input_paths[["firm_kfold_latest"]]
@@ -869,7 +869,7 @@ weight_comparison <- full_join(row_weights, firm_weights,
     firmRE_family_indicator = family_indicator(heterogeneity_variant)
   ) %>%
   arrange(target_space, row_exact_rank, firm_grouped_rank)
-write.csv(weight_comparison, file.path(tables_dir, "table_winsor_exact_kfold_weight_comparison_row_vs_firm.csv"), row.names = FALSE)
+write_csv_safely(weight_comparison, file.path(tables_dir, "table_winsor_exact_kfold_weight_comparison_row_vs_firm.csv"), row.names = FALSE)
 
 family_comparison <- weight_comparison %>%
   group_by(target_space, firmRE_family_indicator) %>%
@@ -880,7 +880,7 @@ family_comparison <- weight_comparison %>%
     .groups = "drop"
   ) %>%
   arrange(target_space, firmRE_family_indicator)
-write.csv(family_comparison, file.path(tables_dir, "table_winsor_exact_kfold_family_weight_comparison_row_vs_firm.csv"), row.names = FALSE)
+write_csv_safely(family_comparison, file.path(tables_dir, "table_winsor_exact_kfold_family_weight_comparison_row_vs_firm.csv"), row.names = FALSE)
 
 primary_no_lookahead_model_ids <- main_model_ids_for_space("real_time")
 explicit_full_primary_filters <- length(target_space_filter) == 1 &&

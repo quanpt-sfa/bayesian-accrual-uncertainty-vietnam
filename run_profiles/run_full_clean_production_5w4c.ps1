@@ -249,6 +249,7 @@ try {
     Invoke-RscriptChecked -Context "test_split_fit_collect_contract_static.R" -Arguments @("tests/test_split_fit_collect_contract_static.R")
     Invoke-RscriptChecked -Context "test_run_dry_plan_split_stages_static.R" -Arguments @("tests/test_run_dry_plan_split_stages_static.R")
     Invoke-RscriptChecked -Context "test_ma10_safe_csv_and_profile_failfast_static.R" -Arguments @("tests/test_ma10_safe_csv_and_profile_failfast_static.R")
+    Invoke-RscriptChecked -Context "test_repo_wide_csv_writer_static.R" -Arguments @("tests/test_repo_wide_csv_writer_static.R")
 
     if (Test-Path "tests/test_gitignore_artifact_hygiene_static.R") {
         Invoke-RscriptChecked -Context "test_gitignore_artifact_hygiene_static.R" -Arguments @("tests/test_gitignore_artifact_hygiene_static.R")

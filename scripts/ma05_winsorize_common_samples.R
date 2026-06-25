@@ -152,7 +152,7 @@ for (i in seq_len(nrow(sample_specs))) {
 
   df_after$winsorization_1_99_applied <- TRUE
   df_after$winsorization_scope <- "sample_specific_continuous_variables"
-  write.csv(df_after, output_path, row.names = FALSE)
+  write_csv_safely(df_after, output_path, row.names = FALSE)
 
   n_after <- nrow(df_after)
   message("Rows after winsorization:  ", n_after)
@@ -164,13 +164,13 @@ desc_df <- do.call(rbind, desc_rows)
 cutoff_df <- do.call(rbind, cutoff_rows)
 sd_df <- do.call(rbind, sd_rows)
 
-write.csv(desc_df, file.path(winsor_root, "tables", "table_winsor_before_after_descriptives.csv"), row.names = FALSE)
-write.csv(cutoff_df, file.path(winsor_root, "tables", "table_winsor_cutoffs.csv"), row.names = FALSE)
-write.csv(sd_df, file.path(winsor_root, "tables", "table_winsor_sd_shrinkage.csv"), row.names = FALSE)
+write_csv_safely(desc_df, file.path(winsor_root, "tables", "table_winsor_before_after_descriptives.csv"), row.names = FALSE)
+write_csv_safely(cutoff_df, file.path(winsor_root, "tables", "table_winsor_cutoffs.csv"), row.names = FALSE)
+write_csv_safely(sd_df, file.path(winsor_root, "tables", "table_winsor_sd_shrinkage.csv"), row.names = FALSE)
 
 appendix_df <- desc_df[desc_df$Variable %in% appendix1_vars, ]
 appendix_df <- appendix_df[order(appendix_df$Sample, match(appendix_df$Variable, appendix1_vars)), ]
-write.csv(appendix_df, file.path(winsor_root, "tables", "table_winsor_appendix1_descriptives_corrected.csv"), row.names = FALSE)
+write_csv_safely(appendix_df, file.path(winsor_root, "tables", "table_winsor_appendix1_descriptives_corrected.csv"), row.names = FALSE)
 
 sample_summary <- do.call(rbind, lapply(seq_len(nrow(sample_specs)), function(i) {
   spec <- sample_specs[i, ]
@@ -192,7 +192,7 @@ sample_summary <- do.call(rbind, lapply(seq_len(nrow(sample_specs)), function(i)
     stringsAsFactors = FALSE
   )
 }))
-write.csv(sample_summary, file.path(winsor_root, "tables", "table_winsor_sample_summary.csv"), row.names = FALSE)
+write_csv_safely(sample_summary, file.path(winsor_root, "tables", "table_winsor_sample_summary.csv"), row.names = FALSE)
 
 tail_audit_rows <- list()
 for (i in which(sample_specs$Sample_Group == "secondary_operating_cycle")) {
@@ -226,7 +226,7 @@ for (i in which(sample_specs$Sample_Group == "secondary_operating_cycle")) {
     )
   }
 }
-write.csv(do.call(rbind, tail_audit_rows), file.path(winsor_root, "tables", "table_operating_cycle_tail_audit_winsor.csv"), row.names = FALSE)
+write_csv_safely(do.call(rbind, tail_audit_rows), file.path(winsor_root, "tables", "table_operating_cycle_tail_audit_winsor.csv"), row.names = FALSE)
 
 formulas_path <- file.path(baseline_root, "tables", "table_named_model_formulas.csv")
 registry_path <- file.path(baseline_root, "tables", "table_model_registry.csv")
@@ -245,7 +245,7 @@ if (any(!grepl("^TA_scaled\\s*~", formulas_df$brms_Formula))) {
   stop("[BLOCKER] Non-TA_scaled dependent variable detected in winsor formula table.")
 }
 
-write.csv(formulas_df, file.path(winsor_root, "tables", "table_named_model_formulas_winsor.csv"), row.names = FALSE)
+write_csv_safely(formulas_df, file.path(winsor_root, "tables", "table_named_model_formulas_winsor.csv"), row.names = FALSE)
 
 registry_df <- read.csv(registry_path, stringsAsFactors = FALSE)
 for (col in colnames(registry_df)) {
@@ -255,7 +255,7 @@ for (col in colnames(registry_df)) {
     registry_df[[col]] <- gsub("Real-time No-lead", "No-look-ahead feature set", registry_df[[col]])
   }
 }
-write.csv(registry_df, file.path(winsor_root, "tables", "table_model_registry_winsor.csv"), row.names = FALSE)
+write_csv_safely(registry_df, file.path(winsor_root, "tables", "table_model_registry_winsor.csv"), row.names = FALSE)
 
 notes <- c(
   notes,

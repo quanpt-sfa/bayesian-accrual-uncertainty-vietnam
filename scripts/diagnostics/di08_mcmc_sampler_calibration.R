@@ -174,7 +174,7 @@ results <- if (file.exists(results_path)) {
 } else {
   empty_results()
 }
-write_results <- function() write.csv(results, results_path, row.names = FALSE)
+write_results <- function() write_csv_safely(results, results_path, row.names = FALSE)
 
 formulas_df <- read.csv(formulas_path, stringsAsFactors = FALSE, check.names = FALSE)
 gate_df <- read.csv(gate_path, stringsAsFactors = FALSE, check.names = FALSE)
@@ -233,7 +233,7 @@ for (target_key in calibration_targets) {
   preprocess_audit_rows[[length(preprocess_audit_rows) + 1]] <- audit
 }
 preprocess_audit <- bind_rows(preprocess_audit_rows)
-write.csv(preprocess_audit, preprocess_audit_path, row.names = FALSE)
+write_csv_safely(preprocess_audit, preprocess_audit_path, row.names = FALSE)
 
 for (target_index in seq_along(calibration_targets)) {
   target_key <- calibration_targets[[target_index]]
@@ -398,7 +398,7 @@ recommend_one <- function(df) {
 }
 
 recommendations <- bind_rows(lapply(split(results, results$model_key), recommend_one))
-write.csv(recommendations, recommend_path, row.names = FALSE)
+write_csv_safely(recommendations, recommend_path, row.names = FALSE)
 
 common_profile <- if (nrow(recommendations) && all(recommendations$recommendation_status == "ACCEPTABLE_PROFILE_AVAILABLE")) {
   unique(recommendations$recommended_sampler_profile)
@@ -462,7 +462,7 @@ manifest <- data.frame(
   design_note = "No prior, formula, likelihood, winsorization, sample, target-space, or seed-search changes were made.",
   stringsAsFactors = FALSE
 )
-write.csv(manifest, manifest_path, row.names = FALSE)
+write_csv_safely(manifest, manifest_path, row.names = FALSE)
 
 note <- c(
   "# di08 MCMC Sampler Calibration Note",

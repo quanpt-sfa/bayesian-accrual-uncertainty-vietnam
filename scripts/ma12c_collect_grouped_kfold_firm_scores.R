@@ -42,8 +42,8 @@ obs_scores <- bind_rows(lapply(results, `[[`, "obs_scores"))
 write_dual_csv <- function(x, file_name) {
   run_path <- file.path(tables_dir, file_name)
   compat_path <- file.path(compat_tables_dir, file_name)
-  write.csv(x, run_path, row.names = FALSE, fileEncoding = "UTF-8")
-  write.csv(x, compat_path, row.names = FALSE, fileEncoding = "UTF-8")
+  write_csv_safely(x, run_path, row.names = FALSE, fileEncoding = "UTF-8")
+  write_csv_safely(x, compat_path, row.names = FALSE, fileEncoding = "UTF-8")
   invisible(run_path)
 }
 
@@ -203,7 +203,7 @@ manifest_row <- data.frame(
   Status = if (all_required_success) "COMPLETED" else "FAILED",
   stringsAsFactors = FALSE
 )
-write.csv(manifest_row, file.path(logs_dir, "run_config_manifest.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(manifest_row, file.path(logs_dir, "run_config_manifest.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 writeLines(run_root, file.path(base_root, "LATEST_RUN.txt"))
 if (pin_eligible) writeLines(run_root, file.path(base_root, "LATEST_COMPLETED_RUN.txt"))
 

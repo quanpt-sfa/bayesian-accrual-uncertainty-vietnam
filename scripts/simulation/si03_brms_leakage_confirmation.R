@@ -398,13 +398,13 @@ for (i in seq_len(nrow(grid))) {
                      chains, iter, warmup, e)
     }
   )
-  write.csv(dplyr::bind_rows(out[seq_len(i)]), rep_path, row.names = FALSE)
+  write_csv_safely(dplyr::bind_rows(out[seq_len(i)]), rep_path, row.names = FALSE)
 }
 
 results <- dplyr::bind_rows(out)
-write.csv(results, rep_path, row.names = FALSE)
+write_csv_safely(results, rep_path, row.names = FALSE)
 summary_df <- summarise_brms_leakage(results)
-write.csv(summary_df, sum_path, row.names = FALSE)
+write_csv_safely(summary_df, sum_path, row.names = FALSE)
 writeLines(capture.output(sessionInfo()), file.path(logs_dir, "sessionInfo.txt"))
 
 manifest <- data.frame(
@@ -436,7 +436,7 @@ manifest <- data.frame(
   failed_replications = sum(!(is.na(results$error) | results$error == "")),
   stringsAsFactors = FALSE
 )
-write.csv(manifest, manifest_path, row.names = FALSE)
+write_csv_safely(manifest, manifest_path, row.names = FALSE)
 
 cat("\n[SUCCESS] Bayesian MCMC leakage confirmation completed.\n")
 cat("Results:", rep_path, "\n")

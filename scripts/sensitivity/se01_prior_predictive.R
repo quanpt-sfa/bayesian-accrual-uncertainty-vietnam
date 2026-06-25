@@ -307,7 +307,7 @@ for (sidx in seq_len(nrow(scenarios))) {
 
 sens_tables <- file.path(sensitivity_root(), "tables")
 task_manifest <- build_se01_task_manifest(scenarios, eligible_formulas)
-write.csv(task_manifest, file.path(sens_tables, "table_se01_prior_predictive_task_manifest.csv"), row.names = FALSE)
+write_csv_safely(task_manifest, file.path(sens_tables, "table_se01_prior_predictive_task_manifest.csv"), row.names = FALSE)
 task_list <- lapply(seq_len(nrow(task_manifest)), function(i) as.list(task_manifest[i, ]))
 task_results <- accrual_run_task_pool(
   tasks = task_list,
@@ -319,7 +319,7 @@ task_results <- accrual_run_task_pool(
 )
 
 status_df <- bind_rows(lapply(task_results, `[[`, "status")) %>% arrange(task_index)
-write.csv(status_df, file.path(sens_tables, "table_se01_prior_predictive_task_status.csv"), row.names = FALSE)
+write_csv_safely(status_df, file.path(sens_tables, "table_se01_prior_predictive_task_status.csv"), row.names = FALSE)
 accrual_task_status_blocker(status_df, required_col = "Required", context = "se01 sensitivity prior predictive")
 
 summary_df <- bind_rows(lapply(task_results, `[[`, "row")) %>%
@@ -331,7 +331,7 @@ for (sidx in seq_len(nrow(scenarios))) {
   scenario <- sc$Scenario
   scenario_root <- sensitivity_root(scenario)
   sc_rows <- summary_df %>% filter(scenario == !!scenario)
-  write.csv(sc_rows, file.path(scenario_root, "prior_predictive", paste0("table_sensitivity_prior_predictive_", scenario, ".csv")), row.names = FALSE)
+  write_csv_safely(sc_rows, file.path(scenario_root, "prior_predictive", paste0("table_sensitivity_prior_predictive_", scenario, ".csv")), row.names = FALSE)
 
   gate_status <- if (dry_run) {
     "DRY_RUN_NOT_EVALUATED"
@@ -356,8 +356,8 @@ for (sidx in seq_len(nrow(scenarios))) {
 }
 
 gate_df <- bind_rows(gate_rows)
-write.csv(summary_df, file.path(sens_tables, "sensitivity_prior_predictive_summary.csv"), row.names = FALSE)
-write.csv(gate_df, file.path(sens_tables, "sensitivity_prior_predictive_gate.csv"), row.names = FALSE)
+write_csv_safely(summary_df, file.path(sens_tables, "sensitivity_prior_predictive_summary.csv"), row.names = FALSE)
+write_csv_safely(gate_df, file.path(sens_tables, "sensitivity_prior_predictive_gate.csv"), row.names = FALSE)
 
 writeLines(c(
   "Sensitivity prior predictive gate",

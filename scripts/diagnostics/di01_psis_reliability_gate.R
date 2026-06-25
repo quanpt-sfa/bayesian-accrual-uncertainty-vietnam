@@ -279,11 +279,11 @@ run_manifest <- data.frame(
   stringsAsFactors = FALSE
 )
 
-write.csv(gate, file.path(tables_dir, "table_psis_reliability_gate.csv"), row.names = FALSE)
-write.csv(summary_gate, file.path(tables_dir, "table_psis_reliability_summary.csv"), row.names = FALSE)
-write.csv(input_manifest, file.path(tables_dir, "psis_reliability_gate_input_manifest.csv"), row.names = FALSE)
-write.csv(run_manifest, file.path(tables_dir, "psis_reliability_gate_manifest.csv"), row.names = FALSE)
-write.csv(run_manifest, file.path(logs_dir, "psis_reliability_gate_manifest.csv"), row.names = FALSE)
+write_csv_safely(gate, file.path(tables_dir, "table_psis_reliability_gate.csv"), row.names = FALSE)
+write_csv_safely(summary_gate, file.path(tables_dir, "table_psis_reliability_summary.csv"), row.names = FALSE)
+write_csv_safely(input_manifest, file.path(tables_dir, "psis_reliability_gate_input_manifest.csv"), row.names = FALSE)
+write_csv_safely(run_manifest, file.path(tables_dir, "psis_reliability_gate_manifest.csv"), row.names = FALSE)
+write_csv_safely(run_manifest, file.path(logs_dir, "psis_reliability_gate_manifest.csv"), row.names = FALSE)
 
 note <- c(
   "# PSIS reliability gate reviewer note",

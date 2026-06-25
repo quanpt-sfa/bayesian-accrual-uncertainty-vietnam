@@ -164,11 +164,11 @@ for (i in seq_len(nrow(grid))) {
       false_normalization_indicator = NA_integer_, error = conditionMessage(e)
     )
   )
-  if (i %% 10 == 0 || i == nrow(grid)) write.csv(dplyr::bind_rows(out[seq_len(i)]), rep_path, row.names = FALSE)
+  if (i %% 10 == 0 || i == nrow(grid)) write_csv_safely(dplyr::bind_rows(out[seq_len(i)]), rep_path, row.names = FALSE)
 }
 
 results <- dplyr::bind_rows(out)
-write.csv(results, rep_path, row.names = FALSE)
+write_csv_safely(results, rep_path, row.names = FALSE)
 
 ok <- results[is.na(results$error) | results$error == "", , drop = FALSE]
 if (!nrow(ok)) stop("[BLOCKER] No successful temporal-dependence simulation replications.")
@@ -187,7 +187,7 @@ summary_df <- ok %>%
     false_normalization_rate = mean(.data$false_normalization_indicator, na.rm = TRUE),
     .groups = "drop"
   )
-write.csv(summary_df, sum_path, row.names = FALSE)
+write_csv_safely(summary_df, sum_path, row.names = FALSE)
 
 manifest <- data.frame(
   script = "scripts/simulation/si05_lmer_temporal_dependence_run.R",
@@ -210,7 +210,7 @@ manifest <- data.frame(
   output_root = root,
   stringsAsFactors = FALSE
 )
-write.csv(manifest, manifest_path, row.names = FALSE)
+write_csv_safely(manifest, manifest_path, row.names = FALSE)
 writeLines(capture.output(sessionInfo()), file.path(logs_dir, "sessionInfo.txt"))
 
 cat("[SUCCESS] Temporal-dependence simulation completed.\n")

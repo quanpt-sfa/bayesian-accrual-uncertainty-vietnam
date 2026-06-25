@@ -137,7 +137,7 @@ for (i in 1:nrow(feasible_models)) {
 
 # Export expanded formulas
 model_formulas_out <- baseline_table_path("table_named_model_formulas.csv")
-write.csv(model_formulas_expanded, model_formulas_out, row.names = FALSE)
+write_csv_safely(model_formulas_expanded, model_formulas_out, row.names = FALSE)
 message("Saved expanded named-model formulas to ", model_formulas_out)
 
 # Export updated model feasibility table
@@ -159,7 +159,7 @@ feasibility_overview <- registry %>%
       TRUE ~ "main_common"
     )
   )
-write.csv(feasibility_overview, baseline_table_path("table_model_feasibility.csv"), row.names = FALSE)
+write_csv_safely(feasibility_overview, baseline_table_path("table_model_feasibility.csv"), row.names = FALSE)
 
 # Export required variables
 model_req_vars <- registry %>%
@@ -170,7 +170,7 @@ model_req_vars <- registry %>%
     Main_Stack_Inclusion = Model_ID %in% c(main_ex_post_ids, main_no_lookahead_ids),
     Secondary_Robustness = Model_ID %in% c("M08", "M10")
   )
-write.csv(model_req_vars, baseline_table_path("table_model_required_variables.csv"), row.names = FALSE)
+write_csv_safely(model_req_vars, baseline_table_path("table_model_required_variables.csv"), row.names = FALSE)
 
 # 2. WRITE ma04 LOG NOTES
 phase2_notes <- "=============================================================================

@@ -75,7 +75,7 @@ gate_allows <- function(scenario) {
 
 write_metadata <- function(path, expected) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  write.csv(as.data.frame(expected, stringsAsFactors = FALSE), path, row.names = FALSE)
+  write_csv_safely(as.data.frame(expected, stringsAsFactors = FALSE), path, row.names = FALSE)
 }
 
 audit_summary_rows <- list()
@@ -351,13 +351,13 @@ diag_df <- bind_rows(diag_rows)
 audit_summary_df <- bind_rows(audit_summary_rows)
 
 tables_root <- file.path(sensitivity_root(), "tables")
-write.csv(plan_df, file.path(tables_root, "sensitivity_refit_plan.csv"), row.names = FALSE)
-write.csv(diag_df, file.path(tables_root, "sensitivity_refit_fit_status.csv"), row.names = FALSE)
-write.csv(audit_summary_df, file.path(tables_root, "sensitivity_refit_audit_summary.csv"), row.names = FALSE)
+write_csv_safely(plan_df, file.path(tables_root, "sensitivity_refit_plan.csv"), row.names = FALSE)
+write_csv_safely(diag_df, file.path(tables_root, "sensitivity_refit_fit_status.csv"), row.names = FALSE)
+write_csv_safely(audit_summary_df, file.path(tables_root, "sensitivity_refit_audit_summary.csv"), row.names = FALSE)
 
 # Make sure it is also written in output root tables
 dir.create(file.path(output_root, "tables"), recursive = TRUE, showWarnings = FALSE)
-write.csv(audit_summary_df, file.path(output_root, "tables", "sensitivity_refit_audit_summary.csv"), row.names = FALSE)
+write_csv_safely(audit_summary_df, file.path(output_root, "tables", "sensitivity_refit_audit_summary.csv"), row.names = FALSE)
 
 writeLines(c(
   "Sensitivity full-refit notes",

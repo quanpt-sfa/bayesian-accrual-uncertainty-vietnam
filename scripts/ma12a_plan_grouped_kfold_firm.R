@@ -59,7 +59,7 @@ fold_assignment$RNG_Context <- "grouped_kfold_fold_assignment"
 fold_assignment$Canonical_Seed <- accrual_base_seed()
 fold_assignment$Effective_Seed <- accrual_seed_for("grouped_kfold_fold_assignment")
 dir.create(dirname(fold_assignment_path), recursive = TRUE, showWarnings = FALSE)
-write.csv(fold_assignment, fold_assignment_path, row.names = FALSE)
+write_csv_safely(fold_assignment, fold_assignment_path, row.names = FALSE)
 
 rows <- list()
 idx <- 0L

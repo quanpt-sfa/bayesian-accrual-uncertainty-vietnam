@@ -135,7 +135,7 @@ fit_ma09b_task_worker <- function(task) {
     runtime_seconds = as.numeric(difftime(ended, started, units = "secs")),
     stringsAsFactors = FALSE
   )
-  write.csv(metadata, task$metadata_path, row.names = FALSE)
+  write_csv_safely(metadata, task$metadata_path, row.names = FALSE)
   data.frame(Task_Key = task$Task_Key, status = status, reason = reason, Required = task$Required,
              fit_path = task$fit_path, result_path = task$result_path,
              metadata_path = task$metadata_path, stringsAsFactors = FALSE)

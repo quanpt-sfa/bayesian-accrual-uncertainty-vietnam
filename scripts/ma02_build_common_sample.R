@@ -286,13 +286,13 @@ if (any(final_ex_post$year == 2015) || any(final_realtime$year == 2015)) {
 }
 
 # Export core samples
-write.csv(final_ex_post, baseline_table_path("final_common_ex_post_sample.csv"), row.names = FALSE)
-write.csv(final_realtime, baseline_table_path("final_common_realtime_sample.csv"), row.names = FALSE)
-write.csv(final_operating_cycle_ex_post, baseline_table_path("final_secondary_operating_cycle_ex_post_sample.csv"), row.names = FALSE)
-write.csv(final_operating_cycle_realtime, baseline_table_path("final_secondary_operating_cycle_realtime_sample.csv"), row.names = FALSE)
+write_csv_safely(final_ex_post, baseline_table_path("final_common_ex_post_sample.csv"), row.names = FALSE)
+write_csv_safely(final_realtime, baseline_table_path("final_common_realtime_sample.csv"), row.names = FALSE)
+write_csv_safely(final_operating_cycle_ex_post, baseline_table_path("final_secondary_operating_cycle_ex_post_sample.csv"), row.names = FALSE)
+write_csv_safely(final_operating_cycle_realtime, baseline_table_path("final_secondary_operating_cycle_realtime_sample.csv"), row.names = FALSE)
 # Export secondary samples for M08 robustness
-write.csv(final_ex_post_m08, baseline_table_path("final_M08_ex_post_subsample.csv"), row.names = FALSE)
-write.csv(final_realtime_m08, baseline_table_path("final_M08_realtime_subsample.csv"), row.names = FALSE)
+write_csv_safely(final_ex_post_m08, baseline_table_path("final_M08_ex_post_subsample.csv"), row.names = FALSE)
+write_csv_safely(final_realtime_m08, baseline_table_path("final_M08_realtime_subsample.csv"), row.names = FALSE)
 message("Saved core and secondary samples to: ", file.path(baseline_root, "tables"))
 
 # 5. DIAGNOSTIC: Model Specific Availability
@@ -321,7 +321,7 @@ for (i in 1:nrow(feasible_models)) {
   ))
 }
 
-write.csv(model_availability, baseline_table_path("table_missingness_by_model.csv"), row.names = FALSE)
+write_csv_safely(model_availability, baseline_table_path("table_missingness_by_model.csv"), row.names = FALSE)
 message("Saved model specific availability.")
 
 # Create sample construction table
@@ -330,7 +330,7 @@ sample_construction <- data.frame(
   N_Rows = c(n_raw_initial, n_raw_initial - n_drop_A_zero, n_raw_initial - n_drop_A_zero - n_drop_2015, nrow(final_ex_post), nrow(final_realtime), nrow(final_operating_cycle_ex_post), nrow(final_operating_cycle_realtime), nrow(final_ex_post_m08), nrow(final_realtime_m08)),
   stringsAsFactors = FALSE
 )
-write.csv(sample_construction, baseline_table_path("table_sample_construction.csv"), row.names = FALSE)
+write_csv_safely(sample_construction, baseline_table_path("table_sample_construction.csv"), row.names = FALSE)
 
 # Variable coverage summary (for ex-post core and optional variables)
 all_tracked_vars <- unique(c(core_ex_post_vars, "sd_REV", "sd_CFO"))
@@ -340,7 +340,7 @@ variable_coverage <- data.frame(
   pct_NonMissing = sapply(all_tracked_vars, function(v) round(sum(!is.na(df_vars[[v]])) / nrow(df_vars) * 100, 2)),
   stringsAsFactors = FALSE
 )
-write.csv(variable_coverage, baseline_table_path("table_variable_coverage.csv"), row.names = FALSE)
+write_csv_safely(variable_coverage, baseline_table_path("table_variable_coverage.csv"), row.names = FALSE)
 
 # Common sample summary statistics
 sample_summary_row <- function(df, sample_name, requires_oc, intended_use, notes) {
@@ -365,7 +365,7 @@ common_summary <- bind_rows(
   sample_summary_row(final_ex_post_m08, "M08 Ex-Post Subsample", FALSE, "M08 rolling-volatility robustness only", "Requires sd_REV and sd_CFO rolling variables."),
   sample_summary_row(final_realtime_m08, "M08 No-Lookahead Subsample", FALSE, "M08 rolling-volatility robustness only", "Requires sd_REV and sd_CFO rolling variables.")
 )
-write.csv(common_summary, baseline_table_path("table_common_sample_summary.csv"), row.names = FALSE)
+write_csv_safely(common_summary, baseline_table_path("table_common_sample_summary.csv"), row.names = FALSE)
 
 # 6. WRITE ma02 LOG NOTES
 phase1_notes <- sprintf("=============================================================================

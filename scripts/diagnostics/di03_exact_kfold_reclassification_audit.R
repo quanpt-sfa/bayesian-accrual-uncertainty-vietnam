@@ -622,11 +622,11 @@ note <- c(
   }
 )
 
-write.csv(jaccard_table, jaccard_path, row.names = FALSE)
-write.csv(sets_table, sets_path, row.names = FALSE)
-write.csv(tail_overlap, tail_overlap_path, row.names = FALSE)
-write.csv(join_coverage, join_coverage_path, row.names = FALSE)
-write.csv(decision, decision_path, row.names = FALSE)
+write_csv_safely(jaccard_table, jaccard_path, row.names = FALSE)
+write_csv_safely(sets_table, sets_path, row.names = FALSE)
+write_csv_safely(tail_overlap, tail_overlap_path, row.names = FALSE)
+write_csv_safely(join_coverage, join_coverage_path, row.names = FALSE)
+write_csv_safely(decision, decision_path, row.names = FALSE)
 writeLines(note, note_path)
 
 script_end_time <- Sys.time()
@@ -657,12 +657,12 @@ io_manifest <- data.frame(
   md5_hash = vapply(manifest_paths, file_hash_or_na, character(1)),
   stringsAsFactors = FALSE
 )
-write.csv(io_manifest, io_manifest_path, row.names = FALSE)
+write_csv_safely(io_manifest, io_manifest_path, row.names = FALSE)
 io_manifest$exists <- file.exists(manifest_paths)
 io_manifest$file_size <- vapply(manifest_paths, file_size_or_na, numeric(1))
 io_manifest$mtime <- vapply(manifest_paths, mtime_or_na, character(1))
 io_manifest$md5_hash <- vapply(manifest_paths, file_hash_or_na, character(1))
-write.csv(io_manifest, io_manifest_path, row.names = FALSE)
+write_csv_safely(io_manifest, io_manifest_path, row.names = FALSE)
 
 cat("\n[SUCCESS] Exact K-fold reclassification audit completed.\n")
 cat("Primary decision:", decision$primary_magnitude_decision[[1]], "\n")

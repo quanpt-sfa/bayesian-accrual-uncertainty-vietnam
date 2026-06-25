@@ -148,7 +148,7 @@ has_key_cell <- any(diagnostic_summary$T == 15L & abs(diagnostic_summary$sigma_f
 if (!has_key_cell) {
   stop("[BLOCKER] si04c diagnostic summary lacks required cell T=15, sigma_firm=0.3.")
 }
-write.csv(replications, file.path(root, "tables", "table_brms_parameter_recovery_replications.csv"), row.names = FALSE)
-write.csv(summary, file.path(root, "tables", "table_brms_parameter_recovery_summary.csv"), row.names = FALSE)
-write.csv(diagnostic_summary, file.path(root, "tables", "table_brms_parameter_recovery_diagnostic_summary.csv"), row.names = FALSE)
+write_csv_safely(replications, file.path(root, "tables", "table_brms_parameter_recovery_replications.csv"), row.names = FALSE)
+write_csv_safely(summary, file.path(root, "tables", "table_brms_parameter_recovery_summary.csv"), row.names = FALSE)
+write_csv_safely(diagnostic_summary, file.path(root, "tables", "table_brms_parameter_recovery_diagnostic_summary.csv"), row.names = FALSE)
 phase_end("si04c", "Collect BRMS parameter recovery")

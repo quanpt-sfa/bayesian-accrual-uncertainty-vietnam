@@ -166,9 +166,9 @@ detailed_df <- bind_rows(detailed_rows)
 summary_df <- bind_rows(summary_rows)
 flags_df <- bind_rows(flag_rows)
 
-write.csv(detailed_df, detail_path, row.names = FALSE)
-write.csv(summary_df, summary_path, row.names = FALSE)
-write.csv(flags_df, flag_path, row.names = FALSE)
+write_csv_safely(detailed_df, detail_path, row.names = FALSE)
+write_csv_safely(summary_df, summary_path, row.names = FALSE)
+write_csv_safely(flags_df, flag_path, row.names = FALSE)
 
 # Compile and save MCMC diagnostics gate
 gate_df <- summary_df %>%
@@ -209,7 +209,7 @@ gate_df <- summary_df %>%
   )
 
 gate_path <- file.path(output_root, "tables", "table_mcmc_diagnostics_gate_winsor.csv")
-write.csv(gate_df, gate_path, row.names = FALSE)
+write_csv_safely(gate_df, gate_path, row.names = FALSE)
 message("Saved MCMC diagnostics gate status to ", gate_path)
 
 if (nrow(detailed_df) > 0) {

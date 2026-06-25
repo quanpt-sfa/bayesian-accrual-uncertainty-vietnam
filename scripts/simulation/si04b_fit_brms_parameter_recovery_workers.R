@@ -307,7 +307,7 @@ fit_si04b_task_worker <- function(task) {
   status <- rec$status
   reason <- rec$reason
   ended <- Sys.time()
-  write.csv(data.frame(Task_Key = task$Task_Key, status = status, reason = reason,
+  write_csv_safely(data.frame(Task_Key = task$Task_Key, status = status, reason = reason,
                        RNG_Context = task$RNG_Context, Effective_Seed = task$Effective_Seed,
                        chains = task$chains, cores = task$cores, iter = task$iter, warmup = task$warmup,
                        adapt_delta = task$adapt_delta, max_treedepth = task$max_treedepth,

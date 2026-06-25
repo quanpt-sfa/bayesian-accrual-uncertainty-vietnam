@@ -70,7 +70,7 @@ fit_se02b_task_worker <- function(task) {
     status <- if (warning_count > 0L) "WARNING" else "SUCCESS"
   }
   ended <- Sys.time()
-  write.csv(data.frame(Task_Key = task$Task_Key, status = status, reason = reason, backend = "rstan",
+  write_csv_safely(data.frame(Task_Key = task$Task_Key, status = status, reason = reason, backend = "rstan",
                        Scenario = task$Scenario, Model_ID = task$Model_ID,
                        RNG_Context = task$RNG_Context, Effective_Seed = task$Effective_Seed,
                        chains = task$chains, cores = task$cores, iter = task$iter, warmup = task$warmup,

@@ -221,7 +221,7 @@ audit_row <- c(
 audit_df <- as.data.frame(audit_row, check.names = FALSE)
 audit_df$Secondary_OperatingCycle_Status <- secondary_operating_cycle_status
 audit_df$Secondary_Operating_Cycle_Status <- secondary_operating_cycle_status
-write.csv(audit_df, audit_table_path, row.names = FALSE)
+write_csv_safely(audit_df, audit_table_path, row.names = FALSE)
 
 top_extremes <- df_vars %>%
   dplyr::mutate(
@@ -231,7 +231,7 @@ top_extremes <- df_vars %>%
   dplyr::arrange(dplyr::desc(operating_cycle)) %>%
   dplyr::select(company, year, industry, REV, REC, COGS, INV, REC_over_REV, INV_over_COGS, operating_cycle, Notes) %>%
   utils::head(50)
-write.csv(top_extremes, top_extremes_path, row.names = FALSE)
+write_csv_safely(top_extremes, top_extremes_path, row.names = FALSE)
 
 old_compare_notes <- character()
 quarantine_path <- env_value("ACCRUAL_COGS_INV_QUARANTINE_PATH", "")

@@ -20,7 +20,7 @@ if (!file.exists(rep_path)) stop("[BLOCKER] Run scripts/simulation/si01_lmer_pil
 
 results <- read.csv(rep_path, stringsAsFactors = FALSE)
 summary_df <- summarise_leakage(results)
-write.csv(summary_df, file.path(tables_dir, "table_lmer_leakage_pilot_grid_summary.csv"), row.names = FALSE)
+write_csv_safely(summary_df, file.path(tables_dir, "table_lmer_leakage_pilot_grid_summary.csv"), row.names = FALSE)
 
 dec <- pilot_decision(summary_df, metric = "mean_weight_premium")
 
@@ -45,7 +45,7 @@ decision_df <- data.frame(
   high_minus_low = dec$high_minus_low,
   high_prob_positive = dec$high_prob_positive
 )
-write.csv(decision_df, file.path(tables_dir, "table_lmer_leakage_pilot_decision.csv"), row.names = FALSE)
+write_csv_safely(decision_df, file.path(tables_dir, "table_lmer_leakage_pilot_decision.csv"), row.names = FALSE)
 
 notes <- c(
   "# Lmer leakage pilot decision", "",

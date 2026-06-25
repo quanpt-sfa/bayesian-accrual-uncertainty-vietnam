@@ -31,7 +31,7 @@ for (nm in names(worker_scripts)) {
     "brms::brm(",
     "brms::log_lik(",
     "saveRDS(out, task$result_path)",
-    "write.csv(data.frame",
+    "write_csv_safely(data.frame",
     "fit_path = task$fit_path",
     "result_path = task$result_path",
     "accrual_assert_reusable_fit_metadata",
@@ -74,7 +74,7 @@ for (path in collector_scripts) {
       stop(path, " must remain a serial/shared-output collector; found heavy or parallel fragment: ", fragment)
     }
   }
-  for (fragment in c("accrual_task_status_blocker(", "readRDS(path)", "write.csv")) {
+  for (fragment in c("accrual_task_status_blocker(", "readRDS(path)", "write_csv_safely")) {
     if (!grepl(fragment, body, fixed = TRUE)) {
       stop(path, " missing collector validation/bind/write fragment: ", fragment)
     }

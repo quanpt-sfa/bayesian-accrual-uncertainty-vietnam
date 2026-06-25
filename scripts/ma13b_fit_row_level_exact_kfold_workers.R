@@ -124,7 +124,7 @@ fit_ma13b_task_worker <- function(task) {
   status <- result$status
   reason <- result$reason
   ended <- Sys.time()
-  write.csv(data.frame(Task_Key = task$Task_Key, status = status, reason = reason,
+  write_csv_safely(data.frame(Task_Key = task$Task_Key, status = status, reason = reason,
                        backend = if ("backend" %in% names(task)) task$backend else "rstan",
                        RNG_Context = task$RNG_Context, Effective_Seed = task$Effective_Seed,
                        chains = task$chains, cores = task$cores, iter = task$iter, warmup = task$warmup,

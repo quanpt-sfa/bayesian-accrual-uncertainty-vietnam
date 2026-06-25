@@ -28,8 +28,8 @@ audit_summary <- data.frame(
   fit_path = fit_status$fit_path,
   stringsAsFactors = FALSE
 )
-write.csv(plan, file.path(tables_dir, "sensitivity_refit_plan.csv"), row.names = FALSE)
-write.csv(fit_status, file.path(tables_dir, "sensitivity_refit_fit_status.csv"), row.names = FALSE)
-write.csv(audit_summary, file.path(tables_dir, "sensitivity_refit_audit_summary.csv"), row.names = FALSE)
+write_csv_safely(plan, file.path(tables_dir, "sensitivity_refit_plan.csv"), row.names = FALSE)
+write_csv_safely(fit_status, file.path(tables_dir, "sensitivity_refit_fit_status.csv"), row.names = FALSE)
+write_csv_safely(audit_summary, file.path(tables_dir, "sensitivity_refit_audit_summary.csv"), row.names = FALSE)
 message("se02c collected sensitivity task metadata and wrote shared outputs.")
 phase_end("se02c", "Collect prior-scenario outputs")

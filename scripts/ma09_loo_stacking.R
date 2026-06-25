@@ -61,7 +61,7 @@ exclusions_df <- joined_diag_gate %>%
   )
 
 exclusions_path <- file.path(output_root, "tables", "table_stacking_model_exclusions_winsor.csv")
-write.csv(exclusions_df, exclusions_path, row.names = FALSE)
+write_csv_safely(exclusions_df, exclusions_path, row.names = FALSE)
 message("Saved stacking model exclusions list to: ", exclusions_path)
 
 eligible_models <- joined_diag_gate %>%
@@ -297,7 +297,7 @@ for (i in seq_len(nrow(eligible_joined))) {
   gc()
 }
 
-write.csv(loo_comparison, loo_comp_path, row.names = FALSE)
+write_csv_safely(loo_comparison, loo_comp_path, row.names = FALSE)
 message("\nSaved winsor LOO comparison table to ", loo_comp_path)
 
 message("\n========= WINSOR STAGE 3: STACKING WEIGHTS =========")
@@ -387,8 +387,8 @@ w_rt <- run_space_stacking("real_time", expected_n_rt, c("M01", "M02", "M03", "M
 
 ep_weights_path <- file.path(output_root, "tables", "table_stacking_weights_ex_post_winsor_corrected.csv")
 rt_weights_path <- file.path(output_root, "tables", "table_stacking_weights_no_lookahead_winsor_corrected.csv")
-write.csv(w_ep, ep_weights_path, row.names = FALSE)
-write.csv(w_rt, rt_weights_path, row.names = FALSE)
+write_csv_safely(w_ep, ep_weights_path, row.names = FALSE)
+write_csv_safely(w_rt, rt_weights_path, row.names = FALSE)
 
 secondary_oc_scores <- loo_comparison %>%
   filter(Sample_Group == "secondary_operating_cycle") %>%
@@ -401,7 +401,7 @@ secondary_oc_scores <- loo_comparison %>%
     Output_Root = output_root,
     Notes = "M10 is secondary robustness only. Main-stack models were not rerun on the exact secondary operating-cycle sample in this script, so no comparable secondary stacking weights are computed here."
   )
-write.csv(secondary_oc_scores, file.path(winsor_root, "tables", "table_secondary_operating_cycle_model_scores.csv"), row.names = FALSE)
+write_csv_safely(secondary_oc_scores, file.path(winsor_root, "tables", "table_secondary_operating_cycle_model_scores.csv"), row.names = FALSE)
 
 write_skipped_stability <- function(reason, original_required, original_found, winsor_found, notes) {
   skipped_df <- data.frame(
@@ -418,7 +418,7 @@ write_skipped_stability <- function(reason, original_required, original_found, w
     Output_Root = output_root,
     stringsAsFactors = FALSE
   )
-  write.csv(
+  write_csv_safely(
     skipped_df,
     file.path(output_root, "tables", "table_weight_stability_original_vs_winsor_SKIPPED.csv"),
     row.names = FALSE
@@ -524,7 +524,7 @@ if (!compare_original_weights) {
     stability_note <- "Original/no-winsor comparison was requested but skipped because original files were missing."
   } else {
     stability_df <- bind_rows(make_stability(w_ep, "ex_post"), make_stability(w_rt, "real_time"))
-    write.csv(
+    write_csv_safely(
       stability_df,
       file.path(output_root, "tables", "table_weight_stability_original_vs_winsor.csv"),
       row.names = FALSE

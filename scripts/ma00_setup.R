@@ -599,22 +599,18 @@ safe_task_log_path <- function(root, task_key) {
   safe_task_artifact_path(root, task_key, ".log")
 }
 
-write_task_manifest <- function(path, tasks) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  write.csv(as.data.frame(tasks, stringsAsFactors = FALSE), path, row.names = FALSE)
-  invisible(path)
-}
-
-write_task_status <- function(path, status_rows) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  write.csv(as.data.frame(status_rows, stringsAsFactors = FALSE), path, row.names = FALSE)
-  invisible(path)
-}
-
 write_csv_safely <- function(x, path, row.names = FALSE, ...) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   write.csv(x, path, row.names = row.names, ...)
   invisible(path)
+}
+
+write_task_manifest <- function(path, tasks) {
+  write_csv_safely(as.data.frame(tasks, stringsAsFactors = FALSE), path, row.names = FALSE)
+}
+
+write_task_status <- function(path, status_rows) {
+  write_csv_safely(as.data.frame(status_rows, stringsAsFactors = FALSE), path, row.names = FALSE)
 }
 
 default_total_core_budget <- function() {
@@ -1341,7 +1337,7 @@ write_execution_config_registry <- function(path = file.path(method_design_root,
       sampler_rows("diagnostic_calibration", accrual_sampler_config("diagnostic_calibration"))
     )
   ))
-  write.csv(registry, path, row.names = FALSE)
+  write_csv_safely(registry, path, row.names = FALSE)
   invisible(path)
 }
 
@@ -1593,7 +1589,7 @@ default_prior_specification <- function() {
 write_prior_registry <- function(root = output_root) {
   ensure_analysis_dirs()
   out <- file.path(root, "tables", "table_prior_sets.csv")
-  write.csv(prior_registry(), out, row.names = FALSE)
+  write_csv_safely(prior_registry(), out, row.names = FALSE)
   out
 }
 
@@ -1745,7 +1741,7 @@ write_run_manifest <- function(path, scenario, prior_set_id, family, model_struc
     stringsAsFactors = FALSE
   )
   manifest <- cbind(manifest, rng_meta)
-  write.csv(manifest, path, row.names = FALSE)
+  write_csv_safely(manifest, path, row.names = FALSE)
   path
 }
 
@@ -1837,7 +1833,7 @@ write_pipeline_index <- function() {
     stop("[BLOCKER] Pipeline index registry contains missing Order, Script, or Role values.")
   }
   pipeline$Active <- TRUE
-  write.csv(pipeline, file.path(method_design_root, "pipeline_index.csv"), row.names = FALSE)
+  write_csv_safely(pipeline, file.path(method_design_root, "pipeline_index.csv"), row.names = FALSE)
 
   readme_lines <- c(
     "# accrual uncertainty pipeline index",
@@ -2198,7 +2194,7 @@ write_method_design_files <- function() {
     ),
     stringsAsFactors = FALSE
   )
-  write.csv(differences, file.path(design_root, "differences_from_AccForUncertaintyCode.csv"), row.names = FALSE)
+  write_csv_safely(differences, file.path(design_root, "differences_from_AccForUncertaintyCode.csv"), row.names = FALSE)
   writeLines(c(
     "This study adapts the Bayesian model-averaging framework of AccForUncertaintyCode to the Vietnamese listed-firm setting. It differs from the original implementation in sample construction, scaling, outlier handling, model space, posterior predictive abnormality classification, and panel-dependence robustness checks.",
     "",

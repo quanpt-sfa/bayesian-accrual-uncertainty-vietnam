@@ -77,7 +77,7 @@ metadata_state_file <- function(path, expected) {
 
 write_metadata_file <- function(path, expected) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  write.csv(as.data.frame(expected, stringsAsFactors = FALSE), path, row.names = FALSE)
+  write_csv_safely(as.data.frame(expected, stringsAsFactors = FALSE), path, row.names = FALSE)
 }
 
 run_varying_slope_models <- identical(model_structure, "breuer_varying_slopes")
@@ -195,7 +195,7 @@ build_task_manifest <- function(formulas) {
 task_manifest <- build_task_manifest(formulas_df)
 manifest_path <- file.path(phase_root, "tables", "table_ma07_fit_task_manifest.csv")
 status_path <- file.path(phase_root, "tables", "table_ma07_fit_task_status.csv")
-write.csv(task_manifest, manifest_path, row.names = FALSE)
+write_csv_safely(task_manifest, manifest_path, row.names = FALSE)
 
 fit_ma07a_task_worker <- function(task) {
   suppressPackageStartupMessages({
@@ -346,7 +346,7 @@ statuses <- accrual_run_task_pool(
 )
 
 status_df <- bind_rows(statuses) %>% arrange(task_index)
-write.csv(status_df, status_path, row.names = FALSE)
+write_csv_safely(status_df, status_path, row.names = FALSE)
 
 accrual_task_status_blocker(status_df, required_col = "Main_Stack_Inclusion", context = "ma07a baseline brms fit")
 

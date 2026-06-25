@@ -71,7 +71,7 @@ for (path in extraction_worker_scripts) {
   if (grepl("contract is in place", body, fixed = TRUE)) {
     stop(path, " still contains worker-contract placeholder prose.")
   }
-  for (fragment in c("accrual_run_task_pool(", "accrual_fit_worker_config(", "write.csv(status_df")) {
+  for (fragment in c("accrual_run_task_pool(", "accrual_fit_worker_config(", "write_csv_safely(status_df")) {
     if (!grepl(fragment, body, fixed = TRUE)) stop(path, " is not an extraction worker script; missing ", fragment)
   }
   for (fragment in c("readRDS(task$fit_path)", "summary(fit)", "loo::loo(fit)", "brms::posterior_epred(fit)", "brms::posterior_predict(fit)", "task_draw_path", "bundle_path")) {
@@ -83,7 +83,7 @@ for (path in extraction_worker_scripts) {
 
 for (path in c("scripts/ma12a_plan_grouped_kfold_firm.R", "scripts/ma13a_plan_row_level_exact_kfold.R")) {
   body <- txt(path)
-  for (fragment in c("Target_Sample", "Fold_Assignment_Path", "write.csv")) {
+  for (fragment in c("Target_Sample", "Fold_Assignment_Path", "write_csv_safely")) {
     if (!grepl(fragment, body, fixed = TRUE)) stop(path, " must plan fixed fold assignments and carry target samples; missing ", fragment)
   }
 }

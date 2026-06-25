@@ -259,11 +259,11 @@ decision <- decision_detail %>%
     )
   )
 
-write.csv(membership, membership_path, row.names = FALSE, fileEncoding = "UTF-8")
-write.csv(counts, counts_path, row.names = FALSE, fileEncoding = "UTF-8")
-write.csv(means, means_path, row.names = FALSE, fileEncoding = "UTF-8")
-write.csv(validity, validity_path, row.names = FALSE, fileEncoding = "UTF-8")
-write.csv(decision, decision_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(membership, membership_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(counts, counts_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(means, means_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(validity, validity_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(decision, decision_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 note <- c(
   "# Economic Validity Top-Tail Reviewer Note",
@@ -319,7 +319,7 @@ data.frame(
   stringsAsFactors = FALSE
 )
 )
-write.csv(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(io_manifest, io_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 cat("[SUCCESS] di05 economic-validity outputs written under ", diagnostics_dir, "\n", sep = "")
 phase_end("di05", "Economic-validity diagnostics for exact-KFold top-tail groups")

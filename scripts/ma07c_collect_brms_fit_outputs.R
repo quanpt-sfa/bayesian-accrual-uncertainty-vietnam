@@ -65,11 +65,6 @@ empty_hard_gate_failures <- function() {
   )
 }
 
-write_csv_utf8 <- function(x, path) {
-  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-  write.csv(x, path, row.names = FALSE, fileEncoding = "UTF-8")
-}
-
 formulas_path <- file.path(phase_root, "tables", "table_named_model_formulas_winsor.csv")
 if (!file.exists(formulas_path)) formulas_path <- file.path(input_winsor_root, "tables", "table_named_model_formulas_winsor.csv")
 if (!file.exists(formulas_path)) stop("[BLOCKER] Missing formula table for ma07c collection: ", formulas_path)
@@ -78,9 +73,9 @@ formula_out_cols <- intersect(
     "Target_Sample", "brms_Formula", "Main_Stack_Inclusion", "Secondary_Robustness", "Reason"),
   names(fit_manifest)
 )
-write_csv_utf8(fit_manifest[, formula_out_cols, drop = FALSE], file.path(phase_root, "tables", "table_named_model_formulas_winsor.csv"))
+write_csv_safely(fit_manifest[, formula_out_cols, drop = FALSE], file.path(phase_root, "tables", "table_named_model_formulas_winsor.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 if (run_varying_slope_models) {
-  write_csv_utf8(fit_manifest[, formula_out_cols, drop = FALSE], file.path(phase_root, "tables", "table_varyslopes_model_registry.csv"))
+  write_csv_safely(fit_manifest[, formula_out_cols, drop = FALSE], file.path(phase_root, "tables", "table_varyslopes_model_registry.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 }
 
 diag_path <- if (run_varying_slope_models) {
@@ -146,10 +141,10 @@ if (nrow(fail_df)) {
 }
 coeff_df <- if (length(coeff_rows)) bind_rows(coeff_rows) else data.frame()
 
-write_csv_utf8(diagnostics_df, diag_path)
-write_csv_utf8(audit_df, ma07_artifact_audit_path)
-write_csv_utf8(fail_df, ma07_hard_gate_failures_path)
-write_csv_utf8(coeff_df, coeff_path)
+write_csv_safely(diagnostics_df, diag_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(audit_df, ma07_artifact_audit_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(fail_df, ma07_hard_gate_failures_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(coeff_df, coeff_path, row.names = FALSE, fileEncoding = "UTF-8")
 
 if (nrow(fail_df) > 0) {
   failed_main_keys <- unique(fail_df$recommended_remediation_key[truthy(fail_df$Main_Stack_Inclusion)])
@@ -212,7 +207,7 @@ if (run_varying_slope_models) {
     Output_Root = phase_root,
     stringsAsFactors = FALSE
   )
-  write_csv_utf8(empty_weights, file.path(phase_root, "tables", "table_varyslopes_loo_weights.csv"))
+  write_csv_safely(empty_weights, file.path(phase_root, "tables", "table_varyslopes_loo_weights.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 }
 
 if (nrow(fail_df) > 0 && any(truthy(fail_df$Main_Stack_Inclusion))) {

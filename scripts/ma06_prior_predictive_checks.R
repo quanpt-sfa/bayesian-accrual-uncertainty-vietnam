@@ -30,7 +30,7 @@ prior_notes_path <- file.path(output_root, "logs", "phase3a_prior_predictive_not
 prior_method_note_path <- file.path(output_root, "logs", "method_note_scale_aware_student_priors.txt")
 
 prior_spec <- default_prior_specification()
-write.csv(prior_spec, prior_spec_path, row.names = FALSE)
+write_csv_safely(prior_spec, prior_spec_path, row.names = FALSE)
 
 formulas_df <- read.csv(formulas_path, stringsAsFactors = FALSE)
 representative_ids <- c("M01", "M06", "M07", "M09")
@@ -302,7 +302,7 @@ notes <- c(
 )
 
 task_manifest <- build_prior_task_manifest(representative_rows)
-write.csv(task_manifest, prior_task_manifest_path, row.names = FALSE)
+write_csv_safely(task_manifest, prior_task_manifest_path, row.names = FALSE)
 task_list <- lapply(seq_len(nrow(task_manifest)), function(i) as.list(task_manifest[i, ]))
 task_results <- accrual_run_task_pool(
   tasks = task_list,
@@ -314,7 +314,7 @@ task_results <- accrual_run_task_pool(
 )
 
 status_df <- bind_rows(lapply(task_results, `[[`, "status")) %>% arrange(task_index)
-write.csv(status_df, prior_task_status_path, row.names = FALSE)
+write_csv_safely(status_df, prior_task_status_path, row.names = FALSE)
 accrual_task_status_blocker(status_df, required_col = "Required", context = "ma06 prior predictive")
 
 summary_df <- bind_rows(lapply(task_results, `[[`, "summary")) %>%
@@ -347,8 +347,8 @@ for (result in task_results[order(vapply(task_results, function(x) x$status$task
   )
 }
 
-write.csv(summary_df, prior_summary_path, row.names = FALSE)
-write.csv(extreme_df, prior_extreme_path, row.names = FALSE)
+write_csv_safely(summary_df, prior_summary_path, row.names = FALSE)
+write_csv_safely(extreme_df, prior_extreme_path, row.names = FALSE)
 
 status_line <- if (any(summary_df$Prior_Plausibility_Flag == "FAIL")) {
   "FAIL"
@@ -381,7 +381,7 @@ gate_df <- data.frame(
 
 gate_csv_path <- file.path(output_root, "prior_predictive_gate_status.csv")
 gate_rds_path <- file.path(output_root, "prior_predictive_gate_status.rds")
-write.csv(gate_df, gate_csv_path, row.names = FALSE)
+write_csv_safely(gate_df, gate_csv_path, row.names = FALSE)
 saveRDS(gate_df, gate_rds_path)
 message("Saved prior predictive check gate status to ", gate_csv_path)
 

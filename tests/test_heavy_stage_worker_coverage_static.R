@@ -67,7 +67,7 @@ for (i in seq_len(nrow(registry))) {
   if (grepl("collect_contract|contract is in place", collect_text, perl = TRUE)) {
     stop(collect_script, " still contains collector-contract placeholder output.")
   }
-  for (fragment in c("read.csv(manifest_path", "read.csv(status_path", "accrual_task_status_blocker(", "write.csv(")) {
+  for (fragment in c("read.csv(manifest_path", "read.csv(status_path", "accrual_task_status_blocker(", "write_csv_safely(")) {
     if (!grepl(fragment, collect_text, fixed = TRUE)) stop(collect_script, " missing collector fragment: ", fragment)
   }
   if (grepl("brms::brm\\s*\\(|\\bbrm\\s*\\(", collect_text, perl = TRUE)) {

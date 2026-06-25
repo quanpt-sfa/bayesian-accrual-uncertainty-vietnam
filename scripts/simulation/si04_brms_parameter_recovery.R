@@ -406,18 +406,18 @@ for (i in seq_len(nrow(grid))) {
   )
   rec_out[[i]] <- ans$recovery
   diag_out[[i]] <- ans$diagnostics
-  write.csv(dplyr::bind_rows(rec_out), rep_path, row.names = FALSE)
-  write.csv(dplyr::bind_rows(diag_out), diag_path, row.names = FALSE)
+  write_csv_safely(dplyr::bind_rows(rec_out), rep_path, row.names = FALSE)
+  write_csv_safely(dplyr::bind_rows(diag_out), diag_path, row.names = FALSE)
 }
 
 rec_results <- dplyr::bind_rows(rec_out)
 diag_results <- dplyr::bind_rows(diag_out)
-write.csv(rec_results, rep_path, row.names = FALSE)
-write.csv(diag_results, diag_path, row.names = FALSE)
+write_csv_safely(rec_results, rep_path, row.names = FALSE)
+write_csv_safely(diag_results, diag_path, row.names = FALSE)
 summary_df <- summarise_recovery(rec_results)
 diag_summary <- summarise_diagnostics(diag_results)
-write.csv(summary_df, sum_path, row.names = FALSE)
-write.csv(diag_summary, diag_sum_path, row.names = FALSE)
+write_csv_safely(summary_df, sum_path, row.names = FALSE)
+write_csv_safely(diag_summary, diag_sum_path, row.names = FALSE)
 plot_recovery_summary(summary_df, figures_dir)
 writeLines(capture.output(sessionInfo()), file.path(logs_dir, "sessionInfo.txt"))
 write_reviewer_note(summary_df, diag_summary, logs_dir)
@@ -453,7 +453,7 @@ manifest <- data.frame(
   central_simulation_estimand = "leakage_premium_or_validation_target_premium_from_companion_simulation_scripts",
   stringsAsFactors = FALSE
 )
-write.csv(manifest, manifest_path, row.names = FALSE)
+write_csv_safely(manifest, manifest_path, row.names = FALSE)
 
 cat("\n[SUCCESS] Bayesian parameter recovery completed.\n")
 cat("Role: auxiliary diagnostic only.\n")

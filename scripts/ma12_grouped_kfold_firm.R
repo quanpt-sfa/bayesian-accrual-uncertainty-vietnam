@@ -170,7 +170,7 @@ write_run_manifest <- function(status, end_time = NA, runtime_seconds = NA,
     Status = status,
     stringsAsFactors = FALSE
   )
-  write.csv(manifest, file.path(logs_dir, "run_config_manifest.csv"), row.names = FALSE)
+  write_csv_safely(manifest, file.path(logs_dir, "run_config_manifest.csv"), row.names = FALSE)
 }
 
 completed_manifest_exists <- function() {
@@ -262,7 +262,7 @@ write_input_manifest <- function() {
     Notes = "",
     stringsAsFactors = FALSE
   )
-  write.csv(man, file.path(logs_dir, "input_file_manifest.csv"), row.names = FALSE)
+  write_csv_safely(man, file.path(logs_dir, "input_file_manifest.csv"), row.names = FALSE)
 }
 
 write_output_manifest <- function(final_decision = NA_character_) {
@@ -310,7 +310,7 @@ write_output_manifest <- function(final_decision = NA_character_) {
     Git_Commit = git_commit_or_na(),
     stringsAsFactors = FALSE
   )
-  write.csv(man, file.path(logs_dir, "output_file_manifest.csv"), row.names = FALSE)
+  write_csv_safely(man, file.path(logs_dir, "output_file_manifest.csv"), row.names = FALSE)
 }
 
 optional_read_csv <- function(path) {
@@ -457,7 +457,7 @@ main <- function() {
 
   fold_assignment <- make_fold_assignment(df_ep, df_rt)
   if (anyDuplicated(fold_assignment$company) > 0) stop("[BLOCKER] Duplicate firm fold assignment.")
-  write.csv(fold_assignment, file.path(tables_dir, "table_winsor_firm_fold_assignment.csv"), row.names = FALSE)
+  write_csv_safely(fold_assignment, file.path(tables_dir, "table_winsor_firm_fold_assignment.csv"), row.names = FALSE)
 
   # Industry-by-fold coverage report (diagnostic for the manuscript).
   firms_per_industry <- fold_assignment %>%
@@ -472,7 +472,7 @@ main <- function() {
     left_join(folds_covered, by = "Dominant_Industry") %>%
     mutate(Present_In_All_Folds = N_Folds_Present == K) %>%
     arrange(N_Firms)
-  write.csv(industry_fold_coverage, file.path(tables_dir, "table_winsor_kfold_industry_fold_coverage.csv"), row.names = FALSE)
+  write_csv_safely(industry_fold_coverage, file.path(tables_dir, "table_winsor_kfold_industry_fold_coverage.csv"), row.names = FALSE)
 
   # DATA CHECK (not a fix): grouped-by-firm K-fold cannot place an industry in every
   # training fold if that industry has fewer than K firms. This is a data-coverage
@@ -529,7 +529,7 @@ main <- function() {
              Year_Distribution, Industry_Distribution, Stratified_Grouped_KFold, Repeated_Grouped_KFold_Repeats)
   }
   fold_balance <- bind_rows(fold_balance_one(df_ep, "ex_post"), fold_balance_one(df_rt, "real_time"))
-  write.csv(fold_balance, file.path(tables_dir, "table_winsor_kfold_balance.csv"), row.names = FALSE)
+  write_csv_safely(fold_balance, file.path(tables_dir, "table_winsor_kfold_balance.csv"), row.names = FALSE)
 
   get_model_rows <- function(target_space, model_ids) {
     formulas_df %>%
@@ -658,14 +658,14 @@ main <- function() {
       ) %>%
       select(names(build_task_manifest(planned_tasks)))
   }
-  write.csv(task_manifest, manifest_path, row.names = FALSE)
+  write_csv_safely(task_manifest, manifest_path, row.names = FALSE)
 
   update_manifest_row <- function(model_key, values) {
     mf <- read.csv(manifest_path, stringsAsFactors = FALSE)
     idx <- which(mf$Model_Key == model_key)
     if (length(idx) == 1) {
       for (nm in names(values)) mf[idx, nm] <- values[[nm]]
-      write.csv(mf, manifest_path, row.names = FALSE)
+      write_csv_safely(mf, manifest_path, row.names = FALSE)
     }
   }
 
@@ -1092,7 +1092,7 @@ main <- function() {
       Severity = c("High", "High", "High"),
       Manuscript_Action = c("Run smoke test and full run before substantive interpretation.", "No manuscript decision from preflight.", "No final manuscript decision.")
     )
-    write.csv(decision, file.path(tables_dir, "table_reviewer_priority2b_exact_kfold_decision.csv"), row.names = FALSE)
+    write_csv_safely(decision, file.path(tables_dir, "table_reviewer_priority2b_exact_kfold_decision.csv"), row.names = FALSE)
     writeLines(c(
       "Reviewer Priority 2b exact grouped K-fold response notes",
       "Preflight only: no brms models were fit.",
@@ -1138,9 +1138,9 @@ main <- function() {
   obs_scores <- bind_rows(lapply(results, `[[`, "obs_scores"))
   standardization_audit <- bind_rows(lapply(results, `[[`, "standardization_audit"))
 
-  write.csv(fold_diagnostics, file.path(tables_dir, "table_winsor_kfold_refit_diagnostics.csv"), row.names = FALSE)
-  write.csv(standardization_audit, file.path(tables_dir, "table_winsor_kfold_train_standardization_audit.csv"), row.names = FALSE)
-  write.csv(obs_scores, file.path(tables_dir, "table_winsor_kfold_observation_scores.csv"), row.names = FALSE)
+  write_csv_safely(fold_diagnostics, file.path(tables_dir, "table_winsor_kfold_refit_diagnostics.csv"), row.names = FALSE)
+  write_csv_safely(standardization_audit, file.path(tables_dir, "table_winsor_kfold_train_standardization_audit.csv"), row.names = FALSE)
+  write_csv_safely(obs_scores, file.path(tables_dir, "table_winsor_kfold_observation_scores.csv"), row.names = FALSE)
 
   fold_scores <- if (nrow(obs_scores) > 0) {
     obs_scores %>%
@@ -1157,7 +1157,7 @@ main <- function() {
   } else {
     data.frame()
   }
-  write.csv(fold_scores, file.path(tables_dir, "table_winsor_kfold_fold_scores.csv"), row.names = FALSE)
+  write_csv_safely(fold_scores, file.path(tables_dir, "table_winsor_kfold_fold_scores.csv"), row.names = FALSE)
 
   model_scores <- fold_diagnostics %>%
     group_by(Target_Space, Sample_Group, Model_ID, Model_Name, Heterogeneity_Variant) %>%
@@ -1207,7 +1207,7 @@ main <- function() {
         ifelse(partial_run, N_Folds_Completed > 0, N_Folds_Completed == K),
       exclusion_reason = ifelse(included_in_stack, NA_character_, exclusion_reason)
     )
-  write.csv(model_scores, file.path(tables_dir, "table_winsor_kfold_model_scores.csv"), row.names = FALSE)
+  write_csv_safely(model_scores, file.path(tables_dir, "table_winsor_kfold_model_scores.csv"), row.names = FALSE)
 
   build_kfold_weights <- function(target_space) {
     included <- model_scores %>%
@@ -1309,8 +1309,8 @@ main <- function() {
 
   kfold_weights_ep <- build_kfold_weights("ex_post")
   kfold_weights_rt <- build_kfold_weights("real_time")
-  write.csv(kfold_weights_ep, file.path(tables_dir, "table_winsor_kfold_weights_ex_post.csv"), row.names = FALSE)
-  write.csv(kfold_weights_rt, file.path(tables_dir, "table_winsor_kfold_weights_no_lookahead.csv"), row.names = FALSE)
+  write_csv_safely(kfold_weights_ep, file.path(tables_dir, "table_winsor_kfold_weights_ex_post.csv"), row.names = FALSE)
+  write_csv_safely(kfold_weights_rt, file.path(tables_dir, "table_winsor_kfold_weights_no_lookahead.csv"), row.names = FALSE)
 
   prepare_rowloo <- function(df) {
     if (is.null(df) || nrow(df) == 0) {
@@ -1381,7 +1381,7 @@ main <- function() {
       )
     ) %>%
     arrange(Target_Space, Rank_ExactKFold)
-  write.csv(weight_comparison, file.path(tables_dir, "table_winsor_weight_stability_loo_lofo_kfold.csv"), row.names = FALSE)
+  write_csv_safely(weight_comparison, file.path(tables_dir, "table_winsor_weight_stability_loo_lofo_kfold.csv"), row.names = FALSE)
 
   family_comparison <- weight_comparison %>%
     group_by(Target_Space, Family) %>%
@@ -1405,7 +1405,7 @@ main <- function() {
     ) %>%
     ungroup() %>%
     arrange(Target_Space, Family_Rank_ExactKFold)
-  write.csv(family_comparison, file.path(tables_dir, "table_winsor_family_weight_stability_loo_lofo_kfold.csv"), row.names = FALSE)
+  write_csv_safely(family_comparison, file.path(tables_dir, "table_winsor_family_weight_stability_loo_lofo_kfold.csv"), row.names = FALSE)
 
   safe_family_weight <- function(space, family) {
     x <- family_comparison %>% filter(Target_Space == space, Family == family)
@@ -1531,7 +1531,7 @@ main <- function() {
   decision_table$Kfold_Run_Root <- kfold_run_root
   decision_table$Completed_Run_Pin_Eligible <- completed_run_pin_eligible
   decision_table$Completed_Run_Pin_Updated <- completed_run_pin_updated
-  write.csv(decision_table, file.path(tables_dir, "table_reviewer_priority2b_exact_kfold_decision.csv"), row.names = FALSE)
+  write_csv_safely(decision_table, file.path(tables_dir, "table_reviewer_priority2b_exact_kfold_decision.csv"), row.names = FALSE)
 
   manuscript_wording <- switch(
     final_decision,

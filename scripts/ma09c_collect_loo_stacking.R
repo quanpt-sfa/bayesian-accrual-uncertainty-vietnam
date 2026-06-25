@@ -51,7 +51,7 @@ loo_comparison <- do.call(rbind, lapply(seq_along(results), function(i) {
     stringsAsFactors = FALSE
   )
 }))
-write.csv(loo_comparison, file.path(tables_dir, "table_loo_comparison_winsor_corrected.csv"), row.names = FALSE)
+write_csv_safely(loo_comparison, file.path(tables_dir, "table_loo_comparison_winsor_corrected.csv"), row.names = FALSE)
 
 make_weights <- function(space) {
   main_inclusion <- if ("Main_Stack_Inclusion" %in% names(manifest)) {
@@ -83,7 +83,7 @@ make_weights <- function(space) {
     stringsAsFactors = FALSE
   )
 }
-write.csv(make_weights("ex_post"), file.path(tables_dir, "table_stacking_weights_ex_post_winsor_corrected.csv"), row.names = FALSE)
-write.csv(make_weights("real_time"), file.path(tables_dir, "table_stacking_weights_no_lookahead_winsor_corrected.csv"), row.names = FALSE)
+write_csv_safely(make_weights("ex_post"), file.path(tables_dir, "table_stacking_weights_ex_post_winsor_corrected.csv"), row.names = FALSE)
+write_csv_safely(make_weights("real_time"), file.path(tables_dir, "table_stacking_weights_no_lookahead_winsor_corrected.csv"), row.names = FALSE)
 message("ma09c collected task-level LOO results and wrote shared PSIS/LOO outputs.")
 phase_end("ma09c", "Collect LOO stacking outputs")

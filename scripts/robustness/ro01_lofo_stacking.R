@@ -412,10 +412,10 @@ message("\n========= GROUPED PSIS-LOFO: NO-LOOK-AHEAD FEATURE SPACE =========")
 lofo_rt <- run_space_lofo("real_time", no_lookahead_ids, sample_rt)
 
 diagnostics_df <- bind_rows(lofo_ep$diagnostics, lofo_rt$diagnostics)
-write.csv(diagnostics_df, file.path(lofo_root, "tables", "table_winsor_lofo_model_diagnostics.csv"), row.names = FALSE)
+write_csv_safely(diagnostics_df, file.path(lofo_root, "tables", "table_winsor_lofo_model_diagnostics.csv"), row.names = FALSE)
 
-write.csv(lofo_ep$weights, file.path(lofo_root, "tables", "table_winsor_lofo_weights_ex_post.csv"), row.names = FALSE)
-write.csv(lofo_rt$weights, file.path(lofo_root, "tables", "table_winsor_lofo_weights_no_lookahead.csv"), row.names = FALSE)
+write_csv_safely(lofo_ep$weights, file.path(lofo_root, "tables", "table_winsor_lofo_weights_ex_post.csv"), row.names = FALSE)
+write_csv_safely(lofo_rt$weights, file.path(lofo_root, "tables", "table_winsor_lofo_weights_no_lookahead.csv"), row.names = FALSE)
 
 # Secondary M08 robustness only, if eligible model files exist.
 m08_rows <- diag_df %>%
@@ -435,7 +435,7 @@ if (nrow(m08_rows) > 0) {
     m08_diag <- bind_rows(m08_diag, res$diag)
   }
 }
-write.csv(m08_diag, file.path(lofo_root, "tables", "table_winsor_lofo_m08_secondary.csv"), row.names = FALSE)
+write_csv_safely(m08_diag, file.path(lofo_root, "tables", "table_winsor_lofo_m08_secondary.csv"), row.names = FALSE)
 
 prepare_rowloo <- function(df) {
   df %>%
@@ -579,8 +579,8 @@ family_weights <- family_weights %>%
     Output_Root = output_root
   )
 
-write.csv(stability_df, file.path(lofo_root, "tables", "table_winsor_weight_stability_rowloo_vs_lofo.csv"), row.names = FALSE)
-write.csv(family_weights, file.path(lofo_root, "tables", "table_winsor_lofo_family_weights.csv"), row.names = FALSE)
+write_csv_safely(stability_df, file.path(lofo_root, "tables", "table_winsor_weight_stability_rowloo_vs_lofo.csv"), row.names = FALSE)
+write_csv_safely(family_weights, file.path(lofo_root, "tables", "table_winsor_lofo_family_weights.csv"), row.names = FALSE)
 
 decision_table <- data.frame(
   Criterion = c(
@@ -652,7 +652,7 @@ decision_table$Prior_Set_ID <- prior_set_id
 decision_table$Likelihood_Family <- likelihood_family
 decision_table$Model_Structure <- model_structure
 decision_table$Output_Root <- output_root
-write.csv(decision_table, file.path(lofo_root, "tables", "table_reviewer_priority2_lofo_decision.csv"), row.names = FALSE)
+write_csv_safely(decision_table, file.path(lofo_root, "tables", "table_reviewer_priority2_lofo_decision.csv"), row.names = FALSE)
 
 recommended_paragraph <- switch(
   final_decision,

@@ -49,13 +49,13 @@ for (i in seq_len(nrow(grid))) {
       singular_group_firmre_folds = NA_real_, error = conditionMessage(e)
     )
   )
-  if (i %% 10 == 0 || i == nrow(grid)) write.csv(dplyr::bind_rows(out[seq_len(i)]), rep_path, row.names = FALSE)
+  if (i %% 10 == 0 || i == nrow(grid)) write_csv_safely(dplyr::bind_rows(out[seq_len(i)]), rep_path, row.names = FALSE)
 }
 
 results <- dplyr::bind_rows(out)
-write.csv(results, rep_path, row.names = FALSE)
+write_csv_safely(results, rep_path, row.names = FALSE)
 summary_df <- summarise_leakage(results)
-write.csv(summary_df, sum_path, row.names = FALSE)
+write_csv_safely(summary_df, sum_path, row.names = FALSE)
 writeLines(capture.output(sessionInfo()), file.path(logs_dir, "sessionInfo.txt"))
 
 manifest <- data.frame(
@@ -68,7 +68,7 @@ manifest <- data.frame(
   successful_replications = sum(is.na(results$error) | results$error == ""),
   failed_replications = sum(!(is.na(results$error) | results$error == ""))
 )
-write.csv(manifest, manifest_path, row.names = FALSE)
+write_csv_safely(manifest, manifest_path, row.names = FALSE)
 
 cat("\n[SUCCESS] Simulation pilot completed.\n")
 cat("Results:", rep_path, "\n")

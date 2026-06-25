@@ -17,6 +17,6 @@ results <- do.call(rbind, lapply(manifest$diagnostic_path, function(path) {
 recommendations <- results[order(results$Max_Rhat), , drop = FALSE]
 recommendations$recommended_rank <- seq_len(nrow(recommendations))
 recommendations$production_inference <- FALSE
-write.csv(results, file.path(root, "tables", "table_di08_mcmc_sampler_calibration_results.csv"), row.names = FALSE)
-write.csv(recommendations, file.path(root, "tables", "table_di08_mcmc_sampler_calibration_recommendations.csv"), row.names = FALSE)
+write_csv_safely(results, file.path(root, "tables", "table_di08_mcmc_sampler_calibration_results.csv"), row.names = FALSE)
+write_csv_safely(recommendations, file.path(root, "tables", "table_di08_mcmc_sampler_calibration_recommendations.csv"), row.names = FALSE)
 phase_end("di08c", "Collect MCMC sampler calibration")

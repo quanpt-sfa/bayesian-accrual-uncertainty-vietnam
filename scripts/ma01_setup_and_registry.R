@@ -132,7 +132,7 @@ registry_data$Main_Stack_Reason <- ifelse(
 
 # Save the registry to CSV
 registry_out <- baseline_table_path("table_model_registry.csv")
-write.csv(
+write_csv_safely(
   registry_data,
   file = registry_out,
   row.names = FALSE
@@ -151,7 +151,7 @@ main_secondary_design <- data.frame(
   Reason = registry_data$Main_Stack_Reason,
   stringsAsFactors = FALSE
 )
-write.csv(
+write_csv_safely(
   main_secondary_design,
   file = baseline_table_path("table_main_vs_secondary_model_design.csv"),
   row.names = FALSE

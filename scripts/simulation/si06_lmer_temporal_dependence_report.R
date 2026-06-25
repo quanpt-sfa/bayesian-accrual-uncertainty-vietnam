@@ -59,7 +59,7 @@ mechanism <- ok %>%
   ) %>%
   ungroup()
 
-write.csv(mechanism, mechanism_path, row.names = FALSE)
+write_csv_safely(mechanism, mechanism_path, row.names = FALSE)
 
 if (requireNamespace("ggplot2", quietly = TRUE)) {
   fig <- ggplot2::ggplot(mechanism, ggplot2::aes(x = rho, y = mean_weight_premium, color = factor(T))) +
