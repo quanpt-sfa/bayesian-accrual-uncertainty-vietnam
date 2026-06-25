@@ -58,7 +58,7 @@ validation <- read_sens_input(file.path(tables_root, "sensitivity_validation_sum
 if (nrow(missing_inputs_log) > 0) {
   logs_root <- file.path(sens_root, "logs")
   dir.create(logs_root, recursive = TRUE, showWarnings = FALSE)
-  write.csv(missing_inputs_log, file.path(logs_root, "sensitivity_missing_inputs_log.csv"), row.names = FALSE)
+  write_csv_safely(missing_inputs_log, file.path(logs_root, "sensitivity_missing_inputs_log.csv"), row.names = FALSE)
 
   if (!allow_partial_report) {
     stop("[BLOCKER] Sensitivity report was stopped due to missing input files. Details written to '",
@@ -69,7 +69,7 @@ if (nrow(missing_inputs_log) > 0) {
 prior_registry <- prior_registry() %>%
   filter(Prior_Set_ID %in% sensitivity_scenarios()$Prior_Set_ID) %>%
   select(Prior_Set_ID, Parameter_Class, Prior_Distribution, Likelihood_Family, Notes)
-write.csv(prior_registry, file.path(tables_root, "sensitivity_prior_scenario_registry.csv"), row.names = FALSE)
+write_csv_safely(prior_registry, file.path(tables_root, "sensitivity_prior_scenario_registry.csv"), row.names = FALSE)
 
 repro <- data.frame(
   Item = c(
@@ -102,7 +102,7 @@ repro <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
-write.csv(repro, file.path(tables_root, "sensitivity_reproducibility_info.csv"), row.names = FALSE)
+write_csv_safely(repro, file.path(tables_root, "sensitivity_reproducibility_info.csv"), row.names = FALSE)
 writeLines(session_info_string(), file.path(reports_root, "sensitivity_sessionInfo.txt"))
 
 robustness_interpretation <- "Sensitivity results are prepared but not yet fully evaluated because at least one full-refit phase has not produced non-dry-run outputs."

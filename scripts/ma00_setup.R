@@ -611,6 +611,12 @@ write_task_status <- function(path, status_rows) {
   invisible(path)
 }
 
+write_csv_safely <- function(x, path, row.names = FALSE, ...) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  write.csv(x, path, row.names = row.names, ...)
+  invisible(path)
+}
+
 default_total_core_budget <- function() {
   physical <- parallel::detectCores(logical = FALSE)
   if (!is.na(physical) && is.finite(physical) && physical >= 1L) return(as.integer(physical))

@@ -264,9 +264,9 @@ if (normalizePath(output_root, winslash = "/", mustWork = FALSE) != normalizePat
   }
 }
 
-write.csv(summary_df, summary_path, row.names = FALSE)
-write.csv(moments_df, moments_path, row.names = FALSE)
-write.csv(tail_df, tail_path, row.names = FALSE)
+write_csv_safely(summary_df, summary_path, row.names = FALSE)
+write_csv_safely(moments_df, moments_path, row.names = FALSE)
+write_csv_safely(tail_df, tail_path, row.names = FALSE)
 
 notes <- c(
   "ma11 posterior predictive notes",

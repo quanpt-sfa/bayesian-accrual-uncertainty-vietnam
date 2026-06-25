@@ -160,9 +160,9 @@ decision <- data.frame(
   stringsAsFactors = FALSE
 )
 
-write.csv(column_audit, file.path(tables_dir, "table_DA_nonfinite_column_audit.csv"), row.names = FALSE)
-write.csv(row_audit, file.path(tables_dir, "table_DA_nonfinite_row_audit.csv"), row.names = FALSE)
-write.csv(decision, file.path(tables_dir, "table_DA_finite_gate_decision.csv"), row.names = FALSE)
+write_csv_safely(column_audit, file.path(tables_dir, "table_DA_nonfinite_column_audit.csv"), row.names = FALSE)
+write_csv_safely(row_audit, file.path(tables_dir, "table_DA_nonfinite_row_audit.csv"), row.names = FALSE)
+write_csv_safely(decision, file.path(tables_dir, "table_DA_finite_gate_decision.csv"), row.names = FALSE)
 
 manifest_paths <- c(
   input_specs$output_file,
@@ -190,7 +190,7 @@ io_manifest <- data.frame(
                              "primary_exact_kfold", "secondary_or_gate_output"),
   stringsAsFactors = FALSE
 )
-write.csv(io_manifest, file.path(tables_dir, "table_DA_finite_io_manifest.csv"), row.names = FALSE)
+write_csv_safely(io_manifest, file.path(tables_dir, "table_DA_finite_io_manifest.csv"), row.names = FALSE)
 
 note_path <- file.path(output_root, "logs", "DA_finite_gate_reviewer_note.md")
 dir.create(dirname(note_path), recursive = TRUE, showWarnings = FALSE)

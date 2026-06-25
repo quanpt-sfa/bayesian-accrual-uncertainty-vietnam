@@ -266,8 +266,8 @@ master_df <- df_rt_ols %>%
   )
 
 baseline_accruals_path <- baseline_accruals_path()
-write.csv(master_df, file.path(output_root, "tables", "final_uncertainty_adjusted_accruals_winsor.csv"), row.names = FALSE)
-write.csv(master_df, baseline_accruals_path, row.names = FALSE)
+write_csv_safely(master_df, file.path(output_root, "tables", "final_uncertainty_adjusted_accruals_winsor.csv"), row.names = FALSE)
+write_csv_safely(master_df, baseline_accruals_path, row.names = FALSE)
 
 summarise_var <- function(df, v) {
   vals <- df[[v]]
@@ -307,7 +307,7 @@ summary_df <- summary_df %>%
     Model_Structure = model_structure,
     Output_Root = output_root
   )
-write.csv(summary_df, file.path(output_root, "tables", "table_DA_distribution_summary_winsor.csv"), row.names = FALSE)
+write_csv_safely(summary_df, file.path(output_root, "tables", "table_DA_distribution_summary_winsor.csv"), row.names = FALSE)
 
 flag_count <- function(var_name, is_flag = FALSE) {
   vals <- master_df[[var_name]]
@@ -347,7 +347,7 @@ extreme_summary <- extreme_summary %>%
     Model_Structure = model_structure,
     Output_Root = output_root
   )
-write.csv(extreme_summary, file.path(output_root, "tables", "table_extreme_flag_counts_winsor.csv"), row.names = FALSE)
+write_csv_safely(extreme_summary, file.path(output_root, "tables", "table_extreme_flag_counts_winsor.csv"), row.names = FALSE)
 
 unc_industry <- master_df %>%
   group_by(industry) %>%
@@ -365,7 +365,7 @@ unc_industry <- master_df %>%
     Model_Structure = model_structure,
     Output_Root = output_root
   )
-write.csv(unc_industry, file.path(output_root, "tables", "table_uncertainty_summary_winsor.csv"), row.names = FALSE)
+write_csv_safely(unc_industry, file.path(output_root, "tables", "table_uncertainty_summary_winsor.csv"), row.names = FALSE)
 
 corr_vars <- da_vars[da_vars %in% colnames(master_df)]
 corr_data <- master_df %>% select(all_of(corr_vars)) %>% na.omit()
@@ -375,7 +375,7 @@ if (nrow(corr_data) > 1) {
   corr_long <- expand.grid(Variable_1 = rownames(pearson), Variable_2 = colnames(pearson), stringsAsFactors = FALSE)
   corr_long$Pearson <- as.vector(pearson)
   corr_long$Spearman <- as.vector(spearman)
-  write.csv(corr_long, file.path(output_root, "tables", "table_benchmark_correlations_winsor.csv"), row.names = FALSE)
+  write_csv_safely(corr_long, file.path(output_root, "tables", "table_benchmark_correlations_winsor.csv"), row.names = FALSE)
 }
 
 compare_measure <- function(orig_df, win_df, measure, original_col, winsor_col, flag_col_orig = NULL, flag_col_win = NULL) {
@@ -424,7 +424,7 @@ if (file.exists(orig_final_path)) {
     compare_measure(orig_df, master_df, "DA_PerfModJones_OLS", "DA_PerfModJones_OLS", "DA_PerfModJones_OLS_winsor")
   )
 }
-write.csv(comparison_df, file.path(output_root, "tables", "table_DA_original_vs_winsor_comparison.csv"), row.names = FALSE)
+write_csv_safely(comparison_df, file.path(output_root, "tables", "table_DA_original_vs_winsor_comparison.csv"), row.names = FALSE)
 
 sd_shrink_path <- file.path(input_winsor_root, "tables", "table_winsor_sd_shrinkage.csv")
 stability_path <- file.path(output_root, "tables", "table_weight_stability_original_vs_winsor.csv")
@@ -512,7 +512,7 @@ decision_table$Prior_Set_ID <- prior_set_id
 decision_table$Likelihood_Family <- likelihood_family
 decision_table$Model_Structure <- model_structure
 decision_table$Output_Root <- output_root
-write.csv(decision_table, file.path(output_root, "tables", "table_reviewer_priority1_winsor_decision.csv"), row.names = FALSE)
+write_csv_safely(decision_table, file.path(output_root, "tables", "table_reviewer_priority1_winsor_decision.csv"), row.names = FALSE)
 
 da_manifest_paths <- c(
   ep_weights_path,
@@ -546,7 +546,7 @@ da_io_manifest <- data.frame(
   Gate_Decision = headline_decision,
   stringsAsFactors = FALSE
 )
-write.csv(da_io_manifest, file.path(output_root, "tables", "table_secondary_psis_loo_DA_io_manifest.csv"), row.names = FALSE)
+write_csv_safely(da_io_manifest, file.path(output_root, "tables", "table_secondary_psis_loo_DA_io_manifest.csv"), row.names = FALSE)
 
 notes <- c(
   "Reviewer Priority 1 winsor response notes",

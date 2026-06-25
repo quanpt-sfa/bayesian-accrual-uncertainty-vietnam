@@ -342,7 +342,7 @@ if (!is.null(secondary_psis_loo_df)) {
 validation_results <- bind_rows(primary_validation_results, secondary_validation_results)
 
 if (length(validation_debug_rows) > 0) {
-  write.csv(bind_rows(validation_debug_rows),
+  write_csv_safely(bind_rows(validation_debug_rows),
             file.path(validation_root, "table_validation_debug_scaleaware_student.csv"),
             row.names = FALSE)
 }
@@ -357,9 +357,9 @@ if (nrow(validation_results) == 0) {
 unweighted_df <- validation_results %>% filter(Weighted == FALSE)
 weighted_df <- validation_results %>% filter(Weighted == TRUE)
 
-write.csv(unweighted_df, file.path(validation_root, "table_unweighted_validation_scaleaware_student.csv"), row.names = FALSE)
-write.csv(weighted_df, file.path(validation_root, "table_precision_weighted_validation_scaleaware_student.csv"), row.names = FALSE)
-write.csv(validation_results, file.path(validation_root, "table_validation_comparison_summary_scaleaware_student.csv"), row.names = FALSE)
+write_csv_safely(unweighted_df, file.path(validation_root, "table_unweighted_validation_scaleaware_student.csv"), row.names = FALSE)
+write_csv_safely(weighted_df, file.path(validation_root, "table_precision_weighted_validation_scaleaware_student.csv"), row.names = FALSE)
+write_csv_safely(validation_results, file.path(validation_root, "table_validation_comparison_summary_scaleaware_student.csv"), row.names = FALSE)
 
 validation_manifest_paths <- c(
   primary_row_da_path,
@@ -390,7 +390,7 @@ validation_io_manifest <- data.frame(
   Primary_Secondary = c("primary_exact_row_kfold", "secondary_psis_loo", "gate", "gate", "input", "input", "input", rep("output", 3)),
   stringsAsFactors = FALSE
 )
-write.csv(validation_io_manifest, file.path(validation_root, "table_validation_io_manifest.csv"), row.names = FALSE)
+write_csv_safely(validation_io_manifest, file.path(validation_root, "table_validation_io_manifest.csv"), row.names = FALSE)
 
 writeLines(c(
   "ma16 validation on exact-KFold DA",

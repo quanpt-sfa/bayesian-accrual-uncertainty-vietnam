@@ -183,7 +183,7 @@ write_md_table <- function(df, path, title = NULL, digits = 4) {
 write_outputs <- function(df, stem, title) {
   csv_path <- file.path(report_dir, paste0(stem, ".csv"))
   md_path <- file.path(report_dir, paste0(stem, ".md"))
-  write.csv(df, csv_path, row.names = FALSE, fileEncoding = "UTF-8")
+  write_csv_safely(df, csv_path, row.names = FALSE, fileEncoding = "UTF-8")
   write_md_table(df, md_path, title = title)
   generated_files <<- unique(c(generated_files, csv_path, md_path))
   invisible(df)
@@ -986,7 +986,7 @@ report_path <- file.path(report_dir, "chapter3_methods_tables_report.md")
 qc_path <- file.path(report_dir, "chapter3_methods_tables_qc.csv")
 add_qc("QC19", "master report exists", "PASS", report_path)
 qc <- bind_rows(qc_rows)
-write.csv(qc, qc_path, row.names = FALSE, fileEncoding = "UTF-8")
+write_csv_safely(qc, qc_path, row.names = FALSE, fileEncoding = "UTF-8")
 generated_files <- unique(c(generated_files, qc_path, report_path))
 
 if (any(is.na(sample_flow$n_observations))) add_warning("One or more sample-flow counts are missing.")

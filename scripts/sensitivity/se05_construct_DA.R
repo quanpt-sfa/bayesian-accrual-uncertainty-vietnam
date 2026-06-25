@@ -189,17 +189,17 @@ for (sidx in seq_len(nrow(scenarios))) {
   ep <- compute_stacked_da(df_ep, sc_weights %>% filter(target_space == "ex_post"), scenario, "ex_post")
   rt <- compute_stacked_da(df_rt, sc_weights %>% filter(target_space == "real_time"), scenario, "real_time")
   scenario_da <- bind_rows(ep, rt)
-  write.csv(scenario_da, file.path(scenario_root, "DA", paste0("final_sensitivity_uncertainty_adjusted_accruals_", scenario, ".csv")), row.names = FALSE)
-  write.csv(scenario_da, sensitivity_accruals_path(scenario), row.names = FALSE)
+  write_csv_safely(scenario_da, file.path(scenario_root, "DA", paste0("final_sensitivity_uncertainty_adjusted_accruals_", scenario, ".csv")), row.names = FALSE)
+  write_csv_safely(scenario_da, sensitivity_accruals_path(scenario), row.names = FALSE)
   da_rows[[length(da_rows) + 1]] <- scenario_da
 }
 
 plan_df <- bind_rows(plan_rows)
-write.csv(plan_df, file.path(sensitivity_root(), "tables", "sensitivity_DA_plan.csv"), row.names = FALSE)
+write_csv_safely(plan_df, file.path(sensitivity_root(), "tables", "sensitivity_DA_plan.csv"), row.names = FALSE)
 
 all_da <- bind_rows(da_rows)
 if (nrow(all_da) > 0) {
-  write.csv(all_da, file.path(sensitivity_root(), "tables", "sensitivity_DA_by_scenario_long.csv"), row.names = FALSE)
+  write_csv_safely(all_da, file.path(sensitivity_root(), "tables", "sensitivity_DA_by_scenario_long.csv"), row.names = FALSE)
 
   stability_rows <- list()
   baseline <- all_da %>% filter(scenario == "baseline")
@@ -234,10 +234,10 @@ if (nrow(all_da) > 0) {
       )
     }
   }
-  write.csv(bind_rows(stability_rows), file.path(sensitivity_root(), "tables", "sensitivity_DA_stability_summary.csv"), row.names = FALSE)
+  write_csv_safely(bind_rows(stability_rows), file.path(sensitivity_root(), "tables", "sensitivity_DA_stability_summary.csv"), row.names = FALSE)
 } else {
-  write.csv(data.frame(), file.path(sensitivity_root(), "tables", "sensitivity_DA_by_scenario_long.csv"), row.names = FALSE)
-  write.csv(data.frame(), file.path(sensitivity_root(), "tables", "sensitivity_DA_stability_summary.csv"), row.names = FALSE)
+  write_csv_safely(data.frame(), file.path(sensitivity_root(), "tables", "sensitivity_DA_by_scenario_long.csv"), row.names = FALSE)
+  write_csv_safely(data.frame(), file.path(sensitivity_root(), "tables", "sensitivity_DA_stability_summary.csv"), row.names = FALSE)
 }
 
 writeLines(c(

@@ -157,15 +157,15 @@ for (scenario in scenarios$Scenario) {
     run_one_validation(scenario, da_df, df_ep, df_raw, "ex_post"),
     run_one_validation(scenario, da_df, df_rt, df_raw, "real_time")
   )
-  write.csv(res, file.path(scenario_root, "validation", paste0("table_sensitivity_validation_", scenario, ".csv")), row.names = FALSE)
+  write_csv_safely(res, file.path(scenario_root, "validation", paste0("table_sensitivity_validation_", scenario, ".csv")), row.names = FALSE)
   result_rows[[length(result_rows) + 1]] <- res
 }
 
 plan_df <- bind_rows(plan_rows)
 results_df <- bind_rows(result_rows)
 tables_root <- file.path(sensitivity_root(), "tables")
-write.csv(plan_df, file.path(tables_root, "sensitivity_validation_plan.csv"), row.names = FALSE)
-write.csv(results_df, file.path(tables_root, "sensitivity_validation_summary.csv"), row.names = FALSE)
+write_csv_safely(plan_df, file.path(tables_root, "sensitivity_validation_plan.csv"), row.names = FALSE)
+write_csv_safely(results_df, file.path(tables_root, "sensitivity_validation_summary.csv"), row.names = FALSE)
 
 writeLines(c(
   "Sensitivity validation notes",

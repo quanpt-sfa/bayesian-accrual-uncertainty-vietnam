@@ -138,12 +138,12 @@ for (sidx in seq_len(nrow(scenarios))) {
 summary_df <- bind_rows(summary_rows)
 detail_df <- bind_rows(detail_rows)
 tables_root <- file.path(sensitivity_root(), "tables")
-write.csv(summary_df, file.path(tables_root, "sensitivity_mcmc_diagnostics_summary.csv"), row.names = FALSE)
-write.csv(detail_df, file.path(tables_root, "sensitivity_mcmc_diagnostics_detailed.csv"), row.names = FALSE)
+write_csv_safely(summary_df, file.path(tables_root, "sensitivity_mcmc_diagnostics_summary.csv"), row.names = FALSE)
+write_csv_safely(detail_df, file.path(tables_root, "sensitivity_mcmc_diagnostics_detailed.csv"), row.names = FALSE)
 
 for (scenario in unique(summary_df$scenario)) {
   sc_root <- sensitivity_root(scenario)
-  write.csv(summary_df[summary_df$scenario == scenario, , drop = FALSE],
+  write_csv_safely(summary_df[summary_df$scenario == scenario, , drop = FALSE],
             file.path(sc_root, "diagnostics", paste0("table_sensitivity_mcmc_diagnostics_", scenario, ".csv")),
             row.names = FALSE)
 }
@@ -152,7 +152,7 @@ eligible_counts <- summary_df %>%
   filter(stacking_allowed) %>%
   group_by(scenario, target_space) %>%
   summarise(n_eligible = n(), .groups = "drop")
-write.csv(eligible_counts, file.path(tables_root, "sensitivity_stacking_eligibility_counts.csv"), row.names = FALSE)
+write_csv_safely(eligible_counts, file.path(tables_root, "sensitivity_stacking_eligibility_counts.csv"), row.names = FALSE)
 
 if (!dry_run) {
   required_spaces <- expand.grid(scenario = scenarios$Scenario, target_space = c("ex_post", "real_time"), stringsAsFactors = FALSE)

@@ -6,6 +6,21 @@
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-RscriptChecked {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments,
+        [Parameter(Mandatory = $true)]
+        [string]$Context
+    )
+
+    & Rscript @Arguments
+    $rscriptExitCode = $LASTEXITCODE
+    if ($rscriptExitCode -ne 0) {
+        throw "$Context failed with exit code $rscriptExitCode."
+    }
+}
+
 # ---------------------------------------------------------------------
 # 0. Root checks
 # ---------------------------------------------------------------------
@@ -219,23 +234,24 @@ try {
 
     Write-Host "Running dry-run and static/behavioral tests..."
 
-    Rscript run.R all --dry-run
+    Invoke-RscriptChecked -Context "Dry-run pipeline plan" -Arguments @("run.R", "all", "--dry-run")
 
-    Rscript tests/test_behavioral_core_helpers.R
-    Rscript tests/test_kfold_factor_level_coverage.R
-    Rscript tests/test_script_header_filename_consistency.R
-    Rscript tests/test_no_script_local_env_config_static.R
-    Rscript tests/test_centralized_runtime_config_static.R
-    Rscript tests/test_brms_worker_refactor_static.R
-    Rscript tests/test_chapter3_method_alignment_static.R
-    Rscript tests/test_run_profile_production_5w4c_static.R
-    Rscript tests/test_test_config_hygiene_static.R
-    Rscript tests/test_heavy_stage_worker_coverage_static.R
-    Rscript tests/test_split_fit_collect_contract_static.R
-    Rscript tests/test_run_dry_plan_split_stages_static.R
+    Invoke-RscriptChecked -Context "test_behavioral_core_helpers.R" -Arguments @("tests/test_behavioral_core_helpers.R")
+    Invoke-RscriptChecked -Context "test_kfold_factor_level_coverage.R" -Arguments @("tests/test_kfold_factor_level_coverage.R")
+    Invoke-RscriptChecked -Context "test_script_header_filename_consistency.R" -Arguments @("tests/test_script_header_filename_consistency.R")
+    Invoke-RscriptChecked -Context "test_no_script_local_env_config_static.R" -Arguments @("tests/test_no_script_local_env_config_static.R")
+    Invoke-RscriptChecked -Context "test_centralized_runtime_config_static.R" -Arguments @("tests/test_centralized_runtime_config_static.R")
+    Invoke-RscriptChecked -Context "test_brms_worker_refactor_static.R" -Arguments @("tests/test_brms_worker_refactor_static.R")
+    Invoke-RscriptChecked -Context "test_chapter3_method_alignment_static.R" -Arguments @("tests/test_chapter3_method_alignment_static.R")
+    Invoke-RscriptChecked -Context "test_run_profile_production_5w4c_static.R" -Arguments @("tests/test_run_profile_production_5w4c_static.R")
+    Invoke-RscriptChecked -Context "test_test_config_hygiene_static.R" -Arguments @("tests/test_test_config_hygiene_static.R")
+    Invoke-RscriptChecked -Context "test_heavy_stage_worker_coverage_static.R" -Arguments @("tests/test_heavy_stage_worker_coverage_static.R")
+    Invoke-RscriptChecked -Context "test_split_fit_collect_contract_static.R" -Arguments @("tests/test_split_fit_collect_contract_static.R")
+    Invoke-RscriptChecked -Context "test_run_dry_plan_split_stages_static.R" -Arguments @("tests/test_run_dry_plan_split_stages_static.R")
+    Invoke-RscriptChecked -Context "test_ma10_safe_csv_and_profile_failfast_static.R" -Arguments @("tests/test_ma10_safe_csv_and_profile_failfast_static.R")
 
     if (Test-Path "tests/test_gitignore_artifact_hygiene_static.R") {
-        Rscript tests/test_gitignore_artifact_hygiene_static.R
+        Invoke-RscriptChecked -Context "test_gitignore_artifact_hygiene_static.R" -Arguments @("tests/test_gitignore_artifact_hygiene_static.R")
     }
 
     Write-Host "Preflight tests passed."
@@ -245,16 +261,16 @@ try {
     # ---------------------------------------------------------------------
 
     Write-Host "Running main pipeline..."
-    Rscript run.R main
+    Invoke-RscriptChecked -Context "Main pipeline" -Arguments @("run.R", "main")
 
     Write-Host "Running sensitivity pipeline..."
-    Rscript run.R sensitivity
+    Invoke-RscriptChecked -Context "Sensitivity pipeline" -Arguments @("run.R", "sensitivity")
 
     Write-Host "Running simulation pipeline..."
-    Rscript run.R simulation
+    Invoke-RscriptChecked -Context "Simulation pipeline" -Arguments @("run.R", "simulation")
 
     Write-Host "Running reviewer package..."
-    Rscript run.R reviewer
+    Invoke-RscriptChecked -Context "Reviewer package" -Arguments @("run.R", "reviewer")
 
     # ---------------------------------------------------------------------
     # 14. End manifest

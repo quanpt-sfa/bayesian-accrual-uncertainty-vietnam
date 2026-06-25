@@ -399,8 +399,8 @@ grouped_out <- bind_rows(grouped_ep$result, grouped_rt$result)
 row_out <- bind_rows(row_results)
 grouped_out_path <- file.path(tables_dir, "final_uncertainty_adjusted_accruals_exact_kfold_grouped_winsor.csv")
 row_out_path <- file.path(tables_dir, "final_uncertainty_adjusted_accruals_exact_kfold_row_winsor.csv")
-write.csv(grouped_out, grouped_out_path, row.names = FALSE)
-write.csv(row_out, row_out_path, row.names = FALSE)
+write_csv_safely(grouped_out, grouped_out_path, row.names = FALSE)
+write_csv_safely(row_out, row_out_path, row.names = FALSE)
 
 weight_audit <- bind_rows(grouped_ep$audit, grouped_rt$audit, row_audits)
 weight_files <- data.frame(
@@ -419,10 +419,10 @@ draw_hash_manifest <- weight_audit %>%
     Draw_File_Hash = vapply(Draw_File, file_hash_or_na, character(1))
   )
 draw_hash_manifest_path <- file.path(tables_dir, "table_DA_exact_kfold_draw_file_hash_manifest.csv")
-write.csv(draw_hash_manifest, draw_hash_manifest_path, row.names = FALSE)
+write_csv_safely(draw_hash_manifest, draw_hash_manifest_path, row.names = FALSE)
 
 model_inclusion_gate <- bind_rows(inclusion_gate_rows)
-write.csv(model_inclusion_gate, file.path(tables_dir, "table_model_primary_inclusion_gate.csv"), row.names = FALSE)
+write_csv_safely(model_inclusion_gate, file.path(tables_dir, "table_model_primary_inclusion_gate.csv"), row.names = FALSE)
 
 weight_audit <- weight_audit %>%
   left_join(
@@ -473,8 +473,8 @@ source_manifest <- weight_audit %>%
     Script_Version, Primary_Inference_Allowed
   )
 
-write.csv(source_manifest, file.path(tables_dir, "table_DA_exact_kfold_source_manifest.csv"), row.names = FALSE)
-write.csv(weight_audit, file.path(tables_dir, "table_DA_exact_kfold_weight_audit.csv"), row.names = FALSE)
+write_csv_safely(source_manifest, file.path(tables_dir, "table_DA_exact_kfold_source_manifest.csv"), row.names = FALSE)
+write_csv_safely(weight_audit, file.path(tables_dir, "table_DA_exact_kfold_weight_audit.csv"), row.names = FALSE)
 
 primary_columns <- c(
   "NDA_mean_stacked", "NDA_sd_epred_stacked", "NDA_sd_predict_stacked",
@@ -501,7 +501,7 @@ nonfinite_audit <- bind_rows(
   audit_nonfinite(grouped_out_path, grouped_out),
   audit_nonfinite(row_out_path, row_out)
 )
-write.csv(nonfinite_audit, file.path(tables_dir, "table_DA_exact_kfold_nonfinite_audit.csv"), row.names = FALSE)
+write_csv_safely(nonfinite_audit, file.path(tables_dir, "table_DA_exact_kfold_nonfinite_audit.csv"), row.names = FALSE)
 
 gate_decision <- if (any(nonfinite_audit$n_nonfinite > 0)) "FAIL_NONFINITE_PRIMARY_COLUMNS" else "PASS"
 gate <- data.frame(
@@ -513,7 +513,7 @@ gate <- data.frame(
   Script_Version = script_version,
   stringsAsFactors = FALSE
 )
-write.csv(gate, file.path(tables_dir, "table_DA_exact_kfold_gate_decision.csv"), row.names = FALSE)
+write_csv_safely(gate, file.path(tables_dir, "table_DA_exact_kfold_gate_decision.csv"), row.names = FALSE)
 
 manifest_paths <- c(
   grouped_manifest_path, row_manifest_path, grouped_ep_weights_path, grouped_rt_weights_path,
@@ -543,7 +543,7 @@ io_manifest <- data.frame(
   Primary_Secondary = "primary_exact_kfold",
   stringsAsFactors = FALSE
 )
-write.csv(io_manifest, file.path(tables_dir, "table_DA_exact_kfold_io_manifest.csv"), row.names = FALSE)
+write_csv_safely(io_manifest, file.path(tables_dir, "table_DA_exact_kfold_io_manifest.csv"), row.names = FALSE)
 
 cat("\n[SUCCESS] Exact K-fold DA construction completed.\n")
 cat("Grouped output:", grouped_out_path, "\n")

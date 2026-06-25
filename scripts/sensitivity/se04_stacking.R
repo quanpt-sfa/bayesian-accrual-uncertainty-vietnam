@@ -358,7 +358,7 @@ for (sidx in seq_len(nrow(scenarios))) {
 
 weights_df <- bind_rows(weight_rows)
 tables_root <- file.path(sensitivity_root(), "tables")
-write.csv(weights_df, file.path(tables_root, "sensitivity_stacking_weights_by_scenario.csv"), row.names = FALSE)
+write_csv_safely(weights_df, file.path(tables_root, "sensitivity_stacking_weights_by_scenario.csv"), row.names = FALSE)
 
 if (nrow(weights_df) > 0 && any(is.finite(weights_df$stacking_weight))) {
   ranked <- weights_df %>%
@@ -381,16 +381,16 @@ if (nrow(weights_df) > 0 && any(is.finite(weights_df$stacking_weight))) {
     ) %>%
     filter(rank <= 5 | !is.na(baseline_rank) & baseline_rank <= 5) %>%
     arrange(target_space, scenario, rank)
-  write.csv(top, file.path(tables_root, "sensitivity_top_models_by_scenario.csv"), row.names = FALSE)
-  write.csv(comparison, file.path(tables_root, "sensitivity_top_models_comparison.csv"), row.names = FALSE)
+  write_csv_safely(top, file.path(tables_root, "sensitivity_top_models_by_scenario.csv"), row.names = FALSE)
+  write_csv_safely(comparison, file.path(tables_root, "sensitivity_top_models_comparison.csv"), row.names = FALSE)
   comparison_rows[[1]] <- comparison
 } else {
-  write.csv(data.frame(), file.path(tables_root, "sensitivity_top_models_by_scenario.csv"), row.names = FALSE)
-  write.csv(data.frame(), file.path(tables_root, "sensitivity_top_models_comparison.csv"), row.names = FALSE)
+  write_csv_safely(data.frame(), file.path(tables_root, "sensitivity_top_models_by_scenario.csv"), row.names = FALSE)
+  write_csv_safely(data.frame(), file.path(tables_root, "sensitivity_top_models_comparison.csv"), row.names = FALSE)
 }
 
 for (scenario in unique(weights_df$scenario)) {
-  write.csv(weights_df[weights_df$scenario == scenario, , drop = FALSE],
+  write_csv_safely(weights_df[weights_df$scenario == scenario, , drop = FALSE],
             file.path(sensitivity_root(scenario), "stacking", paste0("table_sensitivity_stacking_weights_", scenario, ".csv")),
             row.names = FALSE)
 }
