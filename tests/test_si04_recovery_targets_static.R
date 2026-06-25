@@ -51,4 +51,84 @@ for (fragment in c("recovery_role", "backfilled_from_fit")) {
   }
 }
 
+extract_assignment <- function(path, name, envir) {
+  exprs <- parse(path)
+  for (expr in exprs) {
+    if (is.call(expr) && identical(expr[[1]], as.name("<-")) && identical(as.character(expr[[2]]), name)) {
+      eval(expr, envir = envir)
+      return(invisible(TRUE))
+    }
+  }
+  stop("Missing function assignment in ", path, ": ", name)
+}
+
+if (requireNamespace("brms", quietly = TRUE)) {
+  behavior_env <- new.env(parent = globalenv())
+  extract_assignment(si04c_path, "si04c_recovery_targets", behavior_env)
+  extract_assignment(si04c_path, "enrich_si04c_recovery_result", behavior_env)
+
+  fixef.brmsfit <- function(object, ...) {
+    matrix(
+      c(0.04, -0.03, 0.021),
+      ncol = 1L,
+      dimnames = list(c("dREV_scaled_std", "PPE_scaled_std", "ROA_lag_std"), "Estimate")
+    )
+  }
+
+  tmp_root <- file.path(tempdir(), paste0("si04c_roa_backfill_test_", Sys.getpid()))
+  dir.create(tmp_root, recursive = TRUE, showWarnings = FALSE)
+  fit_path <- file.path(tmp_root, "fit.rds")
+  result_path <- file.path(tmp_root, "old_result_should_not_be_written.rds")
+  fake_fit <- list(note = "fake brmsfit for S3 fixef dispatch only")
+  class(fake_fit) <- "brmsfit"
+  saveRDS(fake_fit, fit_path)
+
+  task_row <- data.frame(
+    Task_Key = "si04_mock_T15_sigma0p3_rep001",
+    fit_path = fit_path,
+    result_path = result_path,
+    stringsAsFactors = FALSE
+  )
+  old_result <- data.frame(
+    T = 15L,
+    sigma_firm = 0.3,
+    Replication = 1L,
+    parameter = c("dREV_scaled_std", "PPE_scaled_std"),
+    true_value = c(0.04, -0.03),
+    estimate = c(0.039, -0.031),
+    max_rhat = 1.01,
+    min_ess_bulk = 1000,
+    min_ess_tail = 900,
+    total_divergent = 0L,
+    max_treedepth_hits = 0L,
+    status = "SUCCESS",
+    stringsAsFactors = FALSE
+  )
+  dgp_cfg <- list(beta_drev = 0.04, beta_ppe = -0.03, beta_roa = 0.02)
+  enriched <- behavior_env$enrich_si04c_recovery_result(task_row, old_result, dgp_cfg)
+
+  if (!identical(sort(enriched$parameter), sort(c("dREV_scaled_std", "PPE_scaled_std", "ROA_lag_std")))) {
+    stop("Behavioral si04c enrichment did not return exactly the three recovery targets.")
+  }
+  roa <- enriched[enriched$parameter == "ROA_lag_std", , drop = FALSE]
+  if (nrow(roa) != 1L ||
+      !identical(roa$Task_Key[[1]], task_row$Task_Key[[1]]) ||
+      !isTRUE(all.equal(roa$estimate[[1]], 0.021)) ||
+      !isTRUE(all.equal(roa$true_value[[1]], dgp_cfg$beta_roa)) ||
+      !identical(roa$recovery_role[[1]], "performance_control") ||
+      !isTRUE(roa$backfilled_from_fit[[1]])) {
+    stop("Behavioral si04c enrichment did not append the expected ROA_lag_std backfill row.")
+  }
+  existing <- enriched[enriched$parameter %in% c("dREV_scaled_std", "PPE_scaled_std"), , drop = FALSE]
+  if (!all(existing$recovery_role == "primary_accrual_driver") ||
+      !all(existing$backfilled_from_fit == FALSE)) {
+    stop("Behavioral si04c enrichment did not mark existing recovery rows correctly.")
+  }
+  if (file.exists(result_path)) {
+    stop("Behavioral si04c enrichment wrote or overwrote the task-local result_path artifact.")
+  }
+} else {
+  message("Skipping behavioral si04c ROA_lag_std backfill test because brms is unavailable.")
+}
+
 cat("test_si04_recovery_targets_static.R passed\n")
