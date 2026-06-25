@@ -19,7 +19,7 @@ for (fragment in c(
   "invisible(file)"
 )) {
   if (!grepl(fragment, io_helpers, fixed = TRUE)) {
-    stop("ma00 missing central safe CSV writer fragment: ", fragment)
+    stop("io_helpers.R missing central safe CSV writer fragment: ", fragment)
   }
 }
 
