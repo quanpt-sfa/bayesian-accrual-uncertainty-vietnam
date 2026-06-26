@@ -124,10 +124,13 @@ coeftest_from_vcov <- function(fit, vc) {
     error = function(e) NULL
   )
   if (is.null(out)) return(NULL)
-  out_df <- as.data.frame(out)
-  # coeftest standard errors are column 2. If sqrt(diag(vcov)) failed, this
-  # column will contain NaN/NA and must not be used silently.
-  if (ncol(out_df) >= 2 && any(!is.finite(out_df[[2]]))) return(NULL)
+  # Coerce via as.matrix() (NOT as.data.frame()) so the 4 columns are preserved.
+  # as.data.frame() on a coeftest object collapses to a single column, which would
+  # make the ncol(...) >= 2 guard below silently never fire.
+  out_mat <- as.matrix(out)
+  # Standard errors are column 2. If sqrt(diag(vcov)) failed, this column contains
+  # NaN/NA and must not be used silently -> reject so caller falls back to OLS.
+  if (ncol(out_mat) >= 2 && any(!is.finite(out_mat[, 2]))) return(NULL)
   out
 }
 
@@ -184,7 +187,15 @@ coef_table <- function(fit, data, se_type = "firm") {
     se_status <- paste0("fallback_ols_after_", se_status)
   }
 
-  out_df <- as.data.frame(out)
+  # CRITICAL: `out` may be a `coeftest` object (matrix-like with a special class).
+  # Calling as.data.frame() directly on a coeftest object collapses it into a
+  # single useless list-column named "x" and DROPS the coefficient rownames,
+  # which silently turns every extracted coefficient into NA downstream.
+  # Coerce via as.matrix() first to preserve both the 4 columns
+  # (Estimate / Std. Error / t / p) and the coefficient rownames.
+  out_mat <- as.matrix(out)
+  out_df <- as.data.frame(out_mat, stringsAsFactors = FALSE)
+  rownames(out_df) <- rownames(out_mat)
   attr(out_df, "se_method_used") <- se_method_used
   attr(out_df, "se_status") <- se_status
   out_df
@@ -622,6 +633,26 @@ robustness <- bind_rows(lapply(specs, function(spec) {
     }))
   }))
 }))
+
+# ── GUARDRAIL: a successful run must actually extract coefficients ───────────
+# A fit can succeed (model_status == "fit_ok", valid R^2) while coefficient
+# extraction silently fails (e.g. a coeftest->as.data.frame coercion that drops
+# rownames turns every which(rownames == term) into an empty match -> NA). Such a
+# run would still exit 0 and print [SUCCESS] with an all-NA coefficient column.
+# Refuse to proceed if too many fit_ok rows carry NA coefficients.
+local({
+  fit_ok <- robustness$model_status == "fit_ok"
+  n_fit_ok <- sum(fit_ok, na.rm = TRUE)
+  n_coef_ok <- sum(fit_ok & is.finite(suppressWarnings(as.numeric(robustness$coefficient))), na.rm = TRUE)
+  if (n_fit_ok > 0L && n_coef_ok < 0.5 * n_fit_ok) {
+    stop("[BLOCKER] ", n_fit_ok - n_coef_ok, " of ", n_fit_ok,
+         " fit_ok rows have NA coefficients. Coefficient extraction is broken ",
+         "(not a statistical result). Refusing to write robustness output. ",
+         "Check coef_table()/coeftest() coercion and term-name matching.")
+  }
+  cat(sprintf("[di05b] coefficient extraction check: %d/%d fit_ok rows have finite coefficients.\n",
+              n_coef_ok, n_fit_ok))
+})
 
 robustness <- robustness %>%
   mutate(
