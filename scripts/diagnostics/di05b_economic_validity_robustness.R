@@ -187,25 +187,26 @@ coef_table <- function(fit, data, se_type = "firm") {
     se_status <- paste0("fallback_ols_after_", se_status)
   }
 
-  # CRITICAL: `out` may be a `coeftest` object (matrix-like with a special class).
-  # Calling as.data.frame() directly on a coeftest object collapses it into a
-  # single useless list-column named "x" and DROPS the coefficient rownames,
-  # which silently turns every extracted coefficient into NA downstream.
-  # Coerce via as.matrix() first to preserve both the 4 columns
-  # (Estimate / Std. Error / t / p) and the coefficient rownames.
-  # Capture coefficient names from the ORIGINAL object first. For a coeftest
-  # object, rownames(out) holds the true coefficient names (verified). as.matrix()
-  # usually preserves them, but we fall back to dimnames(out) to be safe.
+  # CRITICAL FIX: the previous coeftest -> as.data.frame coercion dropped
+  # coefficient names (as.data.frame(<coeftest>) collapses to a single column "x";
+  # as.matrix may also drop dimnames on some versions), which silently turned every
+  # extracted coefficient into NA. Both `summary(fit)$coefficients` and a `coeftest`
+  # object are numeric matrices, so we index them directly by column position and
+  # carry the coefficient names as an explicit `.coef_name` column. Downstream
+  # matching then never depends on rownames surviving any coercion.
   coef_names <- rownames(out)
   if (is.null(coef_names) && !is.null(dimnames(out))) coef_names <- dimnames(out)[[1]]
-  out_mat <- as.matrix(out)
-  if (is.null(rownames(out_mat)) && !is.null(coef_names) &&
-      length(coef_names) == nrow(out_mat)) {
-    rownames(out_mat) <- coef_names
-  }
-  out_df <- as.data.frame(out_mat, stringsAsFactors = FALSE)
-  rn <- rownames(out_mat)
-  if (!is.null(rn) && length(rn) == nrow(out_df)) rownames(out_df) <- rn
+  if (is.null(coef_names)) coef_names <- names(stats::coef(fit))
+  ncol_out <- ncol(out)
+  out_df <- data.frame(
+    .coef_name = coef_names,
+    Estimate   = if (!is.null(ncol_out) && ncol_out >= 1) out[, 1] else NA_real_,
+    StdError   = if (!is.null(ncol_out) && ncol_out >= 2) out[, 2] else NA_real_,
+    Stat       = if (!is.null(ncol_out) && ncol_out >= 3) out[, 3] else NA_real_,
+    Pval       = if (!is.null(ncol_out) && ncol_out >= 4) out[, 4] else NA_real_,
+    stringsAsFactors = FALSE,
+    row.names = NULL
+  )
   attr(out_df, "se_method_used") <- se_method_used
   attr(out_df, "se_status") <- se_status
   out_df
@@ -592,13 +593,14 @@ fit_one <- function(df, spec, score_label, outcome) {
   se_status <- attr(ct, "se_status", exact = TRUE)
   if (is.null(se_method_used)) se_method_used <- NA_character_
   if (is.null(se_status)) se_status <- NA_character_
-  nm <- rownames(ct)
+  nm <- ct$.coef_name
   out_sd <- stats::sd(num(use[[outcome]]), na.rm = TRUE)
   out_abs_mean <- mean(abs(num(use[[outcome]])), na.rm = TRUE)
 
   bind_rows(lapply(terms_interest, function(term) {
-    idx <- which(nm == term)
-    coef <- if (length(idx)) ct[idx[1], 1] else NA_real_
+    base <- sub("TRUE$", "", term)
+    idx <- which(nm == term | nm == base | nm == paste0(base, "TRUE"))
+    coef <- if (length(idx)) ct$Estimate[idx[1]] else NA_real_
     exp_sign <- expected_sign_for(outcome)
     data.frame(
       specification_id = spec$specification_id,
@@ -608,9 +610,9 @@ fit_one <- function(df, spec, score_label, outcome) {
       outcome = outcome,
       term = sub("TRUE$", "", term),
       coefficient = coef,
-      std_error = if (length(idx) && ncol(ct) >= 2) ct[idx[1], 2] else NA_real_,
-      t_value = if (length(idx) && ncol(ct) >= 3) ct[idx[1], 3] else NA_real_,
-      p_value = if (length(idx) && ncol(ct) >= 4) ct[idx[1], 4] else NA_real_,
+      std_error = if (length(idx)) ct$StdError[idx[1]] else NA_real_,
+      t_value = if (length(idx)) ct$Stat[idx[1]] else NA_real_,
+      p_value = if (length(idx)) ct$Pval[idx[1]] else NA_real_,
       expected_sign = exp_sign,
       observed_sign = observed_sign(coef),
       sign_consistent = sign_is_consistent(coef, exp_sign),
