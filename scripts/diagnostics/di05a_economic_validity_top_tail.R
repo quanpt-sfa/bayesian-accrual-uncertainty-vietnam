@@ -234,7 +234,15 @@ analysis <- sample_rt %>%
 
 if (!nrow(analysis)) stop("[BLOCKER] Economic-validity membership join produced zero rows.")
 
-# Corrected outcome set: 4 independent outcomes, 3 membership terms -> 12 tests per score variable.
+# Corrected outcome set: 4 outcome definitions across 3 economic constructs
+# (cash realization = future_CFO; future earnings under two asset scalings =
+# future_Earnings [NI_lead/A] and future_ROA [NI_lead/A_lead]; accrual reversal),
+# times 3 membership terms -> 12 coefficient tests per score variable.
+# NOTE: future_ROA and future_Earnings share the NI_{t+1} numerator and differ only
+# by asset scaling, so they are NOT fully independent constructs. di05b's
+# EV_DENOMINATOR_HARMONIZED specification diagnoses whether membership sign patterns
+# survive the current-asset vs lead-asset scaling choice. Do not describe these as
+# "4 independent outcomes" in the manuscript; describe them as 4 outcome definitions.
 # future_Earnings_persistence was removed because it duplicated future_Earnings (both = NI_lead / A).
 # See script_version for correction history.
 outcomes <- c("future_CFO", "future_ROA", "future_Earnings", "accrual_reversal")
@@ -330,6 +338,13 @@ outcome_stats <- bind_rows(lapply(unique(analysis$reported_score_variable), func
 validity <- validity %>%
   left_join(outcome_stats, by = c("reported_score_variable", "outcome")) %>%
   mutate(
+    n_outcome_definitions = length(outcomes),
+    # future_ROA and future_Earnings share the NI_{t+1} numerator (differ only by asset
+    # scaling), so the 4 definitions span 3 distinct economic constructs, not 4.
+    n_distinct_constructs = 3L,
+    # Backward-compatible alias retained for downstream readers (ma17/tests). It now
+    # carries the count of outcome DEFINITIONS, not independent constructs; see
+    # n_distinct_constructs and the reviewer note for the correct interpretation.
     n_independent_outcomes = length(outcomes),
     n_terms_tested = length(terms_interest),
     expected_tests_per_score = length(outcomes) * length(terms_interest),
@@ -394,6 +409,8 @@ decision_detail <- validity %>%
   filter(.data$model_status == "fit_ok") %>%
   group_by(.data$reported_score_variable) %>%
   summarise(
+    n_outcome_definitions = dplyr::n_distinct(.data$outcome),
+    n_distinct_constructs = 3L,
     n_independent_outcomes = dplyr::n_distinct(.data$outcome),
     n_terms_tested = dplyr::n_distinct(.data$term),
     expected_tests_per_score = dplyr::n_distinct(.data$outcome) * dplyr::n_distinct(.data$term),
@@ -427,7 +444,7 @@ decision <- decision_detail %>%
       .data$row_only_significant_tests_q10_BH_score_family > 0 | .data$grouped_only_significant_tests_q10_BH_score_family > 0 ~ "Economic signal is target-specific after BH adjustment; interpret validation-target sensitivity as substantively relevant but supplementary.",
       TRUE ~ "Top-tail membership has limited BH-adjusted downstream economic signal in these supplementary tests."
     ),
-    multiplicity_note = "Primary BH family is within reported_score_variable: 4 independent outcomes x 3 membership terms = 12 tests. q_value_BH_global is also reported across all economic-validity tests as a stricter transparency check.",
+    multiplicity_note = "Primary BH family is within reported_score_variable: 4 outcome definitions x 3 membership terms = 12 tests. The 4 definitions span 3 distinct constructs (cash realization; future earnings under two asset scalings; accrual reversal), since future_ROA and future_Earnings share the NI_{t+1} numerator. q_value_BH_global is also reported across all economic-validity tests as a stricter transparency check.",
     sign_note = "Expected signs are imposed equally on RowOnlyTop5, GroupedOnlyTop5, and CommonTop5. For future performance outcomes the expected sign is negative; for accrual_reversal, coded as -TA_scaled_{t+1}, the expected sign is positive."
   )
 
@@ -462,8 +479,10 @@ note <- c(
   "",
   "## Multiplicity convention",
   "",
-  "The corrected diagnostic reports four independent outcomes: future CFO, future ROA, future earnings, and accrual reversal.",
-  "The primary BH correction family is within each `reported_score_variable`: 4 independent outcomes times 3 membership terms = 12 coefficient tests.",
+  "The corrected diagnostic reports four outcome definitions: future CFO, future ROA, future earnings, and accrual reversal.",
+  "These four definitions span three distinct economic constructs: cash realization (future CFO), future earnings under two asset scalings (future_Earnings = NI_{t+1}/A and future_ROA = NI_{t+1}/A_{t+1}), and accrual reversal. future_ROA and future_Earnings are therefore not fully independent: they share the NI_{t+1} numerator and differ only by the asset-scaling denominator.",
+  "The companion robustness script (di05b) includes an `EV_DENOMINATOR_HARMONIZED` specification that re-estimates NI and CFO outcomes under both current-asset and lead-asset scaling to verify that membership sign patterns are not artifacts of the denominator choice.",
+  "The primary BH correction family is within each `reported_score_variable`: 4 outcome definitions times 3 membership terms = 12 coefficient tests.",
   "The table also reports `q_value_BH_global`, a stricter BH adjustment across all economic-validity tests, for transparency.",
   "",
   "## Effect-size and influence diagnostics",
@@ -476,7 +495,7 @@ note <- c(
   "",
   "The previous economic-validity draft double-counted future earnings because `future_Earnings_persistence` duplicated `future_Earnings`.",
   "Both were computed as `NI_lead / A`, making them numerically identical.",
-  "The correction reduces the count denominator from 15 coefficient tests to 12 coefficient tests, and from five named outcomes to four independent outcomes.",
+  "The correction reduces the count denominator from 15 coefficient tests to 12 coefficient tests, and from five named outcomes to four outcome definitions (spanning three distinct constructs; future_ROA and future_Earnings share the NI_{t+1} numerator).",
   "The qualitative pattern should be interpreted after this correction: the correction affects the count, not necessarily the existence of the economic-validity signal."
 )
 writeLines(note, note_path, useBytes = TRUE)
