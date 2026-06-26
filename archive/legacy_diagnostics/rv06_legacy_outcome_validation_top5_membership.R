@@ -8,6 +8,20 @@
 #
 # This script does not fit or refit Bayesian models.
 # -----------------------------------------------------------------------------
+#
+# !! DEPRECATED / HISTORICAL RECORD ONLY (2026-06-26) !!
+#
+# This legacy script contains the original bug: `future_Earnings_persistence`
+# was computed as `NI_lead / A`, which is numerically identical to
+# `future_Earnings` (`NI_lead / A`). The duplicate inflated economic-validity
+# test counts from 4 to 5 outcomes and from 12 to 15 coefficient tests.
+#
+# The active, corrected diagnostic is:
+#   scripts/diagnostics/di05_economic_validity_top_tail.R
+#
+# Do NOT use this file for any active manuscript or export output.
+# It is retained as a historical record of the pre-correction analysis.
+# -----------------------------------------------------------------------------
 
 suppressPackageStartupMessages({
   library(dplyr)

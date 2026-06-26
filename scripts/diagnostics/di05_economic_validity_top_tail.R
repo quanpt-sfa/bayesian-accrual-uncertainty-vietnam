@@ -20,7 +20,7 @@ if (exists("ensure_analysis_dirs", mode = "function")) ensure_analysis_dirs()
 
 script_start_time <- Sys.time()
 script_name <- "scripts/diagnostics/di05_economic_validity_top_tail.R"
-script_version <- "2026-06-25-v1-economic-validity-top-tail"
+script_version <- "2026-06-26-v2-remove-duplicate-earnings-persistence"
 
 diagnostics_dir <- file.path(output_root, "diagnostics")
 dir.create(diagnostics_dir, recursive = TRUE, showWarnings = FALSE)
@@ -120,8 +120,11 @@ raw_leads <- raw %>%
     NI_lead = get_lead_contiguous(.data$NI, .data$year),
     ROA_lead = get_lead_contiguous(.data$ROA, .data$year),
     A_lead = get_lead_contiguous(.data$A, .data$year),
-    CFO_lead = get_lead_contiguous(.data$CFO, .data$year),
-    future_Earnings_persistence = .data$NI_lead / .data$A
+    CFO_lead = get_lead_contiguous(.data$CFO, .data$year)
+    # NOTE: future_Earnings_persistence is NOT computed here.
+    # It was previously defined as NI_lead / A, which is identical to future_Earnings
+    # (NI_lead / A). That duplicate outcome inflated economic-validity test counts
+    # from 4 to 5 outcomes and from 12 to 15 coefficient tests. Removed 2026-06-26.
   ) %>%
   ungroup() %>%
   transmute(
@@ -130,8 +133,7 @@ raw_leads <- raw %>%
     A = num(.data$A),
     future_CFO = num(.data$CFO_lead) / num(.data$A),
     future_Earnings = num(.data$NI_lead) / num(.data$A),
-    future_ROA = ifelse(num(.data$A_lead) > 0, num(.data$NI_lead) / num(.data$A_lead), NA_real_),
-    future_Earnings_persistence = num(.data$future_Earnings_persistence)
+    future_ROA = ifelse(num(.data$A_lead) > 0, num(.data$NI_lead) / num(.data$A_lead), NA_real_)
   )
 
 sample_rt_leads <- sample_rt %>%
@@ -164,8 +166,33 @@ analysis <- sample_rt %>%
 
 if (!nrow(analysis)) stop("[BLOCKER] Economic-validity membership join produced zero rows.")
 
-outcomes <- c("future_CFO", "future_ROA", "future_Earnings", "future_Earnings_persistence", "accrual_reversal")
+# Corrected outcome set: 4 independent outcomes, 3 membership terms -> 12 tests per score variable.
+# future_Earnings_persistence was removed because it duplicated future_Earnings (both = NI_lead / A).
+# See script_version for correction history.
+outcomes <- c("future_CFO", "future_ROA", "future_Earnings", "accrual_reversal")
 outcomes <- outcomes[outcomes %in% names(analysis)]
+
+# ── Guardrail: prevent future_Earnings_persistence from silently re-entering ──
+if ("future_Earnings_persistence" %in% outcomes) {
+  stop("[GUARDRAIL] future_Earnings_persistence must not appear in the di05 outcomes vector. ",
+       "It duplicates future_Earnings (both = NI_lead / A). Remove it or implement a ",
+       "theoretically distinct persistence model before including it.")
+}
+# ── Guardrail: detect duplicate outcome columns in analysis data ──
+outcome_cols_in_data <- outcomes[outcomes %in% names(analysis)]
+if (length(outcome_cols_in_data) >= 2) {
+  outcome_matrix <- sapply(outcome_cols_in_data, function(col) analysis[[col]])
+  for (i in seq_len(ncol(outcome_matrix) - 1)) {
+    for (j in seq(i + 1, ncol(outcome_matrix))) {
+      vals_i <- outcome_matrix[, i]; vals_j <- outcome_matrix[, j]
+      finite_both <- is.finite(vals_i) & is.finite(vals_j)
+      if (sum(finite_both) > 10 && isTRUE(all.equal(vals_i[finite_both], vals_j[finite_both], tolerance = 1e-12))) {
+        stop("[GUARDRAIL] Outcomes '", outcome_cols_in_data[i], "' and '", outcome_cols_in_data[j],
+             "' are numerically identical in the analysis data. Remove the duplicate before proceeding.")
+      }
+    }
+  }
+}
 terms_interest <- c("RowOnlyTop5TRUE", "GroupedOnlyTop5TRUE", "CommonTop5TRUE")
 
 fit_one <- function(df, score_label, outcome) {
@@ -278,7 +305,15 @@ note <- c(
   "",
   "Primary exact-KFold magnitude evidence remains the main RQ2 evidence; this table is a supplementary economic-validity check.",
   "",
-  "This is supplementary economic-validity evidence. It does not replace primary exact-KFold magnitude evidence and does not prove managerial intent."
+  "This is supplementary economic-validity evidence. It does not replace primary exact-KFold magnitude evidence and does not prove managerial intent.",
+  "",
+  "## Correction Note (2026-06-26)",
+  "",
+  "The previous economic-validity draft double-counted future earnings because `future_Earnings_persistence` duplicated `future_Earnings`.",
+  "Both were computed as `NI_lead / A`, making them numerically identical.",
+  "The corrected diagnostic reports four independent outcomes: future CFO, future ROA, future earnings, and accrual reversal.",
+  "The correction reduces the count denominator from 15 coefficient tests to 12 coefficient tests, and from five named outcomes to four independent outcomes.",
+  "The qualitative pattern is unchanged: the correction affects the count, not the existence of the economic-validity signal."
 )
 writeLines(note, note_path, useBytes = TRUE)
 
