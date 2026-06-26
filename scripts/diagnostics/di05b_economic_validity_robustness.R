@@ -193,9 +193,19 @@ coef_table <- function(fit, data, se_type = "firm") {
   # which silently turns every extracted coefficient into NA downstream.
   # Coerce via as.matrix() first to preserve both the 4 columns
   # (Estimate / Std. Error / t / p) and the coefficient rownames.
+  # Capture coefficient names from the ORIGINAL object first. For a coeftest
+  # object, rownames(out) holds the true coefficient names (verified). as.matrix()
+  # usually preserves them, but we fall back to dimnames(out) to be safe.
+  coef_names <- rownames(out)
+  if (is.null(coef_names) && !is.null(dimnames(out))) coef_names <- dimnames(out)[[1]]
   out_mat <- as.matrix(out)
+  if (is.null(rownames(out_mat)) && !is.null(coef_names) &&
+      length(coef_names) == nrow(out_mat)) {
+    rownames(out_mat) <- coef_names
+  }
   out_df <- as.data.frame(out_mat, stringsAsFactors = FALSE)
-  rownames(out_df) <- rownames(out_mat)
+  rn <- rownames(out_mat)
+  if (!is.null(rn) && length(rn) == nrow(out_df)) rownames(out_df) <- rn
   attr(out_df, "se_method_used") <- se_method_used
   attr(out_df, "se_status") <- se_status
   out_df
