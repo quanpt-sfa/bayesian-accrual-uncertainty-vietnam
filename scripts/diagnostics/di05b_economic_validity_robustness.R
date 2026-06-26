@@ -21,7 +21,7 @@ if (exists("ensure_analysis_dirs", mode = "function")) ensure_analysis_dirs()
 
 script_start_time <- Sys.time()
 script_name <- "scripts/diagnostics/di05b_economic_validity_robustness.R"
-script_version <- "2026-06-26-v1-economic-validity-robustness"
+script_version <- "2026-06-26-v2-safe-cluster-vcov-status"
 
 diagnostics_dir <- file.path(output_root, "diagnostics")
 dir.create(diagnostics_dir, recursive = TRUE, showWarnings = FALSE)
@@ -100,33 +100,94 @@ cluster_frame_for_fit <- function(fit, data, cluster_cols) {
   out
 }
 
+vcovCL_safe <- function(fit, cluster, fix_psd = TRUE) {
+  if (!requireNamespace("sandwich", quietly = TRUE)) return(NULL)
+  args <- list(x = fit, cluster = cluster)
+  # sandwich::vcovCL has a `fix` argument in recent versions. It applies an
+  # eigendecomposition correction when the clustered covariance matrix is not
+  # positive semidefinite. This is especially useful for two-way clustering with
+  # short panels and many fixed effects.
+  if ("fix" %in% names(formals(sandwich::vcovCL))) args$fix <- isTRUE(fix_psd)
+  tryCatch(do.call(sandwich::vcovCL, args), error = function(e) NULL)
+}
+
+vcov_has_valid_diagonal <- function(vc) {
+  if (is.null(vc)) return(FALSE)
+  d <- suppressWarnings(diag(vc))
+  length(d) > 0 && all(is.finite(d)) && all(d >= -1e-12)
+}
+
+coeftest_from_vcov <- function(fit, vc) {
+  if (is.null(vc) || !requireNamespace("lmtest", quietly = TRUE)) return(NULL)
+  out <- tryCatch(
+    suppressWarnings(lmtest::coeftest(fit, vcov. = vc)),
+    error = function(e) NULL
+  )
+  if (is.null(out)) return(NULL)
+  out_df <- as.data.frame(out)
+  # coeftest standard errors are column 2. If sqrt(diag(vcov)) failed, this
+  # column will contain NaN/NA and must not be used silently.
+  if (ncol(out_df) >= 2 && any(!is.finite(out_df[[2]]))) return(NULL)
+  out
+}
+
 coef_table <- function(fit, data, se_type = "firm") {
   out <- NULL
+  se_method_used <- "ols_default"
+  se_status <- "ols_default"
+
   if (requireNamespace("sandwich", quietly = TRUE) && requireNamespace("lmtest", quietly = TRUE)) {
-    out <- tryCatch({
-      if (identical(se_type, "firm")) {
-        cl <- cluster_for_fit(fit, data, "company")
-        if (length(cl) == stats::nobs(fit) && dplyr::n_distinct(cl, na.rm = TRUE) >= 2) {
-          lmtest::coeftest(fit, vcov. = sandwich::vcovCL(fit, cluster = cl))
+    if (identical(se_type, "firm")) {
+      cl <- cluster_for_fit(fit, data, "company")
+      if (length(cl) == stats::nobs(fit) && dplyr::n_distinct(cl, na.rm = TRUE) >= 2) {
+        vc <- vcovCL_safe(fit, cluster = cl, fix_psd = TRUE)
+        if (vcov_has_valid_diagonal(vc)) {
+          out <- coeftest_from_vcov(fit, vc)
+          if (!is.null(out)) {
+            se_method_used <- "firm_cluster_vcovCL_fix_if_supported"
+            se_status <- "cluster_se_ok"
+          }
         } else {
-          NULL
-        }
-      } else if (identical(se_type, "two_way")) {
-        cl <- cluster_frame_for_fit(fit, data, c("company", "year"))
-        if (nrow(cl) == stats::nobs(fit) &&
-            dplyr::n_distinct(cl$company, na.rm = TRUE) >= 2 &&
-            dplyr::n_distinct(cl$year, na.rm = TRUE) >= 2) {
-          lmtest::coeftest(fit, vcov. = sandwich::vcovCL(fit, cluster = cl))
-        } else {
-          NULL
+          se_status <- "invalid_firm_cluster_vcov"
         }
       } else {
-        NULL
+        se_status <- "insufficient_firm_clusters_for_cluster_se"
       }
-    }, error = function(e) NULL)
+    } else if (identical(se_type, "two_way")) {
+      cl <- cluster_frame_for_fit(fit, data, c("company", "year"))
+      if (nrow(cl) == stats::nobs(fit) &&
+          dplyr::n_distinct(cl$company, na.rm = TRUE) >= 2 &&
+          dplyr::n_distinct(cl$year, na.rm = TRUE) >= 2) {
+        vc <- vcovCL_safe(fit, cluster = cl, fix_psd = TRUE)
+        if (vcov_has_valid_diagonal(vc)) {
+          out <- coeftest_from_vcov(fit, vc)
+          if (!is.null(out)) {
+            se_method_used <- "two_way_cluster_vcovCL_fix_if_supported"
+            se_status <- "cluster_se_ok"
+          } else {
+            se_status <- "two_way_cluster_coeftest_invalid_after_vcov"
+          }
+        } else {
+          se_status <- "invalid_two_way_cluster_vcov"
+        }
+      } else {
+        se_status <- "insufficient_clusters_for_two_way_cluster_se"
+      }
+    }
+  } else {
+    se_status <- "sandwich_or_lmtest_unavailable"
   }
-  if (is.null(out)) out <- summary(fit)$coefficients
-  as.data.frame(out)
+
+  if (is.null(out)) {
+    out <- summary(fit)$coefficients
+    se_method_used <- "ols_summary_fallback"
+    se_status <- paste0("fallback_ols_after_", se_status)
+  }
+
+  out_df <- as.data.frame(out)
+  attr(out_df, "se_method_used") <- se_method_used
+  attr(out_df, "se_status") <- se_status
+  out_df
 }
 
 p_adjust_with_na <- function(p) {
@@ -506,6 +567,10 @@ fit_one <- function(df, spec, score_label, outcome) {
   }
 
   ct <- coef_table(fit, use, se_type = spec$se_type)
+  se_method_used <- attr(ct, "se_method_used", exact = TRUE)
+  se_status <- attr(ct, "se_status", exact = TRUE)
+  if (is.null(se_method_used)) se_method_used <- NA_character_
+  if (is.null(se_status)) se_status <- NA_character_
   nm <- rownames(ct)
   out_sd <- stats::sd(num(use[[outcome]]), na.rm = TRUE)
   out_abs_mean <- mean(abs(num(use[[outcome]])), na.rm = TRUE)
@@ -538,6 +603,8 @@ fit_one <- function(df, spec, score_label, outcome) {
       effect_size_abs_mean = ifelse(is.finite(out_abs_mean) && out_abs_mean > 0, coef / out_abs_mean, NA_real_),
       model_status = "fit_ok",
       se_type = spec$se_type,
+      se_method_used = se_method_used,
+      se_status = se_status,
       fixed_effects = paste(spec$fixed_effects, collapse = "+"),
       controls = paste(spec$controls, collapse = "+"),
       winsorize_outcome = isTRUE(spec$winsorize_outcome),
@@ -731,6 +798,12 @@ note <- c(
   "The primary BH family is defined within each `(specification_id, reported_score_variable)` family.",
   "For the core outcome set, this corresponds to 4 outcome definitions x 3 top-tail membership terms = 12 tests.",
   "A global BH q-value across all robustness rows is also reported for transparency.",
+  "",
+  "## Cluster-robust covariance handling",
+  "",
+  "For cluster-robust standard errors, the script attempts `sandwich::vcovCL(..., fix=TRUE)` when the installed `sandwich` version supports the `fix` argument.",
+  "This avoids NaN standard errors from non-positive-semidefinite clustered covariance matrices in short panels or high-dimensional FE specifications.",
+  "The output table reports `se_method_used` and `se_status`; any OLS fallback should be treated as diagnostic only, not as successful two-way clustered inference.",
   "",
   "## Expected-sign convention",
   "",
