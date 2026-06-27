@@ -1,15 +1,25 @@
 # -----------------------------------------------------------------------------
 # Script: scripts/simulation/si05b_run_lmer_temporal_dependence_workers.R
-# Purpose: Run SI05 split-worker tasks.
+# Purpose: Run SI05 split-worker tasks in one R session using the repo worker pool.
 #
-# Worker selection:
-#   ACCRUAL_SI05_WORKER_ID = 1..N
-#   ACCRUAL_SI05_N_WORKERS = N
+# This version follows the ma07 pattern:
+#   - one command launches the stage;
+#   - if ACCRUAL_ENABLE_MODEL_PARALLEL=TRUE, tasks are distributed to PSOCK
+#     workers via accrual_run_task_pool();
+#   - each task writes only task-local result/status/log files;
+#   - final combined CSVs are written only by si05c.
 #
-# Each worker runs tasks where ((Task_ID - 1) %% N) + 1 == WORKER_ID.
-# Results are written to task_artifacts/results/*.csv, never directly to the
-# final combined table. This avoids race conditions.
+# Important environment variables:
+#   ACCRUAL_ENABLE_MODEL_PARALLEL=TRUE/FALSE
+#   ACCRUAL_MODEL_PARALLEL_WORKERS=<n>
+#   ACCRUAL_TOTAL_CORE_BUDGET=<n>
+#   ACCRUAL_SI05_FORCE_RERUN=TRUE/FALSE
+#   ACCRUAL_SI05_TASK_KEYS=<optional comma-separated task keys>
 # -----------------------------------------------------------------------------
+
+suppressPackageStartupMessages({
+  library(dplyr)
+})
 
 source("scripts/ma00_setup.R")
 phase_begin("si05b", "Run LMER temporal-dependence split-worker tasks")
@@ -18,44 +28,44 @@ source("scripts/simulation/si05_lmer_temporal_dependence_helpers.R")
 
 check_sim_packages(c("lme4", "dplyr", "ggplot2"))
 suppressPackageStartupMessages({
-  library(dplyr)
   library(lme4)
 })
 
-worker_start_time <- Sys.time()
+stage_start_time <- Sys.time()
 dirs <- si05_ensure_temporal_dirs()
 cfg <- si05_runtime_config()
 
 manifest_path <- file.path(dirs$tables, "table_si05_lmer_temporal_task_manifest.csv")
+status_path <- file.path(dirs$tables, "table_si05_lmer_temporal_task_status.csv")
 if (!file.exists(manifest_path)) {
   stop("[BLOCKER] Missing SI05 task manifest. Run si05a first: ", manifest_path)
 }
 manifest <- read.csv(manifest_path, stringsAsFactors = FALSE, check.names = FALSE)
 if (!nrow(manifest)) stop("[BLOCKER] SI05 task manifest has zero rows.")
 
-worker_id <- env_int("ACCRUAL_SI05_WORKER_ID", 1L, min = 1L)
-n_workers <- env_int("ACCRUAL_SI05_N_WORKERS", 1L, min = 1L)
-if (worker_id > n_workers) stop("[BLOCKER] ACCRUAL_SI05_WORKER_ID cannot exceed ACCRUAL_SI05_N_WORKERS.")
-
 force_rerun <- env_flag(c("ACCRUAL_SI05_FORCE_RERUN", "ACCRUAL_FORCE_REFIT"), "FALSE")
-
 task_key_filter <- env_list("ACCRUAL_SI05_TASK_KEYS")
 if (length(task_key_filter)) {
-  todo <- manifest[manifest$Task_Key %in% task_key_filter, , drop = FALSE]
-} else {
-  assigned_worker <- ((as.integer(manifest$Task_ID) - 1L) %% n_workers) + 1L
-  todo <- manifest[assigned_worker == worker_id, , drop = FALSE]
+  manifest <- manifest[manifest$Task_Key %in% task_key_filter, , drop = FALSE]
+  if (!nrow(manifest)) {
+    stop("[BLOCKER] ACCRUAL_SI05_TASK_KEYS did not match any task in manifest.")
+  }
 }
 
-if (!nrow(todo)) {
-  cat("[INFO] SI05 worker ", worker_id, "/", n_workers, " has no assigned tasks.\n", sep = "")
-  phase_end("si05b", "Run LMER temporal-dependence split-worker tasks")
-  quit(save = "no", status = 0)
-}
+# SI05 lmer tasks are single-core fits. Parallelization is across design-cell tasks.
+# This mirrors the MA07 worker-pool pattern, but with cores_per_fit = 1 to avoid
+# oversubscription and Windows nested parallelism problems.
+parallel_cfg <- accrual_fit_worker_config(
+  kind = "simulation",
+  cores_per_fit = 1L,
+  context = "si05b lmer temporal-dependence simulation"
+)
 
-write_one_status <- function(task, status, start_time, end_time, n_rows = NA_integer_,
-                             n_success = NA_integer_, n_failed = NA_integer_,
-                             error = NA_character_) {
+task_list <- lapply(seq_len(nrow(manifest)), function(i) as.list(manifest[i, ]))
+
+si05_write_task_status <- function(task, status, start_time, end_time,
+                                   n_rows = NA_integer_, n_success = NA_integer_,
+                                   n_failed = NA_integer_, error = NA_character_) {
   row <- data.frame(
     Task_ID = as.integer(task$Task_ID),
     Task_Key = as.character(task$Task_Key),
@@ -65,7 +75,7 @@ write_one_status <- function(task, status, start_time, end_time, n_rows = NA_int
     shock_duration = as.integer(task$shock_duration),
     Replications = as.integer(task$Replications),
     status = status,
-    worker_id = worker_id,
+    worker_pid = Sys.getpid(),
     start_time = as.character(start_time),
     end_time = as.character(end_time),
     runtime_seconds = as.numeric(difftime(end_time, start_time, units = "secs")),
@@ -77,38 +87,50 @@ write_one_status <- function(task, status, start_time, end_time, n_rows = NA_int
     error = error,
     stringsAsFactors = FALSE
   )
+  dir.create(dirname(as.character(task$status_path)), recursive = TRUE, showWarnings = FALSE)
   write_csv_safely(row, as.character(task$status_path), row.names = FALSE, fileEncoding = "UTF-8")
   invisible(row)
 }
 
-cat("[INFO] SI05 worker ", worker_id, "/", n_workers, " assigned tasks: ", nrow(todo), "\n", sep = "")
+si05b_task_worker <- function(task) {
+  suppressPackageStartupMessages({
+    library(dplyr)
+    library(lme4)
+  })
+  source("scripts/ma00_setup.R")
+  source("scripts/simulation/si00_helpers.R")
+  source("scripts/simulation/si05_lmer_temporal_dependence_helpers.R")
 
-worker_status_rows <- list()
-for (ii in seq_len(nrow(todo))) {
-  task <- todo[ii, , drop = FALSE]
+  # Re-read runtime config inside each worker to avoid exporting large/fragile
+  # parent-frame objects across PSOCK workers.
+  cfg <- si05_runtime_config()
+  force_rerun_local <- env_flag(c("ACCRUAL_SI05_FORCE_RERUN", "ACCRUAL_FORCE_REFIT"), "FALSE")
+
   task_start <- Sys.time()
   result_path <- as.character(task$result_path)
   log_path <- as.character(task$task_log_path)
+  dir.create(dirname(result_path), recursive = TRUE, showWarnings = FALSE)
+  dir.create(dirname(log_path), recursive = TRUE, showWarnings = FALSE)
 
-  if (file.exists(result_path) && !force_rerun) {
-    existing <- tryCatch(read.csv(result_path, stringsAsFactors = FALSE), error = function(e) NULL)
-    n_rows <- if (is.null(existing)) NA_integer_ else nrow(existing)
-    n_success <- if (is.null(existing) || !"error" %in% names(existing)) NA_integer_ else sum(is.na(existing$error) | existing$error == "")
-    n_failed <- if (is.null(existing) || !"error" %in% names(existing)) NA_integer_ else sum(!(is.na(existing$error) | existing$error == ""))
-    worker_status_rows[[length(worker_status_rows) + 1L]] <- write_one_status(
-      task, "SKIPPED_EXISTING", task_start, Sys.time(), n_rows, n_success, n_failed, NA_character_
-    )
-    next
-  }
-
-  msg <- sprintf(
-    "[SI05B worker %d/%d] Task %d/%d: %s | T=%d sigma=%.4f rho=%.4f duration=%d reps=%d:%d",
-    worker_id, n_workers, ii, nrow(todo), task$Task_Key,
+  task_header <- sprintf(
+    "[SI05B pid=%s] Task_ID=%d Task_Key=%s T=%d sigma=%.4f rho=%.4f duration=%d reps=%d:%d",
+    Sys.getpid(), as.integer(task$Task_ID), as.character(task$Task_Key),
     as.integer(task$T), as.numeric(task$sigma_firm), as.numeric(task$rho),
     as.integer(task$shock_duration), as.integer(task$Rep_Start), as.integer(task$Rep_End)
   )
-  message(msg)
-  writeLines(c(msg, paste("start_time:", as.character(task_start))), log_path, useBytes = TRUE)
+  message(task_header)
+  writeLines(c(task_header, paste("start_time:", as.character(task_start))), log_path, useBytes = TRUE)
+
+  if (file.exists(result_path) && !force_rerun_local) {
+    existing <- tryCatch(read.csv(result_path, stringsAsFactors = FALSE, check.names = FALSE), error = function(e) NULL)
+    n_rows <- if (is.null(existing)) NA_integer_ else nrow(existing)
+    n_success <- if (is.null(existing) || !"error" %in% names(existing)) NA_integer_ else sum(is.na(existing$error) | existing$error == "")
+    n_failed <- if (is.null(existing) || !"error" %in% names(existing)) NA_integer_ else sum(!(is.na(existing$error) | existing$error == ""))
+    status_row <- si05_write_task_status(
+      task, "SKIPPED_EXISTING", task_start, Sys.time(), n_rows, n_success, n_failed, NA_character_
+    )
+    return(status_row)
+  }
 
   rep_ids <- seq.int(as.integer(task$Rep_Start), as.integer(task$Rep_End))
   out <- vector("list", length(rep_ids))
@@ -138,26 +160,32 @@ for (ii in seq_len(nrow(todo))) {
     )
 
     # Task-local checkpoint only. No final shared CSV is written here.
-    if (jj %% 10 == 0L || jj == length(rep_ids)) {
-      partial <- bind_rows(out[seq_len(jj)])
+    if (jj %% 10L == 0L || jj == length(rep_ids)) {
+      partial <- dplyr::bind_rows(out[seq_len(jj)])
       partial$Task_ID <- as.integer(task$Task_ID)
       partial$Task_Key <- as.character(task$Task_Key)
-      partial$Worker_ID <- worker_id
+      partial$Worker_PID <- Sys.getpid()
       write_csv_safely(partial, result_path, row.names = FALSE, fileEncoding = "UTF-8")
     }
   }
 
-  result <- bind_rows(out)
+  result <- dplyr::bind_rows(out)
   result$Task_ID <- as.integer(task$Task_ID)
   result$Task_Key <- as.character(task$Task_Key)
-  result$Worker_ID <- worker_id
+  result$Worker_PID <- Sys.getpid()
   write_csv_safely(result, result_path, row.names = FALSE, fileEncoding = "UTF-8")
 
   n_success <- sum(is.na(result$error) | result$error == "")
   n_failed <- sum(!(is.na(result$error) | result$error == ""))
-  status_value <- if (n_success == nrow(result)) "SUCCESS" else if (n_success > 0) "PARTIAL_SUCCESS" else "FAILED"
+  status_value <- if (n_success == nrow(result)) {
+    "SUCCESS"
+  } else if (n_success > 0) {
+    "PARTIAL_SUCCESS"
+  } else {
+    "FAILED"
+  }
 
-  status_row <- write_one_status(
+  status_row <- si05_write_task_status(
     task = task,
     status = status_value,
     start_time = task_start,
@@ -167,7 +195,6 @@ for (ii in seq_len(nrow(todo))) {
     n_failed = n_failed,
     error = if (n_failed > 0) paste(unique(na.omit(result$error)), collapse = " | ") else NA_character_
   )
-  worker_status_rows[[length(worker_status_rows) + 1L]] <- status_row
 
   writeLines(
     c(
@@ -180,19 +207,26 @@ for (ii in seq_len(nrow(todo))) {
     log_path,
     useBytes = TRUE
   )
+
+  status_row
 }
 
-worker_status <- bind_rows(worker_status_rows)
-worker_status_path <- file.path(
-  dirs$logs,
-  sprintf("si05_worker_%03d_of_%03d_status.csv", worker_id, n_workers)
+statuses <- accrual_run_task_pool(
+  tasks = task_list,
+  worker_fun = si05b_task_worker,
+  parallel_cfg = parallel_cfg,
+  export_names = c("si05_write_task_status"),
+  packages = c("dplyr", "lme4"),
+  context = "si05b lmer temporal-dependence simulation"
 )
-write_csv_safely(worker_status, worker_status_path, row.names = FALSE, fileEncoding = "UTF-8")
-writeLines(capture.output(sessionInfo()), file.path(dirs$logs, sprintf("sessionInfo_si05b_worker_%03d.txt", worker_id)))
 
-cat("[SUCCESS] SI05 worker completed.\n")
-cat("Worker status: ", worker_status_path, "\n", sep = "")
-cat("Assigned tasks: ", nrow(todo), "\n", sep = "")
-cat("Runtime seconds: ", as.numeric(difftime(Sys.time(), worker_start_time, units = "secs")), "\n", sep = "")
+status_df <- bind_rows(statuses) %>% arrange(Task_ID)
+write_csv_safely(status_df, status_path, row.names = FALSE, fileEncoding = "UTF-8")
+writeLines(capture.output(sessionInfo()), file.path(dirs$logs, "sessionInfo_si05b.txt"))
+
+cat("[SUCCESS] SI05B worker-pool stage completed.\n")
+cat("Tasks processed: ", nrow(status_df), "\n", sep = "")
+cat("Status: ", status_path, "\n", sep = "")
+cat("Runtime seconds: ", as.numeric(difftime(Sys.time(), stage_start_time, units = "secs")), "\n", sep = "")
 
 phase_end("si05b", "Run LMER temporal-dependence split-worker tasks")
