@@ -80,6 +80,12 @@ logic_fragments <- c(
   "build_rq1_weight_reallocation_table",
   "row_minus_grouped_firm_re_shift",
   "row_over_grouped_firm_re_ratio",
+  "row_completed_run_file",
+  "LATEST_COMPLETED_RUN.txt",
+  "Row exact K-fold completed-run pin is missing",
+  "row_weights_raw",
+  "grouped_weights_raw",
+  "RQ1 row-vs-grouped weight-comparison tables will be placeholders",
   "build_rq1_top_model_table",
   "latest_file_by_name",
   "latest_file_by_names",
@@ -132,6 +138,10 @@ if (grepl("Supplementary economic-validity diagnostics are suppressed by default
 if (!grepl("paper_table_6_rq2_reclassification_jaccard_spearman", ma17, fixed = TRUE) ||
     !grepl("table_3_12_exact_kfold_reclassification_jaccard", ma17, fixed = TRUE)) {
   stop("ma17 must keep the existing RQ2 table_3_12 and add the paper Table 6 alias.")
+}
+
+if (!grepl('row_vs_grouped_weight_comparison_path <- file.path\\(output_root, "tables", "table_winsor_exact_kfold_weight_comparison_row_vs_firm.csv"\\)', ma17)) {
+  stop("ma17 must read row-vs-grouped comparison compatibility tables from output_root/tables.")
 }
 
 if (grepl("brms_parameter_recovery_summary_path", ma17, fixed = TRUE) ||

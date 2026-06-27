@@ -101,9 +101,28 @@ economic_validity_means_path <- file.path(output_root, "diagnostics", "table_top
 economic_validity_decision_path <- file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv")
 temporal_dependence_premium_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv")
 temporal_dependence_decision_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
-row_exact_kfold_tables_dir <- file.path(output_root, "row_exact_kfold", "tables")
-row_vs_grouped_weight_comparison_path <- file.path(row_exact_kfold_tables_dir, "table_winsor_exact_kfold_weight_comparison_row_vs_firm.csv")
-row_vs_grouped_family_weight_comparison_path <- file.path(row_exact_kfold_tables_dir, "table_winsor_exact_kfold_family_weight_comparison_row_vs_firm.csv")
+# Row exact-KFold artifacts are produced by ma13c under Row_KFold_Root/tables
+# and pinned by output_root/row_exact_kfold/LATEST_COMPLETED_RUN.txt.
+# Do not assume output_root/row_exact_kfold/tables contains the weight CSVs.
+row_completed_run_file <- file.path(output_root, "row_exact_kfold", "LATEST_COMPLETED_RUN.txt")
+row_exact_kfold_tables_dir <- if (file.exists(row_completed_run_file)) {
+  row_root <- trimws(readLines(row_completed_run_file, warn = FALSE)[1])
+  if (!nzchar(row_root) || !dir.exists(row_root)) {
+    stop("[BLOCKER] Invalid row exact K-fold completed-run root in manuscript export: ", row_completed_run_file)
+  }
+  row_tables <- file.path(row_root, "tables")
+  if (!dir.exists(row_tables)) {
+    stop("[BLOCKER] Row exact K-fold completed-run tables directory is missing: ", row_tables)
+  }
+  row_tables
+} else {
+  fallback <- file.path(output_root, "tables")
+  add_warning(paste("Row exact K-fold completed-run pin is missing; falling back to compatibility tables:", fallback))
+  fallback
+}
+# MA14/diagnostics comparison artifacts are compatibility tables written under output_root/tables.
+row_vs_grouped_weight_comparison_path <- file.path(output_root, "tables", "table_winsor_exact_kfold_weight_comparison_row_vs_firm.csv")
+row_vs_grouped_family_weight_comparison_path <- file.path(output_root, "tables", "table_winsor_exact_kfold_family_weight_comparison_row_vs_firm.csv")
 row_kfold_weights_ex_post_path <- file.path(row_exact_kfold_tables_dir, "table_winsor_row_exact_kfold_weights_ex_post.csv")
 row_kfold_weights_no_lookahead_path <- file.path(row_exact_kfold_tables_dir, "table_winsor_row_exact_kfold_weights_no_lookahead.csv")
 lmer_leakage_summary_path <- latest_file_by_name(output_root, "table_lmer_leakage_pilot_grid_summary.csv")
@@ -291,27 +310,60 @@ build_weight_comparison <- function(grouped_ex_post_path, grouped_no_lookahead_p
     return(comparison)
   }
 
-  row_weights <- bind_rows(
+  row_weights_raw <- bind_rows(
     read_weight_table(row_kfold_weights_ex_post_path, "row_exact_kfold"),
     read_weight_table(row_kfold_weights_no_lookahead_path, "row_exact_kfold")
-  ) %>%
+  )
+  grouped_weights_raw <- bind_rows(
+    read_weight_table(grouped_ex_post_path, "grouped_firm_kfold"),
+    read_weight_table(grouped_no_lookahead_path, "grouped_firm_kfold")
+  )
+
+  if (!nrow(row_weights_raw) && !nrow(grouped_weights_raw)) {
+    add_warning(paste(
+      "Exact K-fold weight artifacts are missing or empty for both row and grouped validation;",
+      "RQ1 weight-comparison tables will be placeholders.",
+      "row_ex_post=", row_kfold_weights_ex_post_path,
+      "row_no_lookahead=", row_kfold_weights_no_lookahead_path,
+      "grouped_ex_post=", grouped_ex_post_path,
+      "grouped_no_lookahead=", grouped_no_lookahead_path
+    ))
+    return(data.frame())
+  }
+  if (!nrow(row_weights_raw)) {
+    add_warning(paste(
+      "Row exact K-fold weight artifacts are missing or empty;",
+      "RQ1 row-vs-grouped weight-comparison tables will be placeholders.",
+      "row_ex_post=", row_kfold_weights_ex_post_path,
+      "row_no_lookahead=", row_kfold_weights_no_lookahead_path
+    ))
+    return(data.frame())
+  }
+  if (!nrow(grouped_weights_raw)) {
+    add_warning(paste(
+      "Grouped exact K-fold weight artifacts are missing or empty;",
+      "RQ1 row-vs-grouped weight-comparison tables will be placeholders.",
+      "grouped_ex_post=", grouped_ex_post_path,
+      "grouped_no_lookahead=", grouped_no_lookahead_path
+    ))
+    return(data.frame())
+  }
+
+  row_weights <- row_weights_raw %>%
     transmute(
       target_space, model_id, model_name, heterogeneity_variant,
       row_exact_kfold_weight = .data$stacking_weight,
       row_exact_rank = .data$rank,
       reliability_flag
     )
-  grouped_weights <- bind_rows(
-    read_weight_table(grouped_ex_post_path, "grouped_firm_kfold"),
-    read_weight_table(grouped_no_lookahead_path, "grouped_firm_kfold")
-  ) %>%
+  grouped_weights <- grouped_weights_raw %>%
     transmute(
       target_space, model_id, model_name, heterogeneity_variant,
       firm_grouped_kfold_weight = .data$stacking_weight,
       firm_grouped_rank = .data$rank,
       reliability_flag
     )
-  if (!nrow(row_weights) && !nrow(grouped_weights)) return(data.frame())
+
   full_join(row_weights, grouped_weights,
             by = c("target_space", "model_id", "model_name", "heterogeneity_variant")) %>%
     mutate(
