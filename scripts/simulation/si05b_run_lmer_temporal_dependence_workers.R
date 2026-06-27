@@ -43,7 +43,17 @@ if (!file.exists(manifest_path)) {
 manifest <- read.csv(manifest_path, stringsAsFactors = FALSE, check.names = FALSE)
 if (!nrow(manifest)) stop("[BLOCKER] SI05 task manifest has zero rows.")
 
-force_rerun <- env_flag(c("ACCRUAL_SI05_FORCE_RERUN", "ACCRUAL_FORCE_REFIT"), "FALSE")
+si05_force_rerun_enabled <- function() {
+  # env_flag()/env_value in this repo expects a single env-name string.
+  # Do not pass c("ACCRUAL_SI05_FORCE_RERUN", "ACCRUAL_FORCE_REFIT") here.
+  local_value <- Sys.getenv("ACCRUAL_SI05_FORCE_RERUN", unset = "")
+  if (nzchar(local_value)) {
+    return(toupper(trimws(local_value)) %in% c("TRUE", "T", "1", "YES", "Y"))
+  }
+  env_flag("ACCRUAL_FORCE_REFIT", "FALSE")
+}
+
+force_rerun <- si05_force_rerun_enabled()
 task_key_filter <- env_list("ACCRUAL_SI05_TASK_KEYS")
 if (length(task_key_filter)) {
   manifest <- manifest[manifest$Task_Key %in% task_key_filter, , drop = FALSE]
@@ -104,7 +114,7 @@ si05b_task_worker <- function(task) {
   # Re-read runtime config inside each worker to avoid exporting large/fragile
   # parent-frame objects across PSOCK workers.
   cfg <- si05_runtime_config()
-  force_rerun_local <- env_flag(c("ACCRUAL_SI05_FORCE_RERUN", "ACCRUAL_FORCE_REFIT"), "FALSE")
+  force_rerun_local <- si05_force_rerun_enabled()
 
   task_start <- Sys.time()
   result_path <- as.character(task$result_path)
@@ -215,7 +225,7 @@ statuses <- accrual_run_task_pool(
   tasks = task_list,
   worker_fun = si05b_task_worker,
   parallel_cfg = parallel_cfg,
-  export_names = c("si05_write_task_status"),
+  export_names = c("si05_write_task_status", "si05_force_rerun_enabled"),
   packages = c("dplyr", "lme4"),
   context = "si05b lmer temporal-dependence simulation"
 )
