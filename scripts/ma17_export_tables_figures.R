@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # Script: ma17_export_tables_figures.R
-# Purpose: Generate manuscript-ready Chapter 3 methods/audit tables from existing
-#          pipeline outputs without refitting Bayesian models.
+# Purpose: Generate manuscript-ready method-first paper tables and appendices
+#          from existing pipeline outputs without refitting Bayesian models.
 #
 # Prior predictive manuscript-acceptance rule:
 # A prior is acceptable under Chapter 3 if mass outside |TA| > 1 is no more
@@ -30,10 +30,12 @@ RQ2_FLAG_SWITCH_MODERATE <- 0.05
 RQ2_FLAG_SWITCH_HIGH <- 0.10
 RQ2_FLAG_COUNT_REL_CHANGE_MATERIAL <- 0.25
 MIN_FIRMS_PER_FOLD_STABLE <- env_int("ACCRUAL_METHODS_MIN_FIRMS_PER_FOLD_STABLE", 30L, min = 1L)
+EXPORT_SUPPLEMENTARY_ECON_VALIDITY <- env_flag("ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY", "FALSE")
 
 report_dir <- file.path(reports_root, "chapter3_methods_tables")
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
 warnings_for_author <- character()
+notes_for_author <- character()
 generated_files <- character()
 
 add_warning <- function(x) {
@@ -41,12 +43,39 @@ add_warning <- function(x) {
   warning(x, call. = FALSE)
 }
 
+add_note <- function(x) {
+  notes_for_author <<- unique(c(notes_for_author, x))
+  message(x)
+}
+
 path_table <- function(file) file.path(output_root, "tables", file)
 path_baseline_table <- function(file) file.path(baseline_root, "tables", file)
 
 safe_read_csv <- function(path) {
-  if (!file.exists(path)) return(NULL)
+  if (is.null(path) || length(path) != 1L || is.na(path) || !file.exists(path)) return(NULL)
   read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+}
+
+escape_regex <- function(x) {
+  gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", x)
+}
+
+latest_file_by_name <- function(root, file_name) {
+  if (is.null(root) || length(root) != 1L || is.na(root) || !dir.exists(root)) return(NA_character_)
+  hits <- list.files(root, pattern = paste0("^", escape_regex(file_name), "$"),
+                     recursive = TRUE, full.names = TRUE, ignore.case = FALSE)
+  hits <- hits[file.exists(hits)]
+  if (!length(hits)) return(NA_character_)
+  info <- file.info(hits)
+  hits[which.max(info$mtime)]
+}
+
+latest_file_by_names <- function(root, file_names) {
+  hits <- unlist(lapply(file_names, function(x) latest_file_by_name(root, x)), use.names = FALSE)
+  hits <- hits[!is.na(hits) & file.exists(hits)]
+  if (!length(hits)) return(NA_character_)
+  info <- file.info(hits)
+  hits[which.max(info$mtime)]
 }
 
 read_required_gate <- function(path, column, label) {
@@ -72,6 +101,22 @@ economic_validity_means_path <- file.path(output_root, "diagnostics", "table_top
 economic_validity_decision_path <- file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv")
 temporal_dependence_premium_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv")
 temporal_dependence_decision_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
+row_exact_kfold_tables_dir <- file.path(output_root, "row_exact_kfold", "tables")
+row_vs_grouped_weight_comparison_path <- file.path(row_exact_kfold_tables_dir, "table_winsor_exact_kfold_weight_comparison_row_vs_firm.csv")
+row_vs_grouped_family_weight_comparison_path <- file.path(row_exact_kfold_tables_dir, "table_winsor_exact_kfold_family_weight_comparison_row_vs_firm.csv")
+row_kfold_weights_ex_post_path <- file.path(row_exact_kfold_tables_dir, "table_winsor_row_exact_kfold_weights_ex_post.csv")
+row_kfold_weights_no_lookahead_path <- file.path(row_exact_kfold_tables_dir, "table_winsor_row_exact_kfold_weights_no_lookahead.csv")
+lmer_leakage_summary_path <- latest_file_by_name(output_root, "table_lmer_leakage_pilot_grid_summary.csv")
+lmer_leakage_decision_path <- latest_file_by_name(output_root, "table_lmer_leakage_pilot_decision.csv")
+brms_leakage_summary_path <- latest_file_by_name(output_root, "table_brms_leakage_confirmation_grid_summary.csv")
+si14_recovery_summary_path <- latest_file_by_names(output_root, c(
+  "table_si14_brms_recovery_n_sensitivity_summary.csv",
+  "table_si14_brms_recovery_n_sensitivity_parameter_summary.csv"
+))
+si14_recovery_diagnostics_path <- latest_file_by_names(output_root, c(
+  "table_si14_brms_recovery_n_sensitivity_diagnostics.csv",
+  "table_si14_brms_recovery_n_sensitivity_diagnostic_summary.csv"
+))
 DA_Finite_Gate_Decision <- read_required_gate(finite_gate_path, "gate_decision", "DA finite")
 New_Firm_Predictive_Gate_Decision <- read_required_gate(new_firm_gate_path, "audit_decision", "new-firm predictive")
 Exact_KFold_Reclassification_Decision_Table <- safe_read_csv(exact_kfold_reclassification_decision_path)
@@ -189,6 +234,381 @@ write_outputs <- function(df, stem, title) {
   invisible(df)
 }
 
+safe_md5 <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  tryCatch(as.character(tools::md5sum(path)), error = function(e) NA_character_)
+}
+
+first_col <- function(df, candidates) {
+  hit <- intersect(candidates, names(df))
+  if (!length(hit)) return(rep(NA, nrow(df)))
+  df[[hit[[1]]]]
+}
+
+firm_re_indicator <- function(variant) {
+  grepl("Firm RE|Random Intercept|firm_RE|firmre", as.character(variant), ignore.case = TRUE)
+}
+
+standardize_weight_comparison <- function(df) {
+  if (is.null(df) || !nrow(df)) return(data.frame())
+  data.frame(
+    target_space = as.character(first_col(df, c("target_space", "Target_Space"))),
+    model_id = as.character(first_col(df, c("model_id", "Model_ID"))),
+    model_name = as.character(first_col(df, c("model_name", "Model_Name"))),
+    heterogeneity_variant = as.character(first_col(df, c("heterogeneity_variant", "Heterogeneity_Variant"))),
+    row_exact_kfold_weight = suppressWarnings(as.numeric(first_col(df, c("row_exact_kfold_weight", "weight_row_exact_kfold", "Weight_Row_Exact_KFold")))),
+    row_exact_rank = suppressWarnings(as.numeric(first_col(df, c("row_exact_rank", "rank_row_exact_kfold", "Rank_Row_Exact_KFold")))),
+    firm_grouped_kfold_weight = suppressWarnings(as.numeric(first_col(df, c("firm_grouped_kfold_weight", "Weight_KFold", "weight_kfold")))),
+    firm_grouped_rank = suppressWarnings(as.numeric(first_col(df, c("firm_grouped_rank", "Rank_KFold", "rank_kfold")))),
+    reliability_flag = as.character(first_col(df, c("reliability_flag", "Reliability_Flag"))),
+    stringsAsFactors = FALSE
+  )
+}
+
+read_weight_table <- function(path, validation_target) {
+  x <- safe_read_csv(path)
+  if (is.null(x) || !nrow(x)) return(data.frame())
+  weight <- suppressWarnings(as.numeric(first_col(x, c("Weight_KFold", "weight_row_exact_kfold", "weight", "stacking_weight"))))
+  rank <- suppressWarnings(as.numeric(first_col(x, c("Rank_KFold", "rank_row_exact_kfold", "rank"))))
+  data.frame(
+    target_space = as.character(first_col(x, c("Target_Space", "target_space"))),
+    model_id = as.character(first_col(x, c("Model_ID", "model_id"))),
+    model_name = as.character(first_col(x, c("Model_Name", "model_name"))),
+    heterogeneity_variant = as.character(first_col(x, c("Heterogeneity_Variant", "heterogeneity_variant"))),
+    validation_target = validation_target,
+    stacking_weight = weight,
+    rank = rank,
+    reliability_flag = as.character(first_col(x, c("reliability_flag", "Reliability_Flag"))),
+    source_path = path,
+    stringsAsFactors = FALSE
+  )
+}
+
+build_weight_comparison <- function(grouped_ex_post_path, grouped_no_lookahead_path) {
+  comparison <- standardize_weight_comparison(safe_read_csv(row_vs_grouped_weight_comparison_path))
+  if (nrow(comparison)) {
+    comparison$source_path <- row_vs_grouped_weight_comparison_path
+    return(comparison)
+  }
+
+  row_weights <- bind_rows(
+    read_weight_table(row_kfold_weights_ex_post_path, "row_exact_kfold"),
+    read_weight_table(row_kfold_weights_no_lookahead_path, "row_exact_kfold")
+  ) %>%
+    transmute(
+      target_space, model_id, model_name, heterogeneity_variant,
+      row_exact_kfold_weight = .data$stacking_weight,
+      row_exact_rank = .data$rank,
+      reliability_flag
+    )
+  grouped_weights <- bind_rows(
+    read_weight_table(grouped_ex_post_path, "grouped_firm_kfold"),
+    read_weight_table(grouped_no_lookahead_path, "grouped_firm_kfold")
+  ) %>%
+    transmute(
+      target_space, model_id, model_name, heterogeneity_variant,
+      firm_grouped_kfold_weight = .data$stacking_weight,
+      firm_grouped_rank = .data$rank,
+      reliability_flag
+    )
+  if (!nrow(row_weights) && !nrow(grouped_weights)) return(data.frame())
+  full_join(row_weights, grouped_weights,
+            by = c("target_space", "model_id", "model_name", "heterogeneity_variant")) %>%
+    mutate(
+      row_exact_kfold_weight = ifelse(is.na(.data$row_exact_kfold_weight), 0, .data$row_exact_kfold_weight),
+      firm_grouped_kfold_weight = ifelse(is.na(.data$firm_grouped_kfold_weight), 0, .data$firm_grouped_kfold_weight),
+      reliability_flag = dplyr::coalesce(.data$reliability_flag.x, .data$reliability_flag.y),
+      source_path = paste(c(grouped_ex_post_path, grouped_no_lookahead_path,
+                            row_kfold_weights_ex_post_path, row_kfold_weights_no_lookahead_path),
+                          collapse = ";")
+    ) %>%
+    select(-any_of(c("reliability_flag.x", "reliability_flag.y")))
+}
+
+build_rq1_weight_reallocation_table <- function(weight_comparison) {
+  if (is.null(weight_comparison) || !nrow(weight_comparison)) {
+    return(data.frame(
+      target_space = NA_character_,
+      validation_target = "row_exact_kfold_vs_grouped_firm_kfold",
+      row_exact_aggregate_firm_re_weight = NA_real_,
+      grouped_aggregate_firm_re_weight = NA_real_,
+      row_exact_aggregate_pooled_weight = NA_real_,
+      grouped_aggregate_pooled_weight = NA_real_,
+      row_minus_grouped_firm_re_shift = NA_real_,
+      row_over_grouped_firm_re_ratio = NA_real_,
+      reliability_gate_status = "missing_weight_comparison_artifact",
+      source_path = row_vs_grouped_weight_comparison_path,
+      stringsAsFactors = FALSE
+    ))
+  }
+  weight_comparison %>%
+    mutate(is_firm_re = firm_re_indicator(.data$heterogeneity_variant)) %>%
+    group_by(.data$target_space) %>%
+    summarise(
+      validation_target = "row_exact_kfold_vs_grouped_firm_kfold",
+      row_exact_aggregate_firm_re_weight = sum(.data$row_exact_kfold_weight[.data$is_firm_re], na.rm = TRUE),
+      grouped_aggregate_firm_re_weight = sum(.data$firm_grouped_kfold_weight[.data$is_firm_re], na.rm = TRUE),
+      row_exact_aggregate_pooled_weight = sum(.data$row_exact_kfold_weight[!.data$is_firm_re], na.rm = TRUE),
+      grouped_aggregate_pooled_weight = sum(.data$firm_grouped_kfold_weight[!.data$is_firm_re], na.rm = TRUE),
+      reliability_gate_status = paste(sort(unique(na.omit(.data$reliability_flag))), collapse = ";"),
+      source_path = paste(sort(unique(na.omit(.data$source_path))), collapse = ";"),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      row_minus_grouped_firm_re_shift = .data$row_exact_aggregate_firm_re_weight - .data$grouped_aggregate_firm_re_weight,
+      row_over_grouped_firm_re_ratio = ifelse(.data$grouped_aggregate_firm_re_weight > 0,
+                                              .data$row_exact_aggregate_firm_re_weight / .data$grouped_aggregate_firm_re_weight,
+                                              NA_real_),
+      reliability_gate_status = ifelse(nzchar(.data$reliability_gate_status),
+                                       .data$reliability_gate_status,
+                                       paste(na.omit(c(Exact_KFold_Reclassification_Decision,
+                                                       Primary_Magnitude_Reclassification_Decision)),
+                                             collapse = ";"))
+    ) %>%
+    select(
+      target_space, validation_target,
+      row_exact_aggregate_firm_re_weight, grouped_aggregate_firm_re_weight,
+      row_exact_aggregate_pooled_weight, grouped_aggregate_pooled_weight,
+      row_minus_grouped_firm_re_shift, row_over_grouped_firm_re_ratio,
+      reliability_gate_status, source_path
+    )
+}
+
+build_rq1_top_model_table <- function(weight_comparison) {
+  if (is.null(weight_comparison) || !nrow(weight_comparison)) {
+    return(data.frame(
+      target_space = NA_character_,
+      validation_target = NA_character_,
+      rank = NA_real_,
+      model_id = NA_character_,
+      model_name = NA_character_,
+      heterogeneity_variant = NA_character_,
+      stacking_weight = NA_real_,
+      source_path = row_vs_grouped_weight_comparison_path,
+      source_status = "missing_weight_comparison_artifact",
+      stringsAsFactors = FALSE
+    ))
+  }
+  row_tbl <- weight_comparison %>%
+    transmute(target_space, validation_target = "row_exact_kfold",
+              rank = .data$row_exact_rank, model_id, model_name, heterogeneity_variant,
+              stacking_weight = .data$row_exact_kfold_weight, source_path)
+  grouped_tbl <- weight_comparison %>%
+    transmute(target_space, validation_target = "grouped_firm_kfold",
+              rank = .data$firm_grouped_rank, model_id, model_name, heterogeneity_variant,
+              stacking_weight = .data$firm_grouped_kfold_weight, source_path)
+  bind_rows(row_tbl, grouped_tbl) %>%
+    filter(!is.na(.data$target_space), !is.na(.data$stacking_weight)) %>%
+    group_by(.data$target_space, .data$validation_target) %>%
+    arrange(desc(.data$stacking_weight), .by_group = TRUE) %>%
+    mutate(rank = row_number()) %>%
+    slice_head(n = 3) %>%
+    ungroup() %>%
+    mutate(source_status = "available") %>%
+    select(target_space, validation_target, rank, model_id, model_name,
+           heterogeneity_variant, stacking_weight, source_path, source_status)
+}
+
+latest_file_mtime <- function(path) {
+  if (is.null(path) || length(path) != 1L || is.na(path) || !file.exists(path)) return(NA_character_)
+  format(file.info(path)$mtime, "%Y-%m-%d %H:%M:%S %z")
+}
+
+safe_lm_slope <- function(x, y) {
+  x <- suppressWarnings(as.numeric(x))
+  y <- suppressWarnings(as.numeric(y))
+  keep <- is.finite(x) & is.finite(y)
+  if (sum(keep) < 2L || length(unique(x[keep])) < 2L) return(NA_real_)
+  unname(stats::coef(stats::lm(y[keep] ~ x[keep]))[[2]])
+}
+
+finite_mean <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (!length(x)) NA_real_ else mean(x)
+}
+
+finite_sum <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (!length(x)) NA_real_ else sum(x)
+}
+
+finite_max <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (!length(x)) NA_real_ else max(x)
+}
+
+finite_min <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (!length(x)) NA_real_ else min(x)
+}
+
+simulation_result_empty_row <- function(label, path, mechanism, scenario = "source_missing") {
+  data.frame(
+    evidence_block = label,
+    source_status = "missing",
+    scenario = scenario,
+    T_values = NA_character_,
+    sigma_firm = NA_real_,
+    parameter = NA_character_,
+    n_rep_total = NA_real_,
+    mean_weight_row_firmre = NA_real_,
+    mean_weight_group_firmre = NA_real_,
+    mean_weight_premium = NA_real_,
+    prob_positive_weight_premium = NA_real_,
+    grouped_firmre_weight_T_slope = NA_real_,
+    grouped_firmre_weight_T_direction = NA_character_,
+    mean_bias = NA_real_,
+    mean_abs_bias = NA_real_,
+    rmse = NA_real_,
+    coverage_95 = NA_real_,
+    max_rhat = NA_real_,
+    total_divergent = NA_real_,
+    min_ess_bulk = NA_real_,
+    decision_or_gate = NA_character_,
+    mechanism_read = "missing_source_artifact",
+    mechanism_interpretation = mechanism,
+    source_path = ifelse(is.na(path), "not_found_by_latest_file_by_name", path),
+    source_mtime = latest_file_mtime(path),
+    source_md5 = safe_md5(path),
+    stringsAsFactors = FALSE
+  )
+}
+
+simulation_leakage_rows <- function(label, path, decision_path = NA_character_, mechanism) {
+  x <- safe_read_csv(path)
+  decision <- if (!is.na(decision_path)) safe_read_csv(decision_path) else NULL
+  if (is.null(x) || !nrow(x)) {
+    return(simulation_result_empty_row(label, path, mechanism))
+  }
+  decision_value <- if (!is.null(decision) && nrow(decision)) {
+    paste(stats::na.omit(unlist(decision[1, intersect(names(decision), c("decision", "simulation_decision", "gate_decision", "interpretation"))])), collapse = ";")
+  } else {
+    NA_character_
+  }
+  source_status <- if (!is.na(decision_path) && is.null(decision)) {
+    "summary_available_decision_missing"
+  } else if (is.na(decision_path)) {
+    "summary_available_no_decision_expected"
+  } else {
+    "summary_and_decision_available"
+  }
+  if (!"sigma_firm" %in% names(x)) x$sigma_firm <- NA_real_
+  if (!"T" %in% names(x)) x$T <- NA_real_
+  focus_sigma <- sort(unique(x$sigma_firm[is.finite(suppressWarnings(as.numeric(x$sigma_firm)))]))
+  focus_sigma <- unique(c(intersect(c(0, 0.1, 0.3), focus_sigma), focus_sigma))
+  rows <- lapply(focus_sigma, function(sig) {
+    xs <- x[suppressWarnings(as.numeric(x$sigma_firm)) == sig, , drop = FALSE]
+    slope <- safe_lm_slope(xs$T, first_col(xs, "mean_weight_group_firmre"))
+    direction <- if (is.na(slope)) {
+      "insufficient_T_variation"
+    } else if (slope < 0) {
+      "decreases_with_T"
+    } else if (slope > 0) {
+      "increases_with_T"
+    } else {
+      "flat"
+    }
+    premium <- finite_mean(first_col(xs, "mean_weight_premium"))
+    ppos <- finite_mean(first_col(xs, "prob_positive_weight_premium"))
+    data.frame(
+      evidence_block = label,
+      source_status = source_status,
+      scenario = ifelse(identical(sig, 0), "sigma_0_anchor", paste0("sigma_", sig)),
+      T_values = paste(sort(unique(xs$T)), collapse = ","),
+      sigma_firm = sig,
+      parameter = NA_character_,
+      n_rep_total = finite_sum(first_col(xs, "n_rep")),
+      mean_weight_row_firmre = finite_mean(first_col(xs, "mean_weight_row_firmre")),
+      mean_weight_group_firmre = finite_mean(first_col(xs, "mean_weight_group_firmre")),
+      mean_weight_premium = premium,
+      prob_positive_weight_premium = ppos,
+      grouped_firmre_weight_T_slope = slope,
+      grouped_firmre_weight_T_direction = direction,
+      mean_bias = NA_real_,
+      mean_abs_bias = NA_real_,
+      rmse = NA_real_,
+      coverage_95 = NA_real_,
+      max_rhat = if ("max_rhat" %in% names(xs)) finite_max(xs$max_rhat) else NA_real_,
+      total_divergent = if ("total_divergent" %in% names(xs)) finite_sum(xs$total_divergent) else NA_real_,
+      min_ess_bulk = NA_real_,
+      decision_or_gate = decision_value,
+      mechanism_read = dplyr::case_when(
+        sig == 0 & is.finite(premium) & abs(premium) <= 0.05 ~ "sigma0_premium_near_zero",
+        sig == 0 ~ "sigma0_anchor_review_required",
+        is.finite(premium) & premium > 0 ~ "positive_row_minus_grouped_firmre_premium",
+        is.finite(premium) & premium <= 0 ~ "nonpositive_row_minus_grouped_firmre_premium",
+        TRUE ~ "insufficient_metric_values"
+      ),
+      mechanism_interpretation = mechanism,
+      source_path = path,
+      source_mtime = latest_file_mtime(path),
+      source_md5 = safe_md5(path),
+      stringsAsFactors = FALSE
+    )
+  })
+  bind_rows(rows)
+}
+
+simulation_recovery_rows <- function(label, summary_path, diagnostics_path = NA_character_, mechanism) {
+  x <- safe_read_csv(summary_path)
+  diag <- safe_read_csv(diagnostics_path)
+  if (is.null(x) || !nrow(x)) {
+    return(simulation_result_empty_row(label, summary_path, mechanism, scenario = "si14_source_missing"))
+  }
+  if (!"parameter" %in% names(x)) x$parameter <- "all_parameters"
+  if (!"T" %in% names(x)) x$T <- NA_real_
+  source_status <- if (is.null(diag) || !nrow(diag)) {
+    "summary_available_diagnostics_missing"
+  } else {
+    "summary_and_diagnostics_available"
+  }
+  diag_max_rhat <- if (!is.null(diag) && nrow(diag)) finite_max(first_col(diag, c("max_rhat", "max_rhat_max"))) else NA_real_
+  diag_min_ess <- if (!is.null(diag) && nrow(diag)) finite_min(first_col(diag, c("min_ess_bulk", "min_ess_bulk_min"))) else NA_real_
+  diag_div <- if (!is.null(diag) && nrow(diag)) finite_sum(first_col(diag, c("n_divergent", "total_divergent"))) else NA_real_
+  x %>%
+    group_by(.data$parameter) %>%
+    summarise(
+      evidence_block = label,
+      source_status = source_status,
+      scenario = "si14_brms_recovery_n_sensitivity",
+      T_values = paste(sort(unique(.data$T)), collapse = ","),
+      sigma_firm = NA_real_,
+      parameter = first(.data$parameter),
+      n_rep_total = finite_sum(first_col(cur_data(), c("n_rep", "n_replications", "n"))),
+      mean_weight_row_firmre = NA_real_,
+      mean_weight_group_firmre = NA_real_,
+      mean_weight_premium = NA_real_,
+      prob_positive_weight_premium = NA_real_,
+      grouped_firmre_weight_T_slope = NA_real_,
+      grouped_firmre_weight_T_direction = NA_character_,
+      mean_bias = finite_mean(first_col(cur_data(), c("mean_bias", "mean_error"))),
+      mean_abs_bias = finite_mean(first_col(cur_data(), c("mean_abs_bias", "mean_abs_error"))),
+      rmse = finite_max(first_col(cur_data(), "rmse")),
+      coverage_95 = finite_mean(first_col(cur_data(), "coverage_95")),
+      max_rhat = diag_max_rhat,
+      total_divergent = diag_div,
+      min_ess_bulk = diag_min_ess,
+      decision_or_gate = ifelse(source_status == "summary_available_diagnostics_missing",
+                                "si14_summary_available_diagnostics_missing",
+                                "si14_summary_and_diagnostics_available"),
+      mechanism_read = dplyr::case_when(
+        is.finite(max_rhat) & max_rhat > 1.05 ~ "review_rhat_above_1.05",
+        is.finite(total_divergent) & total_divergent > 0 ~ "review_divergences_present",
+        is.finite(min_ess_bulk) & min_ess_bulk < 100 ~ "review_low_min_ess_bulk",
+        TRUE ~ "parameter_recovery_diagnostics_ok_or_unavailable"
+      ),
+      mechanism_interpretation = mechanism,
+      source_path = paste(na.omit(c(summary_path, diagnostics_path)), collapse = ";"),
+      source_mtime = latest_file_mtime(summary_path),
+      source_md5 = paste(na.omit(c(safe_md5(summary_path), safe_md5(diagnostics_path))), collapse = ";"),
+      .groups = "drop"
+    )
+}
+
 sample_specs <- data.frame(
   sample = c("ex-post", "no-lookahead", "secondary volatility ex-post", "secondary volatility no-lookahead",
              "secondary operating-cycle ex-post", "secondary operating-cycle no-lookahead"),
@@ -219,10 +639,14 @@ sample_stats <- function(df) {
 }
 
 raw <- NULL
+metadata_sheet2 <- NULL
 metadata_sheets <- character()
 if (file.exists(data_path)) {
   metadata_sheets <- tryCatch(readxl::excel_sheets(data_path), error = function(e) character())
   raw <- readxl::read_excel(data_path, sheet = "Sheet1")
+  if ("Sheet2" %in% metadata_sheets) {
+    metadata_sheet2 <- tryCatch(readxl::read_excel(data_path, sheet = "Sheet2"), error = function(e) NULL)
+  }
 } else {
   add_warning(paste("Raw data workbook missing:", data_path))
 }
@@ -283,6 +707,182 @@ sample_flow <- bind_rows(
   flow_row("Observations available for secondary operating-cycle sample", sample_data$operating_cycle_ex_post, sample_specs$file[sample_specs$sample_short == "operating_cycle_ex_post"])
 )
 write_outputs(sample_flow, "table_3_1_sample_flow", "Table 3.1 Sample Flow")
+
+metadata_col <- function(df, candidates) {
+  if (is.null(df)) return(NA_character_)
+  hit <- intersect(candidates, names(df))
+  if (!length(hit)) NA_character_ else hit[[1]]
+}
+
+build_sheet2_provenance_audit <- function(raw_valid, metadata_sheet2) {
+  rows <- list()
+  add_row <- function(item, value, note) {
+    rows[[length(rows) + 1]] <<- data.frame(
+      section = "data_provenance_audit",
+      item = item,
+      value = value,
+      evidence_or_note = note,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  if (!is.null(raw_valid) && nrow(raw_valid) && "se" %in% names(raw_valid)) {
+    raw_ex <- raw_valid %>%
+      group_by(.data$se) %>%
+      summarise(firm_years = n(), firms = n_distinct(.data$company), .groups = "drop") %>%
+      arrange(.data$se)
+    add_row(
+      "Sheet1 firm-year exchange coverage",
+      paste(paste0(raw_ex$se, ": firm_years=", raw_ex$firm_years, ", firms=", raw_ex$firms), collapse = "; "),
+      "Computed from Sheet1 `se` after valid firm/year parsing."
+    )
+    add_row(
+      "Sheet1 HOSE/HNX exchange-only check",
+      ifelse(all(raw_ex$se %in% c("HOSE", "HNX")), "PASS_HOSE_HNX_ONLY", paste("REVIEW_EXCHANGES:", paste(setdiff(raw_ex$se, c("HOSE", "HNX")), collapse = ","))),
+      "Verifies the analysis panel exchange labels from Sheet1."
+    )
+  } else {
+    add_row("Sheet1 firm-year exchange coverage", "unavailable", "Sheet1 `se` column missing or no parsed raw rows.")
+  }
+
+  if (is.null(metadata_sheet2) || !nrow(metadata_sheet2)) {
+    add_row("Sheet2 metadata audit", "unavailable", "Sheet2 missing or unreadable.")
+    return(bind_rows(rows))
+  }
+
+  code_col <- metadata_col(metadata_sheet2, c("Mã", "Ma", "Ticker", "company", "Company"))
+  exchange_col <- metadata_col(metadata_sheet2, c("Sàn", "San", "Exchange", "se"))
+  icb_l1_col <- metadata_col(metadata_sheet2, c("Phân ngành - ICB L1", "ICB L1", "industry_l1"))
+  status_cols <- grep("niêm yết|niem yet|hủy|huy|delist|listing|status|tình trạng|tinh trang", names(metadata_sheet2),
+                      value = TRUE, ignore.case = TRUE)
+
+  if (!is.na(exchange_col)) {
+    ex <- metadata_sheet2 %>%
+      mutate(.exchange = as.character(.data[[exchange_col]])) %>%
+      count(.data$.exchange, name = "metadata_firms") %>%
+      arrange(.data$.exchange)
+    add_row(
+      "Sheet2 exchange metadata coverage",
+      paste(paste0(ex$.exchange, ": firms=", ex$metadata_firms), collapse = "; "),
+      paste0("Computed from Sheet2 `", exchange_col, "`.")
+    )
+    add_row(
+      "Sheet2 HOSE/HNX exchange-only check",
+      ifelse(all(ex$.exchange %in% c("HOSE", "HNX")), "PASS_HOSE_HNX_ONLY", paste("REVIEW_EXCHANGES:", paste(setdiff(ex$.exchange, c("HOSE", "HNX")), collapse = ","))),
+      "Verifies exchange metadata against manuscript scope."
+    )
+  } else {
+    add_row("Sheet2 exchange metadata coverage", "metadata_column_missing", "No Sheet2 exchange column found.")
+  }
+
+  if (!is.na(code_col) && !is.null(raw_valid) && nrow(raw_valid)) {
+    raw_codes <- unique(normalize_join_key_values(raw_valid$company))
+    meta_codes <- unique(normalize_join_key_values(metadata_sheet2[[code_col]]))
+    add_row(
+      "Sheet1-to-Sheet2 firm-code match",
+      paste0("raw_firms=", length(raw_codes), "; metadata_firms=", length(meta_codes),
+             "; matched=", sum(raw_codes %in% meta_codes),
+             "; raw_unmatched=", sum(!raw_codes %in% meta_codes)),
+      paste0("Matched Sheet1 `company` to Sheet2 `", code_col, "` after key normalization.")
+    )
+  } else {
+    add_row("Sheet1-to-Sheet2 firm-code match", "metadata_column_missing_or_raw_unavailable", "Cannot audit firm-code coverage without Sheet2 code column and Sheet1 rows.")
+  }
+
+  if (!is.na(icb_l1_col)) {
+    l1 <- as.character(metadata_sheet2[[icb_l1_col]])
+    financial_flag <- grepl("Tài chính|Tai chinh|Ngân hàng|Ngan hang|Bảo hiểm|Bao hiem|Dịch vụ tài chính|Dich vu tai chinh|Financial|Bank|Insurance",
+                            l1, ignore.case = TRUE)
+    add_row(
+      "Sheet2 non-financial industry screen",
+      paste0("metadata_firms=", length(l1), "; financial_l1_candidates=", sum(financial_flag, na.rm = TRUE),
+             "; nonfinancial_l1_candidates=", sum(!financial_flag & !is.na(l1))),
+      paste0("Computed from Sheet2 `", icb_l1_col, "` using finance/bank/insurance keyword screen.")
+    )
+    add_row(
+      "Sheet2 non-financial scope check",
+      ifelse(sum(financial_flag, na.rm = TRUE) == 0, "PASS_NO_FINANCIAL_L1_DETECTED", "REVIEW_FINANCIAL_L1_CANDIDATES_PRESENT"),
+      "This audits the manuscript non-financial scope from metadata rather than relying only on author text."
+    )
+  } else {
+    add_row("Sheet2 non-financial industry screen", "metadata_column_missing", "No Sheet2 ICB L1 industry column found.")
+  }
+
+  if (length(status_cols)) {
+    status_values <- lapply(status_cols, function(cc) {
+      vals <- stats::na.omit(unique(as.character(metadata_sheet2[[cc]])))
+      paste0(cc, "=", paste(utils::head(vals, 10), collapse = "/"))
+    })
+    add_row(
+      "Sheet2 listing/delisting status audit",
+      paste(unlist(status_values), collapse = "; "),
+      "Listing/delisting-like metadata columns detected in Sheet2."
+    )
+  } else {
+    add_row(
+      "Sheet2 listing/delisting status audit",
+      "metadata_column_missing",
+      "No listing/delisting/status column detected in Sheet2; disclose this as a metadata limitation if needed."
+    )
+  }
+
+  bind_rows(rows)
+}
+
+sheet2_provenance_audit <- build_sheet2_provenance_audit(raw_valid, metadata_sheet2)
+
+data_provenance <- data.frame(
+  section = "data_provenance",
+  item = c(
+    "source_system",
+    "exchange_scope",
+    "firm_scope",
+    "statement_scope",
+    "extraction_window",
+    "license",
+    "raw_data_redistribution",
+    "restatement_vintage_limitation",
+    "raw_workbook_path"
+  ),
+  value = c(
+    "FiinPro/FiinPro-X",
+    "HOSE and HNX",
+    "non-financial listed firms",
+    "audited annual financial statement figures",
+    "2015-2024 extraction window",
+    "proprietary licensed dataset",
+    "raw data are not redistributed",
+    "no U.S.-style restatement-vintage distinction is available in the licensed extraction",
+    data_path
+  ),
+  evidence_or_note = c(
+    "Manuscript provenance statement.",
+    "Manuscript provenance statement.",
+    "Manuscript provenance statement.",
+    "Manuscript provenance statement.",
+    "Manuscript provenance statement.",
+    "Manuscript provenance statement.",
+    "Non-redistribution condition for licensed raw data.",
+    "Limitation to disclose when interpreting restatement timing.",
+    "Local licensed workbook path; raw workbook is not a redistributed artifact."
+  ),
+  stringsAsFactors = FALSE
+)
+sample_flow_for_paper <- sample_flow %>%
+  transmute(
+    section = "sample_flow",
+    item = .data$stage,
+    value = paste0(
+      "n_observations=", .data$n_observations,
+      "; n_firms=", .data$n_firms,
+      "; years=", .data$min_year, "-", .data$max_year
+    ),
+    evidence_or_note = .data$notes
+  )
+paper_table_1 <- bind_rows(data_provenance, sheet2_provenance_audit, sample_flow_for_paper)
+write_outputs(paper_table_1,
+              "paper_table_1_sample_and_provenance_summary",
+              "Table 1 Sample and Provenance Summary")
 
 panel_row <- function(df, label) {
   if (is.null(df) || !nrow(df)) {
@@ -359,6 +959,18 @@ industry_year <- bind_rows(
   industry_cell_row(sample_data$operating_cycle_ex_post, "secondary operating-cycle")
 )
 write_outputs(industry_year, "table_3_3_industry_year_cells", "Table 3.3 Industry-Year Cells")
+
+paper_appendix_A1 <- bind_rows(
+  panel_coverage %>%
+    mutate(appendix_component = "panel_coverage") %>%
+    mutate(across(everything(), as.character)),
+  industry_year %>%
+    mutate(appendix_component = "industry_year_cells") %>%
+    mutate(across(everything(), as.character))
+)
+write_outputs(paper_appendix_A1,
+              "paper_appendix_A1_panel_coverage_industry_year_cells",
+              "Appendix Table A1 Panel Coverage and Industry-Year Cells")
 
 zero_vars <- data.frame(
   variable = c("PPE", "REC", "COGS", "INV", "REV", "A", "A_lag"),
@@ -544,6 +1156,20 @@ fold_summary <- fold_balance %>%
 if (!nrow(fold_summary)) fold_summary <- data.frame(sample = NA, minimum_firms_per_fold = NA, maximum_firms_per_fold = NA, firm_count_imbalance_ratio = NA, minimum_observations_per_fold = NA, maximum_observations_per_fold = NA, observation_imbalance_ratio = NA, warnings = "fold_outputs_missing")
 write_outputs(fold_summary, "table_3_6b_grouped_kfold_balance_summary", "Table 3.6b Grouped K-Fold Balance Summary")
 
+grouped_kfold_weights_ex_post_path <- file.path(kfold_tables, "table_winsor_kfold_weights_ex_post.csv")
+grouped_kfold_weights_no_lookahead_path <- file.path(kfold_tables, "table_winsor_kfold_weights_no_lookahead.csv")
+rq1_weight_comparison <- build_weight_comparison(grouped_kfold_weights_ex_post_path,
+                                                 grouped_kfold_weights_no_lookahead_path)
+paper_table_3 <- build_rq1_weight_reallocation_table(rq1_weight_comparison)
+write_outputs(paper_table_3,
+              "paper_table_3_rq1_firmre_weight_reallocation",
+              "Table 3 RQ1 Exact Row-vs-Grouped Firm-RE Weight Reallocation")
+
+paper_table_4 <- build_rq1_top_model_table(rq1_weight_comparison)
+write_outputs(paper_table_4,
+              "paper_table_4_rq1_top_model_weights_by_validation_target",
+              "Table 4 RQ1 Top Model Weights by Validation Target")
+
 script_text <- function(path) if (file.exists(path)) paste(readLines(path, warn = FALSE), collapse = "\n") else ""
 audit_prediction <- function(path, scheme) {
   txt <- script_text(path)
@@ -579,6 +1205,18 @@ prediction_audit <- bind_rows(
 if (any(prediction_audit$prediction_rule_classification == "unclear_requires_manual_review")) add_warning("Prediction-rule audit has unclear classifications.")
 if (any(prediction_audit$prediction_rule_classification == "conditional_prediction_leakage_risk")) add_warning("LOFO prediction-rule audit detected conditional/full-fit grouped PSIS risk.")
 write_outputs(prediction_audit, "table_3_7_hierarchical_prediction_rule_audit", "Table 3.7 Hierarchical Prediction-Rule Audit")
+
+paper_appendix_A2 <- bind_rows(
+  fold_summary %>%
+    mutate(appendix_component = "grouped_kfold_balance_summary") %>%
+    mutate(across(everything(), as.character)),
+  prediction_audit %>%
+    mutate(appendix_component = "hierarchical_prediction_rule_audit") %>%
+    mutate(across(everything(), as.character))
+)
+write_outputs(paper_appendix_A2,
+              "paper_appendix_A2_fold_balance_prediction_rule_audit",
+              "Appendix Table A2 Fold Balance and Prediction-Rule Audit")
 
 kfold_std_audit <- safe_read_csv(file.path(kfold_tables, "table_winsor_kfold_train_standardization_audit.csv"))
 preprocessing_audit <- bind_rows(
@@ -654,6 +1292,59 @@ if (is.null(prior_summary)) {
 }
 write_outputs(prior_diag, "table_3_9_prior_predictive_diagnostics", "Table 3.9 Prior Predictive Diagnostics")
 
+model_config_rows <- if (nrow(model_space)) {
+  model_space %>%
+    transmute(
+      section = "model_space",
+      item = .data$model_id,
+      value = paste(.data$model_name, .data$literature_family, .data$core_or_secondary, sep = " | "),
+      evidence_or_note = .data$construct_rationale
+    )
+} else {
+  data.frame(section = "model_space", item = NA_character_, value = NA_character_,
+             evidence_or_note = "Model registry missing.", stringsAsFactors = FALSE)
+}
+bayesian_config_rows <- data.frame(
+  section = "bayesian_configuration",
+  item = c("prior_set_id", "likelihood_family", "chains", "iter", "warmup", "adapt_delta", "max_treedepth",
+           "prior_predictive_threshold_abs_gt_1", "prior_predictive_threshold_abs_gt_2", "prior_predictive_threshold_range_ratio"),
+  value = c(
+    prior_set_id,
+    likelihood_family,
+    if (!is.null(kfold_manifest) && "Chains" %in% names(kfold_manifest)) kfold_manifest$Chains[1] else NA,
+    if (!is.null(kfold_manifest) && "Iter" %in% names(kfold_manifest)) kfold_manifest$Iter[1] else NA,
+    if (!is.null(kfold_manifest) && "Warmup" %in% names(kfold_manifest)) kfold_manifest$Warmup[1] else NA,
+    if (!is.null(kfold_manifest) && "Adapt_Delta" %in% names(kfold_manifest)) kfold_manifest$Adapt_Delta[1] else NA,
+    if (!is.null(kfold_manifest) && "Max_Treedepth" %in% names(kfold_manifest)) kfold_manifest$Max_Treedepth[1] else NA,
+    PRIOR_MAX_MASS_ABS_GT_1,
+    PRIOR_MAX_MASS_ABS_GT_2,
+    PRIOR_MAX_RANGE_RATIO
+  ),
+  evidence_or_note = c(
+    "Central prior registry value.",
+    "Central likelihood registry value.",
+    rep("Grouped K-fold manifest when available; otherwise NA.", 5),
+    rep("Declared ma17 prior predictive acceptance threshold.", 3)
+  ),
+  stringsAsFactors = FALSE
+)
+paper_table_2 <- bind_rows(model_config_rows, bayesian_config_rows)
+write_outputs(paper_table_2,
+              "paper_table_2_model_space_bayesian_config",
+              "Table 2 Model Space and Bayesian Configuration")
+
+paper_appendix_A3 <- bind_rows(
+  preprocessing_audit %>%
+    mutate(appendix_component = "preprocessing_leakage_audit") %>%
+    mutate(across(everything(), as.character)),
+  prior_diag %>%
+    mutate(appendix_component = "prior_predictive_diagnostics") %>%
+    mutate(across(everything(), as.character))
+)
+write_outputs(paper_appendix_A3,
+              "paper_appendix_A3_preprocessing_prior_predictive_diagnostics",
+              "Appendix Table A3 Preprocessing and Prior Predictive Diagnostics")
+
 materiality <- data.frame(
   threshold_name = c("Spearman rank correlation below 0.95", "Spearman rank correlation below 0.90",
                      "top-5% Jaccard similarity below 0.80", "top-5% Jaccard similarity below 0.60",
@@ -723,6 +1414,35 @@ if (!is.null(exact_kfold_jaccard) && nrow(exact_kfold_jaccard) > 0) {
     table_3_12_available <- TRUE
   }
 }
+paper_table_6 <- if (isTRUE(table_3_12_available)) {
+  table_3_12 %>%
+    mutate(source_path = exact_kfold_reclassification_jaccard_path,
+           source_status = "available")
+} else {
+  data.frame(
+    target_space = NA_character_,
+    reported_score_variable = NA_character_,
+    metric_class = NA_character_,
+    N_joined = NA_real_,
+    top_n = NA_real_,
+    intersection_n = NA_real_,
+    union_n = NA_real_,
+    only_row_n = NA_real_,
+    only_grouped_n = NA_real_,
+    jaccard = NA_real_,
+    switch_rate = NA_real_,
+    spearman_rank_correlation = NA_real_,
+    Primary_Inference_Allowed = NA,
+    suppression_reason = "exact_kfold_reclassification_jaccard_missing_or_unavailable",
+    interpretation = NA_character_,
+    source_path = exact_kfold_reclassification_jaccard_path,
+    source_status = "missing",
+    stringsAsFactors = FALSE
+  )
+}
+write_outputs(paper_table_6,
+              "paper_table_6_rq2_reclassification_jaccard_spearman",
+              "Table 6 RQ2 Reclassification, Jaccard, and Spearman")
 
 denominator_decision <- safe_read_csv(denominator_diagnostics_decision_path)
 denominator_capped_jaccard <- safe_read_csv(denominator_capped_jaccard_path)
@@ -771,6 +1491,9 @@ if (!is.null(denominator_decision) && nrow(denominator_decision) > 0 &&
       )
     )
   write_outputs(table_3_13, "table_3_13_denominator_diagnostics_summary", "Table 3.13 Denominator Diagnostics Summary")
+  write_outputs(table_3_13,
+                "paper_appendix_A4_denominator_diagnostics",
+                "Appendix Table A4 Denominator Diagnostics")
   table_3_13_available <- TRUE
 }
 
@@ -778,48 +1501,60 @@ economic_validity <- safe_read_csv(economic_validity_path)
 economic_validity_means <- safe_read_csv(economic_validity_means_path)
 economic_validity_decision <- safe_read_csv(economic_validity_decision_path)
 table_3_14_available <- FALSE
-if (!is.null(economic_validity) && nrow(economic_validity) > 0 &&
+if (!isTRUE(EXPORT_SUPPLEMENTARY_ECON_VALIDITY) &&
     !is.null(economic_validity_decision) && nrow(economic_validity_decision) > 0) {
-  economic_decision_value <- if ("economic_validity_decision" %in% names(economic_validity_decision)) {
-    as.character(economic_validity_decision$economic_validity_decision[[1]])
-  } else {
-    NA_character_
+  add_note("Supplementary economic-validity diagnostics are suppressed by design; set ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY=TRUE to export Appendix A5.")
+} else if (isTRUE(EXPORT_SUPPLEMENTARY_ECON_VALIDITY) &&
+    !is.null(economic_validity) && nrow(economic_validity) > 0 &&
+    !is.null(economic_validity_decision) && nrow(economic_validity_decision) > 0) {
+  out_set <- unique(as.character(economic_validity$outcome))
+  if (any(grepl("persistence", out_set, ignore.case = TRUE))) {
+    stop("[BLOCKER] future_Earnings_persistence present in economic-validity outcomes. Re-run corrected di05.")
   }
-  decision_summary <- economic_validity_decision %>%
-    select(any_of(c(
-      "reported_score_variable", "fitted_tests", "significant_tests_p10",
-      "common_top5_significant_tests_p10", "row_only_significant_tests_p10",
-      "grouped_only_significant_tests_p10", "interpretation"
-    )))
-  validity_summary <- economic_validity %>%
-    group_by(.data$reported_score_variable, .data$term) %>%
-    summarise(
-      tested_outcome_n = sum(.data$model_status == "fit_ok", na.rm = TRUE),
-      significant_outcome_n_p10 = sum(!is.na(.data$p_value) & .data$p_value <= 0.10, na.rm = TRUE),
-      min_p_value = suppressWarnings(min(.data$p_value, na.rm = TRUE)),
-      .groups = "drop"
-    ) %>%
-    mutate(min_p_value = ifelse(is.infinite(.data$min_p_value), NA_real_, .data$min_p_value))
-  table_3_14 <- validity_summary %>%
-    left_join(decision_summary, by = "reported_score_variable") %>%
-    mutate(economic_validity_decision = economic_decision_value) %>%
-    select(any_of(c(
-      "reported_score_variable", "term", "tested_outcome_n", "significant_outcome_n_p10",
-      "min_p_value", "fitted_tests", "significant_tests_p10",
-      "common_top5_significant_tests_p10", "row_only_significant_tests_p10",
-      "grouped_only_significant_tests_p10", "economic_validity_decision", "interpretation"
-    )))
-  if (!is.null(economic_validity_means) && nrow(economic_validity_means) > 0) {
-    mean_cols <- grep("^mean_", names(economic_validity_means), value = TRUE)
-    if (length(mean_cols)) {
-      means_compact <- economic_validity_means %>%
-        group_by(.data$reported_score_variable) %>%
-        summarise(outcome_mean_fields_available = paste(mean_cols, collapse = ";"), .groups = "drop")
-      table_3_14 <- table_3_14 %>% left_join(means_compact, by = "reported_score_variable")
+  if (length(out_set) != 4L) {
+    stop("[BLOCKER] Corrected di05 must export exactly 4 outcome definitions. Found ",
+         length(out_set), ": ", paste(out_set, collapse = ", "))
+  }
+  required_ev_cols <- c(
+    "reported_score_variable", "term", "outcome", "model_status",
+    "coefficient", "std_error", "p_value", "q_value_BH_score_family",
+    "q_value_BH_global", "expected_sign", "observed_sign", "sign_consistent",
+    "sign_pattern", "effect_size_sd", "N_obs", "N_firms"
+  )
+  missing_ev_cols <- setdiff(required_ev_cols, names(economic_validity))
+  if (length(missing_ev_cols)) {
+    stop("[BLOCKER] Supplementary economic-validity export requires signed BH q-value columns. Missing: ",
+         paste(missing_ev_cols, collapse = ", "))
+  }
+  if ("fitted_tests" %in% names(economic_validity_decision)) {
+    bad_fit_counts <- unique(economic_validity_decision$fitted_tests[
+      !is.na(economic_validity_decision$fitted_tests) & economic_validity_decision$fitted_tests != 12
+    ])
+    if (length(bad_fit_counts)) {
+      stop("[BLOCKER] Economic-validity fitted_tests must be 12 after removing duplicate earnings persistence. Found: ",
+           paste(bad_fit_counts, collapse = ", "))
     }
   }
+  signed_cols <- c(
+    "reported_score_variable", "term", "outcome",
+    "coefficient", "std_error", "p_value",
+    "q_value_BH_score_family", "q_value_BH_global",
+    "expected_sign", "observed_sign", "sign_consistent", "sign_pattern",
+    "effect_size_sd", "effect_size_abs_mean",
+    "abs_coef_share_of_max_same_outcome_score",
+    "abs_coef_ratio_to_common_same_outcome_score",
+    "N_obs", "N_firms", "r_squared", "adj_r_squared"
+  )
+  table_3_14 <- economic_validity %>%
+    filter(.data$model_status == "fit_ok") %>%
+    select(any_of(signed_cols)) %>%
+    arrange(.data$reported_score_variable, .data$term, .data$outcome)
   if (nrow(table_3_14) > 0) {
-    write_outputs(table_3_14, "table_3_14_top_tail_economic_validity_summary", "Table 3.14 Top-Tail Economic Validity Summary")
+    write_outputs(table_3_14, "table_3_14_top_tail_economic_validity_summary", "Table 3.14 Top-Tail Economic Validity (Signed Coefficients and BH q-values)")
+    write_outputs(table_3_14, "table_3_14_economic_validity_signed", "Table 3.14 Top-Tail Economic Validity (Signed Coefficients and BH q-values)")
+    write_outputs(table_3_14,
+                  "paper_appendix_A5_supplementary_economic_validity_diagnostics",
+                  "Appendix Table A5 Supplementary Economic-Validity Diagnostics")
     table_3_14_available <- TRUE
   }
 }
@@ -844,9 +1579,117 @@ if (!is.null(temporal_premium) && nrow(temporal_premium) > 0 &&
     mutate(temporal_decision = temporal_decision_value)
   if (nrow(table_3_15) > 0) {
     write_outputs(table_3_15, "table_3_15_temporal_dependence_robustness_summary", "Table 3.15 Temporal Dependence Robustness Summary")
+    write_outputs(table_3_15,
+                  "paper_appendix_A6_temporal_dependence_robustness",
+                  "Appendix Table A6 Temporal-Dependence Robustness")
     table_3_15_available <- TRUE
   }
 }
+
+paper_table_5 <- bind_rows(
+  simulation_leakage_rows(
+    "LMER 3x3 static leakage pilot",
+    lmer_leakage_summary_path,
+    lmer_leakage_decision_path,
+    "Tests whether row-level validation reallocates Firm-RE weight relative to grouped-firm validation under static same-firm structure."
+  ),
+  simulation_leakage_rows(
+    "BRMS 3x3 static leakage confirmation",
+    brms_leakage_summary_path,
+    NA_character_,
+    "Bayesian MCMC confirmation that the row-vs-grouped Firm-RE mechanism is not an LMER-only artifact."
+  ),
+  simulation_recovery_rows(
+    "SI14 BRMS recovery n-sensitivity",
+    si14_recovery_summary_path,
+    si14_recovery_diagnostics_path,
+    "SI14 parameter-recovery and sampler-diagnostic evidence for the fitted BRMS accrual specification."
+  )
+)
+write_outputs(paper_table_5,
+              "paper_table_5_simulation_mechanism_evidence",
+              "Table 5 Simulation Mechanism Evidence")
+
+result_source_mapping <- data.frame(
+  manuscript_result = c(
+    "Table 1 Sample and provenance summary",
+    "Table 2 Model space and Bayesian configuration",
+    "Table 3 RQ1 Firm-RE weight reallocation",
+    "Table 4 RQ1 top model weights",
+    "Table 5 Simulation mechanism evidence",
+    "Table 6 RQ2 reclassification/Jaccard/Spearman",
+    "Appendix A4 Denominator diagnostics",
+    "Appendix A5 Supplementary economic-validity diagnostics",
+    "Appendix A6 Temporal-dependence robustness"
+  ),
+  output_stem = c(
+    "paper_table_1_sample_and_provenance_summary",
+    "paper_table_2_model_space_bayesian_config",
+    "paper_table_3_rq1_firmre_weight_reallocation",
+    "paper_table_4_rq1_top_model_weights_by_validation_target",
+    "paper_table_5_simulation_mechanism_evidence",
+    "paper_table_6_rq2_reclassification_jaccard_spearman",
+    "paper_appendix_A4_denominator_diagnostics",
+    "paper_appendix_A5_supplementary_economic_validity_diagnostics",
+    "paper_appendix_A6_temporal_dependence_robustness"
+  ),
+  source_csv = c(
+    paste(c(data_path, sample_specs$file), collapse = ";"),
+    paste(c(path_table("table_model_registry_winsor.csv"), path_table("table_prior_predictive_summary.csv"), file.path(kfold_root, "logs", "run_config_manifest.csv")), collapse = ";"),
+    paste(c(row_vs_grouped_weight_comparison_path, grouped_kfold_weights_ex_post_path, grouped_kfold_weights_no_lookahead_path,
+            row_kfold_weights_ex_post_path, row_kfold_weights_no_lookahead_path), collapse = ";"),
+    paste(c(row_vs_grouped_weight_comparison_path, grouped_kfold_weights_ex_post_path, grouped_kfold_weights_no_lookahead_path,
+            row_kfold_weights_ex_post_path, row_kfold_weights_no_lookahead_path), collapse = ";"),
+    paste(c(lmer_leakage_summary_path, brms_leakage_summary_path, si14_recovery_summary_path, si14_recovery_diagnostics_path), collapse = ";"),
+    exact_kfold_reclassification_jaccard_path,
+    paste(c(denominator_diagnostics_decision_path, denominator_capped_jaccard_path, da_z_est_vs_z_pred_comparison_path), collapse = ";"),
+    paste(c(economic_validity_path, economic_validity_decision_path), collapse = ";"),
+    paste(c(temporal_dependence_premium_path, temporal_dependence_decision_path), collapse = ";")
+  ),
+  source_script = c(
+    "scripts/ma02_build_common_sample.R; scripts/ma05_winsorize_common_samples.R; scripts/ma17_export_tables_figures.R",
+    "scripts/ma04_define_named_models.R; scripts/ma06_prior_predictive_checks.R; scripts/ma17_export_tables_figures.R",
+    "scripts/ma12c_collect_grouped_kfold_firm_scores.R; scripts/ma13_row_level_exact_kfold.R; scripts/ma17_export_tables_figures.R",
+    "scripts/ma12c_collect_grouped_kfold_firm_scores.R; scripts/ma13_row_level_exact_kfold.R; scripts/ma17_export_tables_figures.R",
+    "scripts/simulation/si01_lmer_pilot_run.R; scripts/simulation/si03_brms_leakage_confirmation.R; scripts/simulation/si14_brms_recovery_n_sensitivity.R; scripts/ma17_export_tables_figures.R",
+    "scripts/diagnostics/di03_exact_kfold_reclassification.R; scripts/ma17_export_tables_figures.R",
+    "scripts/diagnostics/di04_denominator_diagnostics.R; scripts/ma17_export_tables_figures.R",
+    "scripts/diagnostics/di05_economic_validity_top_tail.R; scripts/ma17_export_tables_figures.R",
+    "scripts/diagnostics/di09_temporal_dependence_robustness.R; scripts/ma17_export_tables_figures.R"
+  ),
+  run_root = output_root,
+  gate_decision = c(
+    "sample/provenance_export",
+    "model_registry_prior_predictive_export",
+    paste(na.omit(c(Exact_KFold_Reclassification_Decision, Primary_Magnitude_Reclassification_Decision)), collapse = ";"),
+    paste(na.omit(c(Exact_KFold_Reclassification_Decision, Primary_Magnitude_Reclassification_Decision)), collapse = ";"),
+    "simulation_artifact_summary_no_refit",
+    Exact_KFold_Reclassification_Decision,
+    ifelse(file.exists(denominator_diagnostics_decision_path), "denominator_decision_available", "denominator_decision_missing"),
+    ifelse(EXPORT_SUPPLEMENTARY_ECON_VALIDITY, "supplementary_export_enabled", "supplementary_export_suppressed_by_default"),
+    ifelse(file.exists(temporal_dependence_decision_path), "temporal_decision_available", "temporal_decision_missing")
+  ),
+  source_exists = c(
+    file.exists(data_path),
+    file.exists(path_table("table_model_registry_winsor.csv")) || file.exists(path_baseline_table("table_model_registry.csv")),
+    file.exists(row_vs_grouped_weight_comparison_path) || (file.exists(grouped_kfold_weights_ex_post_path) && file.exists(row_kfold_weights_ex_post_path)),
+    file.exists(row_vs_grouped_weight_comparison_path) || (file.exists(grouped_kfold_weights_ex_post_path) && file.exists(row_kfold_weights_ex_post_path)),
+    any(file.exists(c(lmer_leakage_summary_path, brms_leakage_summary_path, si14_recovery_summary_path))),
+    file.exists(exact_kfold_reclassification_jaccard_path),
+    file.exists(denominator_diagnostics_decision_path),
+    file.exists(economic_validity_decision_path),
+    file.exists(temporal_dependence_decision_path)
+  ),
+  primary_or_supplementary = c("primary", "primary", "primary", "primary", "primary", "primary",
+                               "appendix", "appendix_suppressed_by_default", "appendix_optional"),
+  stringsAsFactors = FALSE
+)
+result_source_mapping$source_md5 <- vapply(strsplit(result_source_mapping$source_csv, ";", fixed = TRUE), function(paths) {
+  paste(vapply(trimws(paths), safe_md5, character(1)), collapse = ";")
+}, character(1))
+write_outputs(result_source_mapping,
+              "paper_appendix_result_source_mapping",
+              "Appendix Result-Source Mapping")
 
 ExactKFold_Magnitude_RQ2_Primary_Output_Allowed <- table_3_12_available &&
   any(table_3_12$Primary_Inference_Allowed %in% TRUE &
@@ -876,7 +1719,8 @@ manifest <- data.frame(
            "RQ2_Magnitude_Primary_Output_Allowed", "RQ2_Tail_Primary_Output_Allowed",
            "Model_Primary_Inclusion_Gate",
            "MCMC_REVIEW_Inclusion_Rule", "Suppression_Override_Used",
-           "Tail_Flag_Primary_Status"),
+           "Tail_Flag_Primary_Status", "Supplementary_Economic_Validity_Export",
+           "Method_First_Result_Source_Mapping"),
   value = c(
     data_path,
     paste(metadata_sheets, collapse = ", "),
@@ -919,13 +1763,25 @@ manifest <- data.frame(
     path_table("table_model_primary_inclusion_gate.csv"),
     "PASS/OK included; FAIL/LOW_RELIABILITY excluded; REVIEW/CAUTION included only with MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS when exact-refit reliability is acceptable.",
     allow_suppressed_tail_flags,
-    ifelse(Tail_Flag_Primary_Output_Allowed, "primary_allowed", "suppressed_or_non_primary")
+    ifelse(Tail_Flag_Primary_Output_Allowed, "primary_allowed", "suppressed_or_non_primary"),
+    ifelse(EXPORT_SUPPLEMENTARY_ECON_VALIDITY, "enabled_appendix_A5", "suppressed_by_default"),
+    file.path(report_dir, "paper_appendix_result_source_mapping.csv")
   ),
   stringsAsFactors = FALSE
 )
 write_outputs(manifest, "table_3_11_code_manuscript_manifest", "Table 3.11 Code-Manuscript Manifest")
 
 required_stems <- c(
+  "paper_table_1_sample_and_provenance_summary",
+  "paper_table_2_model_space_bayesian_config",
+  "paper_table_3_rq1_firmre_weight_reallocation",
+  "paper_table_4_rq1_top_model_weights_by_validation_target",
+  "paper_table_5_simulation_mechanism_evidence",
+  "paper_table_6_rq2_reclassification_jaccard_spearman",
+  "paper_appendix_A1_panel_coverage_industry_year_cells",
+  "paper_appendix_A2_fold_balance_prediction_rule_audit",
+  "paper_appendix_A3_preprocessing_prior_predictive_diagnostics",
+  "paper_appendix_result_source_mapping",
   "table_3_1_sample_flow", "table_3_2_panel_coverage", "table_3_3_industry_year_cells",
   "table_3_4_zero_value_audit", "table_3_5_model_space_matrix",
   "appendix_screened_external_data_extensions", "table_3_6_grouped_kfold_fold_balance",
@@ -937,13 +1793,16 @@ if (table_3_12_available) {
   required_stems <- c(required_stems, "table_3_12_exact_kfold_reclassification_jaccard")
 }
 if (table_3_13_available) {
-  required_stems <- c(required_stems, "table_3_13_denominator_diagnostics_summary")
+  required_stems <- c(required_stems, "table_3_13_denominator_diagnostics_summary",
+                      "paper_appendix_A4_denominator_diagnostics")
 }
 if (table_3_14_available) {
-  required_stems <- c(required_stems, "table_3_14_top_tail_economic_validity_summary")
+  required_stems <- c(required_stems, "table_3_14_top_tail_economic_validity_summary",
+                      "paper_appendix_A5_supplementary_economic_validity_diagnostics")
 }
 if (table_3_15_available) {
-  required_stems <- c(required_stems, "table_3_15_temporal_dependence_robustness_summary")
+  required_stems <- c(required_stems, "table_3_15_temporal_dependence_robustness_summary",
+                      "paper_appendix_A6_temporal_dependence_robustness")
 }
 
 qc_rows <- list()
@@ -973,14 +1832,43 @@ add_qc("QC16", "denominator diagnostics manuscript table available when di04 dec
        ifelse(file.exists(denominator_diagnostics_decision_path) && !table_3_13_available, "FAIL",
               ifelse(!file.exists(denominator_diagnostics_decision_path), "WARN", "PASS")),
        ifelse(file.exists(denominator_diagnostics_decision_path), file.path(report_dir, "table_3_13_denominator_diagnostics_summary.csv"), "di04 decision not present"))
-add_qc("QC17", "economic-validity manuscript table available when di05 decision exists",
-       ifelse(file.exists(economic_validity_decision_path) && !table_3_14_available, "FAIL",
-              ifelse(!file.exists(economic_validity_decision_path), "WARN", "PASS")),
-       ifelse(file.exists(economic_validity_decision_path), file.path(report_dir, "table_3_14_top_tail_economic_validity_summary.csv"), "di05 decision not present"))
+add_qc("QC17", "supplementary economic-validity export is opt-in",
+       ifelse(EXPORT_SUPPLEMENTARY_ECON_VALIDITY && file.exists(economic_validity_decision_path) && !table_3_14_available, "FAIL",
+              ifelse(!file.exists(economic_validity_decision_path), "WARN",
+                     "PASS")),
+       ifelse(file.exists(economic_validity_decision_path),
+              ifelse(EXPORT_SUPPLEMENTARY_ECON_VALIDITY,
+                     file.path(report_dir, "paper_appendix_A5_supplementary_economic_validity_diagnostics.csv"),
+                     "PASS_SUPPRESSED_BY_DESIGN: di05 decision present but Appendix A5 suppressed by default; set ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY=TRUE"),
+              "di05 decision not present"))
 add_qc("QC18", "temporal-dependence robustness table available when temporal decision exists",
        ifelse(file.exists(temporal_dependence_decision_path) && !table_3_15_available, "FAIL",
               ifelse(!file.exists(temporal_dependence_decision_path), "WARN", "PASS")),
        ifelse(file.exists(temporal_dependence_decision_path), file.path(report_dir, "table_3_15_temporal_dependence_robustness_summary.csv"), "di09 temporal decision not present"))
+
+table5_metric_available <- function(block, metric_cols) {
+  rows <- paper_table_5[paper_table_5$evidence_block == block & paper_table_5$source_status != "missing", , drop = FALSE]
+  if (!nrow(rows)) return(FALSE)
+  vals <- unlist(rows[intersect(metric_cols, names(rows))], use.names = FALSE)
+  any(is.finite(suppressWarnings(as.numeric(vals))))
+}
+table5_blocks_ok <- c(
+  LMER = table5_metric_available(
+    "LMER 3x3 static leakage pilot",
+    c("mean_weight_premium", "prob_positive_weight_premium", "mean_weight_row_firmre", "mean_weight_group_firmre")
+  ),
+  BRMS = table5_metric_available(
+    "BRMS 3x3 static leakage confirmation",
+    c("mean_weight_premium", "prob_positive_weight_premium", "max_rhat", "total_divergent")
+  ),
+  SI14 = table5_metric_available(
+    "SI14 BRMS recovery n-sensitivity",
+    c("mean_bias", "mean_abs_bias", "rmse", "coverage_95", "max_rhat", "total_divergent", "min_ess_bulk")
+  )
+)
+add_qc("QC20", "Table 5 simulation evidence has non-missing metrics for LMER, BRMS, and SI14",
+       ifelse(all(table5_blocks_ok), "PASS", "FAIL"),
+       paste(names(table5_blocks_ok), table5_blocks_ok, sep = "=", collapse = "; "))
 
 report_path <- file.path(report_dir, "chapter3_methods_tables_report.md")
 qc_path <- file.path(report_dir, "chapter3_methods_tables_qc.csv")
@@ -1001,18 +1889,24 @@ if (!file.exists(economic_validity_decision_path)) add_warning("Economic-validit
 if (!file.exists(temporal_dependence_decision_path)) add_warning("Temporal-dependence robustness outputs are missing.")
 
 report_lines <- c(
-  "# Chapter 3 Methods Tables Report",
+  "# Method-First Paper Tables Report",
   "",
-  "These tables were generated by `source(\"scripts/ma17_export_tables_figures.R\")` from existing raw data, common-sample, winsorization, prior predictive, LOFO, grouped K-fold, and manifest outputs. The script does not refit Bayesian models or alter empirical design choices.",
+  "These tables were generated by `source(\"scripts/ma17_export_tables_figures.R\")` from existing raw data, common-sample, winsorization, prior predictive, exact row/grouped K-fold, diagnostics, simulation, and manifest outputs. The script does not refit Bayesian models or alter empirical design choices.",
   "",
   "## Generated Files",
   paste0("- `", sort(generated_files), "`"),
   "",
   "## Interpretation Notes",
+  "- Paper Table 3 and Table 4 are sourced from exact row-vs-grouped K-fold weight artifacts and report validation-target reallocation, not refitted estimates.",
+  "- Paper Table 5 summarizes existing LMER, BRMS, and BRMS parameter-recovery simulation artifacts as mechanism evidence.",
+  "- Economic-validity diagnostics are supplementary and suppressed by default unless `ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY=TRUE`.",
   "- Sample, panel, and industry-year counts are computed from current pipeline outputs.",
   "- Model-space outputs restrict the main manuscript matrix to M01-M10; screened external-data extensions are separated into an appendix table.",
   "- Prior predictive acceptance status uses configurable thresholds declared at the top of the script.",
   "- RQ2 materiality thresholds are design thresholds, not empirical results.",
+  "",
+  "## Notes",
+  if (length(notes_for_author)) paste0("- ", notes_for_author) else "- None.",
   "",
   "## Warnings Requiring Author Review",
   if (length(warnings_for_author)) paste0("- ", warnings_for_author) else "- None.",
@@ -1025,7 +1919,7 @@ writeLines(report_lines, report_path, useBytes = TRUE)
 
 qc_counts <- table(factor(qc$status, levels = c("PASS", "WARN", "FAIL")))
 overall <- if (any(qc$status == "FAIL")) "FAIL" else if (any(qc$status == "WARN")) "WARN" else "PASS"
-cat("\nCHAPTER 3 METHODS TABLES QC: ", overall, "\n", sep = "")
+cat("\nMETHOD-FIRST PAPER TABLES QC: ", overall, "\n", sep = "")
 cat("Output directory: ", report_dir, "\n", sep = "")
 cat("Generated tables:\n")
 for (f in sort(generated_files)) cat(" - ", f, "\n", sep = "")
@@ -1033,6 +1927,10 @@ cat("QC counts: PASS=", qc_counts[["PASS"]], " WARN=", qc_counts[["WARN"]], " FA
 if (length(warnings_for_author)) {
   cat("Author-review warnings:\n")
   for (w in warnings_for_author) cat(" - ", w, "\n", sep = "")
+}
+if (length(notes_for_author)) {
+  cat("Notes:\n")
+  for (n in notes_for_author) cat(" - ", n, "\n", sep = "")
 }
 cat("Open master report with: start ", normalizePath(report_path, winslash = "\\", mustWork = FALSE), "\n", sep = "")
 phase_end("ma17", "Export tables and figures")
