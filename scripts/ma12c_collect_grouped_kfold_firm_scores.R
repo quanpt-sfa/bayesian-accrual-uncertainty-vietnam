@@ -168,7 +168,7 @@ reconstruct_grouped_kfold_industry_coverage <- function(fold_assignment) {
     summarise(
       N_Firms = n_distinct(.data$company),
       N_Folds_Present = n_distinct(.data$Fold_ID),
-      Present_In_All_Folds = n_distinct(.data$Fold_ID) >= K,
+      Present_In_All_Folds = n_distinct(.data$Fold_ID) >= .env$K,
       .groups = "drop"
     ) %>%
     arrange(.data$Dominant_Industry)

@@ -25,6 +25,7 @@ required_ma12c_fragments <- c(
   "Stratified_Grouped_KFold",
   "Repeated_Grouped_KFold_Repeats",
   "Present_In_All_Folds",
+  "Present_In_All_Folds = n_distinct(.data$Fold_ID) >= .env$K",
   "table_ma12_grouped_kfold_compatibility_manifest.csv",
   "compat_file_row <- function",
   "tools::md5sum",
