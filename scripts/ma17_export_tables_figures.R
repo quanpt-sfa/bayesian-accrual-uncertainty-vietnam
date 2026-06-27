@@ -1139,7 +1139,8 @@ fold_assignment <- safe_read_csv(file.path(kfold_tables, "table_winsor_firm_fold
 kfold_balance_in <- safe_read_csv(file.path(kfold_tables, "table_winsor_kfold_balance.csv"))
 
 fold_diag_rows <- list()
-if (!is.null(kfold_balance_in) && nrow(kfold_balance_in)) {
+if (!is.null(fold_assignment) && nrow(fold_assignment) &&
+    !is.null(kfold_balance_in) && nrow(kfold_balance_in)) {
   for (i in seq_len(nrow(kfold_balance_in))) {
     b <- kfold_balance_in[i, ]
     sample_key <- if (identical(b$Target_Space, "ex_post")) "ex_post" else "real_time"
@@ -1172,7 +1173,7 @@ if (!is.null(kfold_balance_in) && nrow(kfold_balance_in)) {
     )
   }
 } else {
-  add_warning("Grouped K-fold balance/fold assignment files are missing; fold balance tables will be warning placeholders.")
+  add_warning("split_grouped_kfold_fold_balance_artifacts_missing: grouped K-fold balance and/or fold assignment files are missing; fold balance tables will be warning placeholders.")
 }
 fold_balance <- bind_rows(fold_diag_rows)
 if (!nrow(fold_balance)) {
@@ -1190,11 +1191,11 @@ fold_summary <- fold_balance %>%
   filter(!is.na(.data$sample)) %>%
   group_by(.data$sample) %>%
   summarise(
-    minimum_firms_per_fold = min(.data$number_of_firms_in_fold, na.rm = TRUE),
-    maximum_firms_per_fold = max(.data$number_of_firms_in_fold, na.rm = TRUE),
+    minimum_firms_per_fold = safe_min(.data$number_of_firms_in_fold),
+    maximum_firms_per_fold = safe_max(.data$number_of_firms_in_fold),
     firm_count_imbalance_ratio = maximum_firms_per_fold / pmax(minimum_firms_per_fold, 1),
-    minimum_observations_per_fold = min(.data$number_of_firm_year_observations_in_fold, na.rm = TRUE),
-    maximum_observations_per_fold = max(.data$number_of_firm_year_observations_in_fold, na.rm = TRUE),
+    minimum_observations_per_fold = safe_min(.data$number_of_firm_year_observations_in_fold),
+    maximum_observations_per_fold = safe_max(.data$number_of_firm_year_observations_in_fold),
     observation_imbalance_ratio = maximum_observations_per_fold / pmax(minimum_observations_per_fold, 1),
     warnings = paste(unique(c(
       if (any(.data$fold_has_too_few_firms_for_stable_validation, na.rm = TRUE)) "fold_below_min_firm_threshold" else NA_character_,

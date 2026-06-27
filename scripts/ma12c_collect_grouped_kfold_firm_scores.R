@@ -39,6 +39,10 @@ results <- lapply(manifest$result_path, function(path) {
 fold_diagnostics <- bind_rows(lapply(results, `[[`, "fold_diag"))
 obs_scores <- bind_rows(lapply(results, `[[`, "obs_scores"))
 
+K <- as.integer(manifest$K[1])
+run_mode <- as.character(manifest$run_mode[1])
+partial_run <- isTRUE(as.logical(manifest$Partial_Run[1]))
+
 write_dual_csv <- function(x, file_name) {
   run_path <- file.path(tables_dir, file_name)
   compat_path <- file.path(compat_tables_dir, file_name)
@@ -47,12 +51,174 @@ write_dual_csv <- function(x, file_name) {
   invisible(run_path)
 }
 
+resolve_fold_assignment_path <- function() {
+  preferred <- file.path(tables_dir, "table_ma12_grouped_kfold_fold_assignment.csv")
+  if (file.exists(preferred)) return(preferred)
+
+  if ("Fold_Assignment_Path" %in% names(manifest)) {
+    candidates <- unique(stats::na.omit(trimws(as.character(manifest$Fold_Assignment_Path))))
+    candidates <- candidates[nzchar(candidates) & file.exists(candidates)]
+    if (length(candidates) == 1L) return(candidates)
+  }
+
+  stop(
+    "[BLOCKER] ma12c cannot produce grouped K-fold fold-balance diagnostics without the MA12a fold assignment artifact. ",
+    "Expected ", preferred, " or a unique existing manifest Fold_Assignment_Path."
+  )
+}
+
+normalize_fold_assignment <- function(path) {
+  x <- read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+  if (!nrow(x)) stop("[BLOCKER] ma12c fold assignment is empty: ", path)
+  if (!"company" %in% names(x)) stop("[BLOCKER] ma12c fold assignment lacks company column: ", path)
+  if (!"Fold_ID" %in% names(x)) stop("[BLOCKER] ma12c fold assignment lacks Fold_ID column: ", path)
+  if (!"N_Obs" %in% names(x)) x$N_Obs <- NA_integer_
+  if (!"Dominant_Industry" %in% names(x)) {
+    x$Dominant_Industry <- if ("industry" %in% names(x)) x$industry else NA_character_
+  }
+  if (!"industry" %in% names(x)) x$industry <- x$Dominant_Industry
+  if (!"K" %in% names(x)) x$K <- K
+  x$company <- normalize_join_key_values(x$company)
+  x$Fold_ID <- as.integer(x$Fold_ID)
+  x$N_Obs <- suppressWarnings(as.integer(x$N_Obs))
+  x$K <- suppressWarnings(as.integer(x$K))
+  x
+}
+
+distribution_string <- function(x) {
+  x <- x[!is.na(x) & nzchar(as.character(x))]
+  if (!length(x)) return(NA_character_)
+  tab <- sort(table(x), decreasing = TRUE)
+  paste(paste0(names(tab), "=", as.integer(tab)), collapse = ";")
+}
+
+read_target_sample_for_balance <- function(target_sample) {
+  candidates <- c(
+    file.path(input_winsor_root, "tables", target_sample),
+    file.path(output_root, "tables", target_sample),
+    file.path(compat_tables_dir, target_sample)
+  )
+  path <- candidates[file.exists(candidates)][1]
+  if (is.na(path) || !nzchar(path)) {
+    stop("[BLOCKER] ma12c cannot reconstruct grouped K-fold balance; missing target sample: ", target_sample)
+  }
+  df <- read.csv(path, stringsAsFactors = FALSE)
+  for (col in c("company", "year")) {
+    if (!col %in% names(df)) stop("[BLOCKER] ma12c target sample lacks ", col, ": ", path)
+  }
+  df$company <- normalize_join_key_values(df$company)
+  df$.source_sample_path <- path
+  df
+}
+
+reconstruct_grouped_kfold_balance <- function(fold_assignment) {
+  sample_rows <- unique(manifest[, intersect(c("Target_Space", "Target_Sample", "Sample_Group"), names(manifest)), drop = FALSE])
+  sample_rows <- sample_rows[!is.na(sample_rows$Target_Sample) & nzchar(sample_rows$Target_Sample), , drop = FALSE]
+  if (!nrow(sample_rows)) {
+    stop("[BLOCKER] ma12c manifest lacks Target_Sample values required for grouped K-fold fold-balance diagnostics.")
+  }
+
+  rows <- lapply(seq_len(nrow(sample_rows)), function(i) {
+    sample_row <- sample_rows[i, , drop = FALSE]
+    sample_df <- read_target_sample_for_balance(sample_row$Target_Sample)
+    merged <- merge(
+      sample_df,
+      fold_assignment[, c("company", "Fold_ID", "Dominant_Industry"), drop = FALSE],
+      by = "company",
+      all.x = TRUE,
+      sort = FALSE
+    )
+    if (any(is.na(merged$Fold_ID))) {
+      missing_firms <- unique(merged$company[is.na(merged$Fold_ID)])
+      stop("[BLOCKER] ma12c fold assignment does not cover every firm in ", sample_row$Target_Sample,
+           ". Missing examples: ", paste(utils::head(missing_firms, 10), collapse = ", "))
+    }
+    industry_col <- if ("industry" %in% names(merged)) "industry" else "Dominant_Industry"
+    bind_rows(lapply(sort(unique(merged$Fold_ID)), function(fold_id) {
+      fold_df <- merged[merged$Fold_ID == fold_id, , drop = FALSE]
+      obs_per_firm <- fold_df %>% count(.data$company, name = "n_obs")
+      data.frame(
+        Target_Space = sample_row$Target_Space,
+        Fold_ID = fold_id,
+        N_Firms = nrow(obs_per_firm),
+        N_Obs = nrow(fold_df),
+        Min_Obs_Per_Firm = min(obs_per_firm$n_obs),
+        Median_Obs_Per_Firm = stats::median(obs_per_firm$n_obs),
+        Max_Obs_Per_Firm = max(obs_per_firm$n_obs),
+        Min_Year = min(fold_df$year, na.rm = TRUE),
+        Max_Year = max(fold_df$year, na.rm = TRUE),
+        Year_Distribution = distribution_string(fold_df$year),
+        Industry_Distribution = distribution_string(fold_df[[industry_col]]),
+        Stratified_Grouped_KFold = if ("Stratified_Grouped_KFold" %in% names(manifest)) manifest$Stratified_Grouped_KFold[1] else NA,
+        Repeated_Grouped_KFold_Repeats = if ("Repeated_Grouped_KFold_Repeats" %in% names(manifest)) manifest$Repeated_Grouped_KFold_Repeats[1] else 1L,
+        stringsAsFactors = FALSE
+      )
+    }))
+  })
+  bind_rows(rows)
+}
+
+reconstruct_grouped_kfold_industry_coverage <- function(fold_assignment) {
+  industry_col <- if ("Dominant_Industry" %in% names(fold_assignment)) "Dominant_Industry" else "industry"
+  x <- fold_assignment
+  x$Dominant_Industry <- x[[industry_col]]
+  x %>%
+    filter(!is.na(.data$Dominant_Industry), nzchar(.data$Dominant_Industry)) %>%
+    group_by(.data$Dominant_Industry) %>%
+    summarise(
+      N_Firms = n_distinct(.data$company),
+      N_Folds_Present = n_distinct(.data$Fold_ID),
+      Present_In_All_Folds = n_distinct(.data$Fold_ID) >= K,
+      .groups = "drop"
+    ) %>%
+    arrange(.data$Dominant_Industry)
+}
+
+compat_file_row <- function(label, path, source_artifact) {
+  exists <- file.exists(path)
+  n_rows <- if (exists) {
+    tryCatch(nrow(read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)), error = function(e) NA_integer_)
+  } else {
+    NA_integer_
+  }
+  info <- if (exists) file.info(path) else NULL
+  data.frame(
+    artifact = label,
+    path = path,
+    exists = exists,
+    file_size = if (exists) info$size else NA_real_,
+    mtime = if (exists) as.character(info$mtime) else NA_character_,
+    md5 = if (exists) as.character(tools::md5sum(path)) else NA_character_,
+    n_rows = n_rows,
+    script_name = script_name,
+    script_version = script_version,
+    source_artifact = source_artifact,
+    stringsAsFactors = FALSE
+  )
+}
+
+fold_assignment_path <- resolve_fold_assignment_path()
+fold_assignment_legacy <- normalize_fold_assignment(fold_assignment_path)
+write_dual_csv(fold_assignment_legacy, "table_winsor_firm_fold_assignment.csv")
+
+kfold_balance <- reconstruct_grouped_kfold_balance(fold_assignment_legacy)
+write_dual_csv(kfold_balance, "table_winsor_kfold_balance.csv")
+
+industry_fold_coverage <- reconstruct_grouped_kfold_industry_coverage(fold_assignment_legacy)
+write_dual_csv(industry_fold_coverage, "table_winsor_kfold_industry_fold_coverage.csv")
+
+compatibility_manifest <- bind_rows(
+  compat_file_row("legacy_fold_assignment_run", file.path(tables_dir, "table_winsor_firm_fold_assignment.csv"), fold_assignment_path),
+  compat_file_row("legacy_fold_assignment_compat", file.path(compat_tables_dir, "table_winsor_firm_fold_assignment.csv"), fold_assignment_path),
+  compat_file_row("legacy_kfold_balance_run", file.path(tables_dir, "table_winsor_kfold_balance.csv"), paste(unique(manifest$Target_Sample), collapse = ";")),
+  compat_file_row("legacy_kfold_balance_compat", file.path(compat_tables_dir, "table_winsor_kfold_balance.csv"), paste(unique(manifest$Target_Sample), collapse = ";")),
+  compat_file_row("legacy_industry_fold_coverage_run", file.path(tables_dir, "table_winsor_kfold_industry_fold_coverage.csv"), fold_assignment_path),
+  compat_file_row("legacy_industry_fold_coverage_compat", file.path(compat_tables_dir, "table_winsor_kfold_industry_fold_coverage.csv"), fold_assignment_path)
+)
+write_dual_csv(compatibility_manifest, "table_ma12_grouped_kfold_compatibility_manifest.csv")
+
 write_dual_csv(fold_diagnostics, "table_winsor_kfold_refit_diagnostics.csv")
 write_dual_csv(obs_scores, "table_winsor_kfold_observation_scores.csv")
-
-K <- as.integer(manifest$K[1])
-run_mode <- as.character(manifest$run_mode[1])
-partial_run <- isTRUE(as.logical(manifest$Partial_Run[1]))
 
 fold_scores <- obs_scores %>%
   group_by(Target_Space, Sample_Group, Fold_ID, Model_ID, Model_Name, Heterogeneity_Variant) %>%
