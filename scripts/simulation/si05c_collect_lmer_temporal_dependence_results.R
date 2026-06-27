@@ -79,6 +79,51 @@ results <- bind_rows(lapply(as.character(manifest$result_path), function(path) {
 if (!nrow(results)) stop("[BLOCKER] SI05 collect found zero result rows.")
 write_csv_safely(results, rep_path, row.names = FALSE, fileEncoding = "UTF-8")
 
+cell_coverage <- bind_rows(lapply(seq_len(nrow(manifest)), function(i) {
+  task <- manifest[i, , drop = FALSE]
+  x <- results[results$Source_Result_Path == as.character(task$result_path), , drop = FALSE]
+  expected_reps <- seq.int(as.integer(task$Rep_Start), as.integer(task$Rep_End))
+  actual_reps <- if (nrow(x) && "rep_id" %in% names(x)) sort(unique(as.integer(x$rep_id))) else integer()
+  missing_reps <- setdiff(expected_reps, actual_reps)
+  extra_reps <- setdiff(actual_reps, expected_reps)
+  duplicate_rep_count <- if (nrow(x) && "rep_id" %in% names(x)) sum(duplicated(as.integer(x$rep_id))) else NA_integer_
+  successful <- if (nrow(x) && "error" %in% names(x)) sum(is.na(x$error) | x$error == "") else 0L
+  failed <- if (nrow(x) && "error" %in% names(x)) sum(!(is.na(x$error) | x$error == "")) else 0L
+  design_match <- nrow(x) > 0 &&
+    all(as.integer(x$T) == as.integer(task$T), na.rm = TRUE) &&
+    all(abs(as.numeric(x$sigma_firm) - as.numeric(task$sigma_firm)) < 1e-12, na.rm = TRUE) &&
+    all(abs(as.numeric(x$rho) - as.numeric(task$rho)) < 1e-12, na.rm = TRUE) &&
+    all(as.integer(x$shock_duration) == as.integer(task$shock_duration), na.rm = TRUE)
+  complete <- nrow(x) == length(expected_reps) &&
+    length(missing_reps) == 0L && length(extra_reps) == 0L &&
+    identical(as.integer(duplicate_rep_count), 0L) && isTRUE(design_match)
+  data.frame(
+    Task_ID = as.integer(task$Task_ID),
+    Task_Key = as.character(task$Task_Key),
+    T = as.integer(task$T),
+    sigma_firm = as.numeric(task$sigma_firm),
+    rho = as.numeric(task$rho),
+    shock_duration = as.integer(task$shock_duration),
+    expected_replications = length(expected_reps),
+    observed_rows = nrow(x),
+    unique_replications = length(actual_reps),
+    successful_replications = successful,
+    failed_replications = failed,
+    missing_replication_count = length(missing_reps),
+    extra_replication_count = length(extra_reps),
+    duplicate_replication_count = duplicate_rep_count,
+    design_match = design_match,
+    complete = complete,
+    missing_replications_preview = paste(head(missing_reps, 20), collapse = ","),
+    result_path = as.character(task$result_path),
+    stringsAsFactors = FALSE
+  )
+}))
+coverage_path <- file.path(dirs$tables, "table_si05_lmer_temporal_cell_coverage.csv")
+write_csv_safely(cell_coverage, coverage_path, row.names = FALSE, fileEncoding = "UTF-8")
+
+incomplete_cells <- cell_coverage[!isTRUE(cell_coverage$complete) & !cell_coverage$complete, , drop = FALSE]
+
 summary_df <- si05_summarise_temporal_results(results)
 write_csv_safely(summary_df, sum_path, row.names = FALSE, fileEncoding = "UTF-8")
 
@@ -87,6 +132,7 @@ failed_n <- sum(!(is.na(results$error) | results$error == ""))
 
 decision_value <- dplyr::case_when(
   nrow(ok) == 0 ~ "FAIL_NO_SUCCESSFUL_REPLICATIONS",
+  nrow(incomplete_cells) > 0 ~ "FAIL_INCOMPLETE_CELL_COVERAGE",
   failed_n > 0 ~ "PASS_WITH_FAILED_REPLICATIONS_REVIEW",
   TRUE ~ "PASS"
 )
@@ -99,6 +145,8 @@ decision <- data.frame(
   observed_replication_rows = nrow(results),
   successful_replications = nrow(ok),
   failed_replications = failed_n,
+  incomplete_cells = nrow(incomplete_cells),
+  coverage_path = coverage_path,
   T_grid = paste(cfg$t_grid, collapse = ","),
   sigma_firm_grid = paste(cfg$sigma_grid, collapse = ","),
   rho_grid = paste(cfg$rho_grid, collapse = ","),
@@ -109,10 +157,10 @@ decision <- data.frame(
   n_industries = cfg$n_industries,
   sigma_eps = cfg$sigma_eps,
   shock_size = cfg$shock_size,
-  interpretation = ifelse(
-    identical(decision_value, "PASS"),
-    "All SI05 split-worker task result rows were collected without replication-level errors.",
-    "SI05 outputs were collected, but failed/missing replications or tasks require review."
+  interpretation = dplyr::case_when(
+    identical(decision_value, "PASS") ~ "All SI05 split-worker cells reached the manifest replication target without replication-level errors.",
+    identical(decision_value, "FAIL_INCOMPLETE_CELL_COVERAGE") ~ "At least one SI05 design cell did not reach its manifest replication target. Inspect the coverage table and rerun stale/incomplete tasks.",
+    TRUE ~ "SI05 outputs were collected, but failed/missing replications or tasks require review."
   ),
   stringsAsFactors = FALSE
 )
@@ -142,6 +190,8 @@ manifest_row <- data.frame(
   replications_path = rep_path,
   summary_path = sum_path,
   decision_path = decision_path,
+  coverage_path = coverage_path,
+  incomplete_cells = nrow(incomplete_cells),
   stringsAsFactors = FALSE
 )
 write_csv_safely(manifest_row, collect_manifest_path, row.names = FALSE, fileEncoding = "UTF-8")

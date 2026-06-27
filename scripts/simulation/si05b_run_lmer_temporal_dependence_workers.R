@@ -102,6 +102,68 @@ si05_write_task_status <- function(task, status, start_time, end_time,
   invisible(row)
 }
 
+si05_existing_result_state <- function(path, task) {
+  expected_reps <- seq.int(as.integer(task$Rep_Start), as.integer(task$Rep_End))
+  expected_n <- length(expected_reps)
+  if (!file.exists(path)) {
+    return(list(reusable = FALSE, reason = "missing_result_file", n_rows = 0L,
+                n_success = 0L, n_failed = 0L))
+  }
+  existing <- tryCatch(
+    read.csv(path, stringsAsFactors = FALSE, check.names = FALSE),
+    error = function(e) e
+  )
+  if (inherits(existing, "error")) {
+    return(list(reusable = FALSE, reason = paste0("unreadable_result_file: ", conditionMessage(existing)),
+                n_rows = NA_integer_, n_success = NA_integer_, n_failed = NA_integer_))
+  }
+  n_rows <- nrow(existing)
+  n_success <- if ("error" %in% names(existing)) sum(is.na(existing$error) | existing$error == "") else NA_integer_
+  n_failed <- if ("error" %in% names(existing)) sum(!(is.na(existing$error) | existing$error == "")) else NA_integer_
+
+  required_cols <- c("T", "sigma_firm", "rho", "shock_duration", "rep_id")
+  missing_cols <- setdiff(required_cols, names(existing))
+  if (length(missing_cols)) {
+    return(list(reusable = FALSE, reason = paste0("missing_columns: ", paste(missing_cols, collapse = ",")),
+                n_rows = n_rows, n_success = n_success, n_failed = n_failed))
+  }
+
+  actual_reps <- sort(unique(as.integer(existing$rep_id)))
+  missing_reps <- setdiff(expected_reps, actual_reps)
+  extra_reps <- setdiff(actual_reps, expected_reps)
+  duplicate_reps <- actual_reps[duplicated(as.integer(existing$rep_id))]
+
+  design_ok <- all(as.integer(existing$T) == as.integer(task$T), na.rm = TRUE) &&
+    all(abs(as.numeric(existing$sigma_firm) - as.numeric(task$sigma_firm)) < 1e-12, na.rm = TRUE) &&
+    all(abs(as.numeric(existing$rho) - as.numeric(task$rho)) < 1e-12, na.rm = TRUE) &&
+    all(as.integer(existing$shock_duration) == as.integer(task$shock_duration), na.rm = TRUE)
+
+  if (!design_ok) {
+    return(list(reusable = FALSE, reason = "design_columns_do_not_match_manifest",
+                n_rows = n_rows, n_success = n_success, n_failed = n_failed))
+  }
+  if (n_rows != expected_n) {
+    return(list(reusable = FALSE, reason = paste0("row_count_mismatch: observed=", n_rows, ", expected=", expected_n),
+                n_rows = n_rows, n_success = n_success, n_failed = n_failed))
+  }
+  if (length(missing_reps) || length(extra_reps) || length(duplicate_reps)) {
+    reason <- paste0(
+      "rep_id_coverage_mismatch: missing=", paste(head(missing_reps, 10), collapse = ";"),
+      "; extra=", paste(head(extra_reps, 10), collapse = ";"),
+      "; duplicate=", paste(head(duplicate_reps, 10), collapse = ";")
+    )
+    return(list(reusable = FALSE, reason = reason,
+                n_rows = n_rows, n_success = n_success, n_failed = n_failed))
+  }
+  if (!is.na(n_failed) && n_failed > 0L) {
+    return(list(reusable = FALSE, reason = paste0("existing_result_has_failed_replications: ", n_failed),
+                n_rows = n_rows, n_success = n_success, n_failed = n_failed))
+  }
+
+  list(reusable = TRUE, reason = "existing_result_complete_and_matches_manifest",
+       n_rows = n_rows, n_success = n_success, n_failed = n_failed)
+}
+
 si05b_task_worker <- function(task) {
   suppressPackageStartupMessages({
     library(dplyr)
@@ -131,15 +193,18 @@ si05b_task_worker <- function(task) {
   message(task_header)
   writeLines(c(task_header, paste("start_time:", as.character(task_start))), log_path, useBytes = TRUE)
 
-  if (file.exists(result_path) && !force_rerun_local) {
-    existing <- tryCatch(read.csv(result_path, stringsAsFactors = FALSE, check.names = FALSE), error = function(e) NULL)
-    n_rows <- if (is.null(existing)) NA_integer_ else nrow(existing)
-    n_success <- if (is.null(existing) || !"error" %in% names(existing)) NA_integer_ else sum(is.na(existing$error) | existing$error == "")
-    n_failed <- if (is.null(existing) || !"error" %in% names(existing)) NA_integer_ else sum(!(is.na(existing$error) | existing$error == ""))
+  existing_state <- si05_existing_result_state(result_path, task)
+  if (isTRUE(existing_state$reusable) && !force_rerun_local) {
     status_row <- si05_write_task_status(
-      task, "SKIPPED_EXISTING", task_start, Sys.time(), n_rows, n_success, n_failed, NA_character_
+      task, "SKIPPED_EXISTING_VALID", task_start, Sys.time(),
+      existing_state$n_rows, existing_state$n_success, existing_state$n_failed,
+      existing_state$reason
     )
     return(status_row)
+  }
+  if (file.exists(result_path) && !force_rerun_local && !isTRUE(existing_state$reusable)) {
+    message("[SI05B] Existing task result is stale/incomplete and will be overwritten: ",
+            result_path, " | ", existing_state$reason)
   }
 
   rep_ids <- seq.int(as.integer(task$Rep_Start), as.integer(task$Rep_End))
@@ -225,7 +290,7 @@ statuses <- accrual_run_task_pool(
   tasks = task_list,
   worker_fun = si05b_task_worker,
   parallel_cfg = parallel_cfg,
-  export_names = c("si05_write_task_status", "si05_force_rerun_enabled"),
+  export_names = c("si05_write_task_status", "si05_force_rerun_enabled", "si05_existing_result_state"),
   packages = c("dplyr", "lme4"),
   context = "si05b lmer temporal-dependence simulation"
 )
