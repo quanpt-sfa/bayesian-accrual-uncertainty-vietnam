@@ -31,6 +31,7 @@ RQ2_FLAG_SWITCH_HIGH <- 0.10
 RQ2_FLAG_COUNT_REL_CHANGE_MATERIAL <- 0.25
 MIN_FIRMS_PER_FOLD_STABLE <- env_int("ACCRUAL_METHODS_MIN_FIRMS_PER_FOLD_STABLE", 30L, min = 1L)
 EXPORT_SUPPLEMENTARY_ECON_VALIDITY <- env_flag("ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY", "FALSE")
+EXPORT_DI09_TEMPORAL_ELPD_DIAGNOSTIC <- env_flag("ACCRUAL_EXPORT_DI09_TEMPORAL_ELPD_DIAGNOSTIC", "FALSE")
 
 report_dir <- file.path(reports_root, "chapter3_methods_tables")
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
@@ -99,8 +100,15 @@ da_z_est_vs_z_pred_comparison_path <- file.path(output_root, "diagnostics", "tab
 economic_validity_path <- file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity.csv")
 economic_validity_means_path <- file.path(output_root, "diagnostics", "table_top_tail_group_outcome_means.csv")
 economic_validity_decision_path <- file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv")
-temporal_dependence_premium_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv")
-temporal_dependence_decision_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
+di09_temporal_elpd_premium_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv")
+di09_temporal_elpd_decision_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
+lmer_temporal_root <- file.path(output_root, "simulation", "lmer_temporal_dependence")
+lmer_temporal_tables_dir <- file.path(lmer_temporal_root, "tables")
+si05_temporal_grid_summary_path <- file.path(lmer_temporal_tables_dir, "table_lmer_temporal_dependence_grid_summary.csv")
+si05_temporal_rep_results_path <- file.path(lmer_temporal_tables_dir, "table_lmer_temporal_dependence_rep_results.csv")
+si05_temporal_cell_coverage_path <- file.path(lmer_temporal_tables_dir, "table_si05_lmer_temporal_cell_coverage.csv")
+si05_temporal_decision_path <- file.path(lmer_temporal_tables_dir, "table_si05_lmer_temporal_decision.csv")
+si06_temporal_mechanism_summary_path <- file.path(lmer_temporal_tables_dir, "table_temporal_dependence_mechanism_summary.csv")
 # Row exact-KFold artifacts are produced by ma13c under Row_KFold_Root/tables
 # and pinned by output_root/row_exact_kfold/LATEST_COMPLETED_RUN.txt.
 # Do not assume output_root/row_exact_kfold/tables contains the weight CSVs.
@@ -258,6 +266,20 @@ safe_md5 <- function(path) {
   tryCatch(as.character(tools::md5sum(path)), error = function(e) NA_character_)
 }
 
+first_source_path <- function(path_string) {
+  paths <- trimws(unlist(strsplit(as.character(path_string[[1]]), ";", fixed = TRUE), use.names = FALSE))
+  paths <- paths[nzchar(paths) & !is.na(paths)]
+  if (!length(paths)) return(NA_character_)
+  hits <- paths[file.exists(paths)]
+  if (length(hits)) hits[[1]] else paths[[1]]
+}
+
+collapse_paths <- function(paths) {
+  paths <- as.character(paths)
+  paths <- paths[!is.na(paths) & nzchar(paths)]
+  paste(paths, collapse = ";")
+}
+
 first_col <- function(df, candidates) {
   hit <- intersect(candidates, names(df))
   if (!length(hit)) return(rep(NA, nrow(df)))
@@ -413,9 +435,7 @@ build_rq1_weight_reallocation_table <- function(weight_comparison) {
                                               NA_real_),
       reliability_gate_status = ifelse(nzchar(.data$reliability_gate_status),
                                        .data$reliability_gate_status,
-                                       paste(na.omit(c(Exact_KFold_Reclassification_Decision,
-                                                       Primary_Magnitude_Reclassification_Decision)),
-                                             collapse = ";"))
+                                       "rq1_weight_reallocation_artifacts_available")
     ) %>%
     select(
       target_space, validation_target,
@@ -505,6 +525,7 @@ simulation_result_empty_row <- function(label, path, mechanism, scenario = "sour
     scenario = scenario,
     T_values = NA_character_,
     sigma_firm = NA_real_,
+    rho_values = NA_character_,
     parameter = NA_character_,
     n_rep_total = NA_real_,
     mean_weight_row_firmre = NA_real_,
@@ -572,8 +593,9 @@ simulation_leakage_rows <- function(label, path, decision_path = NA_character_, 
       scenario = ifelse(identical(sig, 0), "sigma_0_anchor", paste0("sigma_", sig)),
       T_values = paste(sort(unique(xs$T)), collapse = ","),
       sigma_firm = sig,
+      rho_values = if ("rho" %in% names(xs)) paste(sort(unique(xs$rho)), collapse = ",") else NA_character_,
       parameter = NA_character_,
-      n_rep_total = finite_sum(first_col(xs, "n_rep")),
+      n_rep_total = finite_sum(first_col(xs, c("n_rep", "n_reps", "n_replications", "n"))),
       mean_weight_row_firmre = finite_mean(first_col(xs, "mean_weight_row_firmre")),
       mean_weight_group_firmre = finite_mean(first_col(xs, "mean_weight_group_firmre")),
       mean_weight_premium = premium,
@@ -584,8 +606,8 @@ simulation_leakage_rows <- function(label, path, decision_path = NA_character_, 
       mean_abs_bias = NA_real_,
       rmse = NA_real_,
       coverage_95 = NA_real_,
-      max_rhat = if ("max_rhat" %in% names(xs)) finite_max(xs$max_rhat) else NA_real_,
-      total_divergent = if ("total_divergent" %in% names(xs)) finite_sum(xs$total_divergent) else NA_real_,
+      max_rhat = finite_max(first_col(xs, c("max_rhat", "max_rhat_max"))),
+      total_divergent = finite_sum(first_col(xs, c("total_divergent", "n_divergent"))),
       min_ess_bulk = NA_real_,
       decision_or_gate = decision_value,
       mechanism_read = dplyr::case_when(
@@ -602,7 +624,18 @@ simulation_leakage_rows <- function(label, path, decision_path = NA_character_, 
       stringsAsFactors = FALSE
     )
   })
-  bind_rows(rows)
+  out <- bind_rows(rows)
+  if (grepl("BRMS", label, ignore.case = TRUE)) {
+    pilot_review <- (is.finite(out$n_rep_total) & out$n_rep_total <= 10) |
+      (is.finite(out$max_rhat) & out$max_rhat > 1.05)
+    out$mechanism_read[pilot_review] <- "brms_confirmation_pilot_sampler_review_required"
+    out$mechanism_interpretation[pilot_review] <- paste(
+      out$mechanism_interpretation[pilot_review],
+      "Diagnostic-only pilot; interpret cautiously when replication count is low or max_rhat exceeds 1.05."
+    )
+    out$source_status[pilot_review] <- paste(out$source_status[pilot_review], "diagnostic_only_pilot", sep = "_")
+  }
+  out
 }
 
 simulation_recovery_rows <- function(label, summary_path, diagnostics_path = NA_character_, mechanism) {
@@ -629,6 +662,7 @@ simulation_recovery_rows <- function(label, summary_path, diagnostics_path = NA_
       scenario = "si14_brms_recovery_n_sensitivity",
       T_values = paste(sort(unique(.data$T)), collapse = ","),
       sigma_firm = NA_real_,
+      rho_values = NA_character_,
       parameter = first(.data$parameter),
       n_rep_total = finite_sum(first_col(cur_data(), c("n_rep", "n_replications", "n"))),
       mean_weight_row_firmre = NA_real_,
@@ -657,6 +691,226 @@ simulation_recovery_rows <- function(label, summary_path, diagnostics_path = NA_
       source_path = paste(na.omit(c(summary_path, diagnostics_path)), collapse = ";"),
       source_mtime = latest_file_mtime(summary_path),
       source_md5 = paste(na.omit(c(safe_md5(summary_path), safe_md5(diagnostics_path))), collapse = ";"),
+      .groups = "drop"
+    )
+}
+
+temporal_has_weight_evidence <- function(x) {
+  !is.null(x) && nrow(x) > 0 &&
+    any(c("mean_weight_premium", "mean_row_minus_grouped_firmre_weight_premium") %in% names(x))
+}
+
+select_temporal_weight_source <- function(summary_path, mechanism_path = NA_character_) {
+  mechanism <- safe_read_csv(mechanism_path)
+  if (temporal_has_weight_evidence(mechanism)) {
+    return(list(data = mechanism, path = mechanism_path, source_kind = "si06_mechanism_summary"))
+  }
+  summary <- safe_read_csv(summary_path)
+  if (temporal_has_weight_evidence(summary)) {
+    return(list(data = summary, path = summary_path, source_kind = "si05_grid_summary"))
+  }
+  list(data = NULL, path = NA_character_, source_kind = "missing")
+}
+
+temporal_mechanism_fields <- function(sigma_firm, mean_weight_premium, coverage_complete = NA) {
+  sig <- suppressWarnings(as.numeric(sigma_firm))
+  premium <- suppressWarnings(as.numeric(mean_weight_premium))
+  incomplete <- !is.na(coverage_complete) && !isTRUE(coverage_complete)
+  if (isTRUE(incomplete)) {
+    return(list(
+      mechanism_read = "temporal_weight_evidence_incomplete_cell_coverage",
+      decision_or_gate = "REVIEW_INCOMPLETE_TEMPORAL_CELL_COVERAGE",
+      interpretation = "SI05/SI06 temporal weight-premium evidence is present, but at least one design cell has incomplete replication coverage."
+    ))
+  }
+  if (is.finite(sig) && sig == 0 && is.finite(premium) && abs(premium) <= 0.05) {
+    return(list(
+      mechanism_read = "sigma0_weight_premium_near_zero_not_leakage",
+      decision_or_gate = "PASS_SIGMA0_ANCHOR_NEAR_ZERO",
+      interpretation = "Row-minus-grouped Firm-RE premium is near zero in the no firm-heterogeneity anchor; do not call this leakage."
+    ))
+  }
+  if (is.finite(sig) && sig == 0) {
+    return(list(
+      mechanism_read = "sigma0_anchor_review_required",
+      decision_or_gate = "REVIEW_SIGMA0_ANCHOR_NONZERO",
+      interpretation = "The no firm-heterogeneity anchor has a non-negligible row-minus-grouped Firm-RE premium and requires review."
+    ))
+  }
+  if (is.finite(sig) && sig > 0 && is.finite(premium) && premium > 0) {
+    return(list(
+      mechanism_read = "positive_row_minus_grouped_firmre_weight_premium_under_same_firm_heterogeneity",
+      decision_or_gate = "TEMPORAL_WEIGHT_PREMIUM_EVIDENCE_AVAILABLE",
+      interpretation = "Positive row-minus-grouped Firm-RE weight premium reflects validation-target sensitivity under same-firm heterogeneity; do not label it as temporal leakage by itself."
+    ))
+  }
+  list(
+    mechanism_read = "temporal_weight_premium_nonpositive_or_insufficient",
+    decision_or_gate = "TEMPORAL_WEIGHT_PREMIUM_NONPOSITIVE_OR_INSUFFICIENT",
+    interpretation = "SI05/SI06 temporal weight-premium evidence is available, but the cell does not show a positive row-minus-grouped Firm-RE weight premium."
+  )
+}
+
+attach_temporal_coverage <- function(x, coverage_path) {
+  coverage <- safe_read_csv(coverage_path)
+  if (is.null(coverage) || !nrow(coverage)) {
+    x$expected_replications <- NA_real_
+    x$observed_rows <- NA_real_
+    x$missing_replication_count <- NA_real_
+    x$complete <- NA
+    return(x)
+  }
+  join_cols <- intersect(c("T", "sigma_firm", "rho", "shock_duration"), intersect(names(x), names(coverage)))
+  keep_cols <- unique(c(join_cols, intersect(c("expected_replications", "observed_rows", "missing_replication_count", "complete"), names(coverage))))
+  coverage <- coverage[, keep_cols, drop = FALSE]
+  if (length(join_cols) > 0) {
+    dplyr::left_join(x, coverage, by = join_cols)
+  } else {
+    x$expected_replications <- NA_real_
+    x$observed_rows <- NA_real_
+    x$missing_replication_count <- NA_real_
+    x$complete <- NA
+    x
+  }
+}
+
+build_temporal_weight_appendix <- function(summary_path,
+                                           coverage_path = NA_character_,
+                                           decision_path = NA_character_,
+                                           mechanism_path = NA_character_) {
+  selected <- select_temporal_weight_source(summary_path, mechanism_path)
+  if (is.null(selected$data) || !nrow(selected$data)) {
+    return(data.frame(
+      T = NA_real_,
+      rho = NA_real_,
+      sigma_firm = NA_real_,
+      expected_replications = NA_real_,
+      observed_rows = NA_real_,
+      missing_replication_count = NA_real_,
+      complete = NA,
+      mean_weight_row_firmre = NA_real_,
+      mean_weight_group_firmre = NA_real_,
+      mean_weight_premium = NA_real_,
+      prob_positive_weight_premium = NA_real_,
+      mechanism_read = "si05_si06_temporal_weight_evidence_missing",
+      mechanism_interpretation = "SI05/SI06 temporal-dependence weight-premium evidence is missing; DI09 ELPD diagnostics are not substituted as leakage-weight evidence.",
+      source_status = "missing_si05_si06_temporal_weight_evidence",
+      source_path = paste(na.omit(c(summary_path, coverage_path, decision_path, mechanism_path)), collapse = ";"),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  x <- selected$data
+  if (!"T" %in% names(x)) x$T <- NA_real_
+  if (!"rho" %in% names(x)) x$rho <- NA_real_
+  if (!"sigma_firm" %in% names(x)) x$sigma_firm <- NA_real_
+  x$T <- suppressWarnings(as.numeric(x$T))
+  x$rho <- suppressWarnings(as.numeric(x$rho))
+  x$sigma_firm <- suppressWarnings(as.numeric(x$sigma_firm))
+  x$mean_weight_row_firmre <- suppressWarnings(as.numeric(first_col(x, c("mean_weight_row_firmre", "mean_row_firmre_weight"))))
+  x$mean_weight_group_firmre <- suppressWarnings(as.numeric(first_col(x, c("mean_weight_group_firmre", "mean_grouped_firmre_weight"))))
+  x$mean_weight_premium <- suppressWarnings(as.numeric(first_col(x, c("mean_weight_premium", "mean_row_minus_grouped_firmre_weight_premium"))))
+  x$prob_positive_weight_premium <- suppressWarnings(as.numeric(first_col(x, c("prob_positive_weight_premium", "share_positive_weight_premium", "share_row_minus_grouped_positive"))))
+  x <- attach_temporal_coverage(x, coverage_path)
+  if (!"complete" %in% names(x)) x$complete <- NA
+  if (!"expected_replications" %in% names(x)) x$expected_replications <- NA_real_
+  observed_from_summary <- suppressWarnings(as.numeric(first_col(x, c("n_rep", "n_reps", "n_replications", "n"))))
+  if (!"observed_rows" %in% names(x) || all(is.na(x$observed_rows))) x$observed_rows <- observed_from_summary
+  if (!"missing_replication_count" %in% names(x)) x$missing_replication_count <- NA_real_
+
+  out <- x %>%
+    group_by(.data$T, .data$rho, .data$sigma_firm) %>%
+    summarise(
+      expected_replications = finite_sum(.data$expected_replications),
+      observed_rows = finite_sum(.data$observed_rows),
+      missing_replication_count = finite_sum(.data$missing_replication_count),
+      complete = ifelse(all(is.na(.data$complete)), NA, all(as.logical(.data$complete), na.rm = TRUE)),
+      mean_weight_row_firmre = finite_mean(.data$mean_weight_row_firmre),
+      mean_weight_group_firmre = finite_mean(.data$mean_weight_group_firmre),
+      mean_weight_premium = finite_mean(.data$mean_weight_premium),
+      prob_positive_weight_premium = finite_mean(.data$prob_positive_weight_premium),
+      .groups = "drop"
+    ) %>%
+    arrange(.data$sigma_firm, .data$T, .data$rho)
+
+  source_status <- if (is.na(coverage_path) || !file.exists(coverage_path)) {
+    "summary_available_coverage_missing"
+  } else if (any(!is.na(out$complete) & !out$complete)) {
+    "available_incomplete_cell_coverage"
+  } else {
+    "summary_and_coverage_available"
+  }
+  fields <- lapply(seq_len(nrow(out)), function(i) {
+    temporal_mechanism_fields(out$sigma_firm[[i]], out$mean_weight_premium[[i]], out$complete[[i]])
+  })
+  out$mechanism_read <- vapply(fields, `[[`, character(1), "mechanism_read")
+  out$mechanism_interpretation <- vapply(fields, `[[`, character(1), "interpretation")
+  out$source_status <- ifelse(!is.na(out$complete) & !out$complete, "available_incomplete_cell_coverage", source_status)
+  out$source_path <- paste(na.omit(c(selected$path,
+                                     if (!is.na(coverage_path) && file.exists(coverage_path)) coverage_path,
+                                     if (!is.na(decision_path) && file.exists(decision_path)) decision_path)),
+                           collapse = ";")
+  out
+}
+
+simulation_temporal_weight_rows <- function(summary_path,
+                                            coverage_path = NA_character_,
+                                            decision_path = NA_character_,
+                                            mechanism_path = NA_character_) {
+  label <- "SI05/SI06 LMER temporal-dependence weight-premium simulation"
+  appendix <- build_temporal_weight_appendix(summary_path, coverage_path, decision_path, mechanism_path)
+  if (!nrow(appendix) || all(appendix$source_status == "missing_si05_si06_temporal_weight_evidence")) {
+    return(simulation_result_empty_row(
+      label,
+      paste(na.omit(c(summary_path, coverage_path, decision_path, mechanism_path)), collapse = ";"),
+      "Tests whether row-level validation reallocates Firm-RE stacking weight relative to grouped-firm validation across an AR(1) rho grid; SI05/SI06 evidence is missing.",
+      scenario = "si05_si06_temporal_weight_source_missing"
+    ))
+  }
+  appendix %>%
+    group_by(.data$sigma_firm) %>%
+    summarise(
+      evidence_block = label,
+      source_status = ifelse(any(.data$source_status == "available_incomplete_cell_coverage"),
+                             "available_incomplete_cell_coverage",
+                             ifelse(any(.data$source_status == "summary_available_coverage_missing"),
+                                    "summary_available_coverage_missing",
+                                    "summary_and_coverage_available")),
+      scenario = ifelse(first(.data$sigma_firm) == 0, "sigma_0_anchor", paste0("sigma_", first(.data$sigma_firm))),
+      T_values = paste(sort(unique(.data$T)), collapse = ","),
+      sigma_firm = first(.data$sigma_firm),
+      rho_values = paste(sort(unique(.data$rho)), collapse = ","),
+      parameter = NA_character_,
+      n_rep_total = finite_sum(.data$observed_rows),
+      mean_weight_row_firmre = finite_mean(.data$mean_weight_row_firmre),
+      mean_weight_group_firmre = finite_mean(.data$mean_weight_group_firmre),
+      mean_weight_premium = finite_mean(.data$mean_weight_premium),
+      prob_positive_weight_premium = finite_mean(.data$prob_positive_weight_premium),
+      grouped_firmre_weight_T_slope = safe_lm_slope(.data$T, .data$mean_weight_group_firmre),
+      grouped_firmre_weight_T_direction = dplyr::case_when(
+        is.na(safe_lm_slope(.data$T, .data$mean_weight_group_firmre)) ~ "insufficient_T_variation",
+        safe_lm_slope(.data$T, .data$mean_weight_group_firmre) < 0 ~ "decreases_with_T",
+        safe_lm_slope(.data$T, .data$mean_weight_group_firmre) > 0 ~ "increases_with_T",
+        TRUE ~ "flat"
+      ),
+      mean_bias = NA_real_,
+      mean_abs_bias = NA_real_,
+      rmse = NA_real_,
+      coverage_95 = NA_real_,
+      max_rhat = NA_real_,
+      total_divergent = NA_real_,
+      min_ess_bulk = NA_real_,
+      decision_or_gate = ifelse(any(.data$source_status == "available_incomplete_cell_coverage"),
+                                "REVIEW_INCOMPLETE_TEMPORAL_CELL_COVERAGE",
+                                temporal_mechanism_fields(first(.data$sigma_firm), finite_mean(.data$mean_weight_premium), TRUE)$decision_or_gate),
+      mechanism_read = temporal_mechanism_fields(first(.data$sigma_firm), finite_mean(.data$mean_weight_premium), !any(.data$source_status == "available_incomplete_cell_coverage"))$mechanism_read,
+      mechanism_interpretation = paste(
+        "Tests whether row-level validation reallocates Firm-RE stacking weight relative to grouped-firm validation across a literature-scale AR(1) rho grid and firm-heterogeneity levels.",
+        temporal_mechanism_fields(first(.data$sigma_firm), finite_mean(.data$mean_weight_premium), !any(.data$source_status == "available_incomplete_cell_coverage"))$interpretation
+      ),
+      source_path = paste(unique(.data$source_path), collapse = ";"),
+      source_mtime = latest_file_mtime(first_source_path(first(.data$source_path))),
+      source_md5 = safe_md5(first_source_path(first(.data$source_path))),
       .groups = "drop"
     )
 }
@@ -1612,30 +1866,40 @@ if (!isTRUE(EXPORT_SUPPLEMENTARY_ECON_VALIDITY) &&
   }
 }
 
-temporal_premium <- safe_read_csv(temporal_dependence_premium_path)
-temporal_decision <- safe_read_csv(temporal_dependence_decision_path)
 table_3_15_available <- FALSE
-if (!is.null(temporal_premium) && nrow(temporal_premium) > 0 &&
-    !is.null(temporal_decision) && nrow(temporal_decision) > 0) {
-  temporal_decision_value <- if ("temporal_decision" %in% names(temporal_decision)) {
-    as.character(temporal_decision$temporal_decision[[1]])
-  } else {
-    NA_character_
-  }
-  table_3_15_cols <- c(
-    "T", "rho", "sigma_firm", "mean_row_firmre_premium",
-    "mean_grouped_firmre_premium", "mean_row_minus_grouped_firmre_premium",
-    "share_row_minus_grouped_positive", "interpretation"
-  )
-  table_3_15 <- temporal_premium %>%
-    select(any_of(table_3_15_cols)) %>%
-    mutate(temporal_decision = temporal_decision_value)
-  if (nrow(table_3_15) > 0) {
-    write_outputs(table_3_15, "table_3_15_temporal_dependence_robustness_summary", "Table 3.15 Temporal Dependence Robustness Summary")
-    write_outputs(table_3_15,
-                  "paper_appendix_A6_temporal_dependence_robustness",
-                  "Appendix Table A6 Temporal-Dependence Robustness")
-    table_3_15_available <- TRUE
+table_3_15 <- build_temporal_weight_appendix(
+  si05_temporal_grid_summary_path,
+  si05_temporal_cell_coverage_path,
+  si05_temporal_decision_path,
+  si06_temporal_mechanism_summary_path
+)
+if (nrow(table_3_15) > 0) {
+  write_outputs(table_3_15, "table_3_15_temporal_dependence_robustness_summary", "Table 3.15 Temporal-Dependence Weight-Premium Robustness Summary")
+  write_outputs(table_3_15,
+                "paper_appendix_A6_temporal_dependence_robustness",
+                "Appendix Table A6 Temporal-Dependence Weight-Premium Robustness")
+  table_3_15_available <- TRUE
+}
+if (any(table_3_15$source_status == "missing_si05_si06_temporal_weight_evidence")) {
+  add_warning("SI05/SI06 temporal-dependence weight evidence is missing; DI09 ELPD diagnostics were not substituted for Appendix A6.")
+}
+
+if (isTRUE(EXPORT_DI09_TEMPORAL_ELPD_DIAGNOSTIC)) {
+  di09_temporal_elpd <- safe_read_csv(di09_temporal_elpd_premium_path)
+  di09_temporal_decision <- safe_read_csv(di09_temporal_elpd_decision_path)
+  if (!is.null(di09_temporal_elpd) && nrow(di09_temporal_elpd) > 0) {
+    di09_decision_value <- if (!is.null(di09_temporal_decision) && nrow(di09_temporal_decision) &&
+                               "temporal_decision" %in% names(di09_temporal_decision)) {
+      as.character(di09_temporal_decision$temporal_decision[[1]])
+    } else {
+      NA_character_
+    }
+    di09_temporal_elpd$di09_temporal_decision <- di09_decision_value
+    di09_temporal_elpd$evidence_role <- "secondary_elpd_diagnostic_not_leakage_weight_evidence"
+    di09_temporal_elpd$interpretation_note <- "DI09 is an elpd-scale diagnostic. It must not be used as the primary leakage-weight temporal-dependence claim."
+    write_outputs(di09_temporal_elpd,
+                  "paper_appendix_A6b_temporal_dependence_elpd_diagnostic",
+                  "Appendix Table A6b Temporal-Dependence ELPD Diagnostic")
   }
 }
 
@@ -1652,6 +1916,12 @@ paper_table_5 <- bind_rows(
     NA_character_,
     "Bayesian MCMC confirmation that the row-vs-grouped Firm-RE mechanism is not an LMER-only artifact."
   ),
+  simulation_temporal_weight_rows(
+    si05_temporal_grid_summary_path,
+    si05_temporal_cell_coverage_path,
+    si05_temporal_decision_path,
+    si06_temporal_mechanism_summary_path
+  ),
   simulation_recovery_rows(
     "SI14 BRMS recovery n-sensitivity",
     si14_recovery_summary_path,
@@ -1662,6 +1932,16 @@ paper_table_5 <- bind_rows(
 write_outputs(paper_table_5,
               "paper_table_5_simulation_mechanism_evidence",
               "Table 5 Simulation Mechanism Evidence")
+
+rq1_weight_reallocation_source_exists <- file.exists(row_vs_grouped_weight_comparison_path) ||
+  (file.exists(grouped_kfold_weights_ex_post_path) && file.exists(row_kfold_weights_ex_post_path))
+rq1_top_model_source_exists <- rq1_weight_reallocation_source_exists
+si05_si06_temporal_source_exists <- any(file.exists(c(
+  si05_temporal_grid_summary_path,
+  si05_temporal_cell_coverage_path,
+  si05_temporal_decision_path,
+  si06_temporal_mechanism_summary_path
+)))
 
 result_source_mapping <- data.frame(
   manuscript_result = c(
@@ -1693,45 +1973,50 @@ result_source_mapping <- data.frame(
             row_kfold_weights_ex_post_path, row_kfold_weights_no_lookahead_path), collapse = ";"),
     paste(c(row_vs_grouped_weight_comparison_path, grouped_kfold_weights_ex_post_path, grouped_kfold_weights_no_lookahead_path,
             row_kfold_weights_ex_post_path, row_kfold_weights_no_lookahead_path), collapse = ";"),
-    paste(c(lmer_leakage_summary_path, brms_leakage_summary_path, si14_recovery_summary_path, si14_recovery_diagnostics_path), collapse = ";"),
+    collapse_paths(c(lmer_leakage_summary_path, brms_leakage_summary_path,
+                     si05_temporal_grid_summary_path, si05_temporal_cell_coverage_path,
+                     si05_temporal_decision_path, si06_temporal_mechanism_summary_path,
+                     si14_recovery_summary_path, si14_recovery_diagnostics_path)),
     exact_kfold_reclassification_jaccard_path,
     paste(c(denominator_diagnostics_decision_path, denominator_capped_jaccard_path, da_z_est_vs_z_pred_comparison_path), collapse = ";"),
     paste(c(economic_validity_path, economic_validity_decision_path), collapse = ";"),
-    paste(c(temporal_dependence_premium_path, temporal_dependence_decision_path), collapse = ";")
+    paste(c(si05_temporal_grid_summary_path, si06_temporal_mechanism_summary_path,
+            si05_temporal_cell_coverage_path, si05_temporal_decision_path), collapse = ";")
   ),
   source_script = c(
     "scripts/ma02_build_common_sample.R; scripts/ma05_winsorize_common_samples.R; scripts/ma17_export_tables_figures.R",
     "scripts/ma04_define_named_models.R; scripts/ma06_prior_predictive_checks.R; scripts/ma17_export_tables_figures.R",
     "scripts/ma12c_collect_grouped_kfold_firm_scores.R; scripts/ma13_row_level_exact_kfold.R; scripts/ma17_export_tables_figures.R",
     "scripts/ma12c_collect_grouped_kfold_firm_scores.R; scripts/ma13_row_level_exact_kfold.R; scripts/ma17_export_tables_figures.R",
-    "scripts/simulation/si01_lmer_pilot_run.R; scripts/simulation/si03_brms_leakage_confirmation.R; scripts/simulation/si14_brms_recovery_n_sensitivity.R; scripts/ma17_export_tables_figures.R",
+    "scripts/simulation/si01_lmer_pilot_run.R; scripts/simulation/si03_brms_leakage_confirmation.R; scripts/simulation/si05_lmer_temporal_dependence_run.R; scripts/simulation/si06_lmer_temporal_dependence_report.R; scripts/simulation/si14_brms_recovery_n_sensitivity.R; scripts/ma17_export_tables_figures.R",
     "scripts/diagnostics/di03_exact_kfold_reclassification.R; scripts/ma17_export_tables_figures.R",
     "scripts/diagnostics/di04_denominator_diagnostics.R; scripts/ma17_export_tables_figures.R",
     "scripts/diagnostics/di05_economic_validity_top_tail.R; scripts/ma17_export_tables_figures.R",
-    "scripts/diagnostics/di09_temporal_dependence_robustness.R; scripts/ma17_export_tables_figures.R"
+    "scripts/simulation/si05_lmer_temporal_dependence_run.R; scripts/simulation/si06_lmer_temporal_dependence_report.R; scripts/ma17_export_tables_figures.R"
   ),
   run_root = output_root,
   gate_decision = c(
     "sample/provenance_export",
     "model_registry_prior_predictive_export",
-    paste(na.omit(c(Exact_KFold_Reclassification_Decision, Primary_Magnitude_Reclassification_Decision)), collapse = ";"),
-    paste(na.omit(c(Exact_KFold_Reclassification_Decision, Primary_Magnitude_Reclassification_Decision)), collapse = ";"),
+    ifelse(rq1_weight_reallocation_source_exists, "rq1_weight_reallocation_artifacts_available", "rq1_weight_reallocation_artifacts_missing"),
+    ifelse(rq1_top_model_source_exists, "rq1_top_model_weight_artifacts_available", "rq1_top_model_weight_artifacts_missing"),
     "simulation_artifact_summary_no_refit",
     Exact_KFold_Reclassification_Decision,
     ifelse(file.exists(denominator_diagnostics_decision_path), "denominator_decision_available", "denominator_decision_missing"),
     ifelse(EXPORT_SUPPLEMENTARY_ECON_VALIDITY, "supplementary_export_enabled", "supplementary_export_suppressed_by_default"),
-    ifelse(file.exists(temporal_dependence_decision_path), "temporal_decision_available", "temporal_decision_missing")
+    ifelse(si05_si06_temporal_source_exists, "si05_si06_temporal_weight_evidence_available", "si05_si06_temporal_weight_evidence_missing")
   ),
   source_exists = c(
     file.exists(data_path),
     file.exists(path_table("table_model_registry_winsor.csv")) || file.exists(path_baseline_table("table_model_registry.csv")),
-    file.exists(row_vs_grouped_weight_comparison_path) || (file.exists(grouped_kfold_weights_ex_post_path) && file.exists(row_kfold_weights_ex_post_path)),
-    file.exists(row_vs_grouped_weight_comparison_path) || (file.exists(grouped_kfold_weights_ex_post_path) && file.exists(row_kfold_weights_ex_post_path)),
-    any(file.exists(c(lmer_leakage_summary_path, brms_leakage_summary_path, si14_recovery_summary_path))),
+    rq1_weight_reallocation_source_exists,
+    rq1_top_model_source_exists,
+    any(file.exists(c(lmer_leakage_summary_path, brms_leakage_summary_path, si05_temporal_grid_summary_path,
+                      si06_temporal_mechanism_summary_path, si14_recovery_summary_path))),
     file.exists(exact_kfold_reclassification_jaccard_path),
     file.exists(denominator_diagnostics_decision_path),
     file.exists(economic_validity_decision_path),
-    file.exists(temporal_dependence_decision_path)
+    si05_si06_temporal_source_exists
   ),
   primary_or_supplementary = c("primary", "primary", "primary", "primary", "primary", "primary",
                                "appendix", "appendix_suppressed_by_default", "appendix_optional"),
@@ -1894,10 +2179,12 @@ add_qc("QC17", "supplementary economic-validity export is opt-in",
                      file.path(report_dir, "paper_appendix_A5_supplementary_economic_validity_diagnostics.csv"),
                      "PASS_SUPPRESSED_BY_DESIGN: di05 decision present but Appendix A5 suppressed by default; set ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY=TRUE"),
               "di05 decision not present"))
-add_qc("QC18", "temporal-dependence robustness table available when temporal decision exists",
-       ifelse(file.exists(temporal_dependence_decision_path) && !table_3_15_available, "FAIL",
-              ifelse(!file.exists(temporal_dependence_decision_path), "WARN", "PASS")),
-       ifelse(file.exists(temporal_dependence_decision_path), file.path(report_dir, "table_3_15_temporal_dependence_robustness_summary.csv"), "di09 temporal decision not present"))
+add_qc("QC18", "SI05/SI06 temporal-dependence weight-premium table available",
+       ifelse(si05_si06_temporal_source_exists && !table_3_15_available, "FAIL",
+              ifelse(!si05_si06_temporal_source_exists, "WARN", "PASS")),
+       ifelse(si05_si06_temporal_source_exists,
+              file.path(report_dir, "table_3_15_temporal_dependence_robustness_summary.csv"),
+              "SI05/SI06 temporal-dependence weight evidence not present"))
 
 table5_metric_available <- function(block, metric_cols) {
   rows <- paper_table_5[paper_table_5$evidence_block == block & paper_table_5$source_status != "missing", , drop = FALSE]
@@ -1914,12 +2201,16 @@ table5_blocks_ok <- c(
     "BRMS 3x3 static leakage confirmation",
     c("mean_weight_premium", "prob_positive_weight_premium", "max_rhat", "total_divergent")
   ),
+  SI05_SI06 = table5_metric_available(
+    "SI05/SI06 LMER temporal-dependence weight-premium simulation",
+    c("mean_weight_premium", "prob_positive_weight_premium", "mean_weight_row_firmre", "mean_weight_group_firmre")
+  ),
   SI14 = table5_metric_available(
     "SI14 BRMS recovery n-sensitivity",
     c("mean_bias", "mean_abs_bias", "rmse", "coverage_95", "max_rhat", "total_divergent", "min_ess_bulk")
   )
 )
-add_qc("QC20", "Table 5 simulation evidence has non-missing metrics for LMER, BRMS, and SI14",
+add_qc("QC20", "Table 5 simulation evidence has non-missing metrics for LMER, BRMS, SI05/SI06, and SI14",
        ifelse(all(table5_blocks_ok), "PASS", "FAIL"),
        paste(names(table5_blocks_ok), table5_blocks_ok, sep = "=", collapse = "; "))
 
@@ -1939,7 +2230,7 @@ if (is.null(prior_summary)) add_warning("Prior predictive diagnostics are missin
 if (is.null(diag) || is.null(kfold_balance_in)) add_warning("MCMC/fold outputs are not fully available.")
 if (!file.exists(denominator_diagnostics_decision_path)) add_warning("Denominator diagnostics are missing.")
 if (!file.exists(economic_validity_decision_path)) add_warning("Economic-validity top-tail diagnostics are missing.")
-if (!file.exists(temporal_dependence_decision_path)) add_warning("Temporal-dependence robustness outputs are missing.")
+if (!si05_si06_temporal_source_exists) add_warning("SI05/SI06 temporal-dependence weight-premium outputs are missing.")
 
 report_lines <- c(
   "# Method-First Paper Tables Report",
@@ -1951,12 +2242,13 @@ report_lines <- c(
   "",
   "## Interpretation Notes",
   "- Paper Table 3 and Table 4 are sourced from exact row-vs-grouped K-fold weight artifacts and report validation-target reallocation, not refitted estimates.",
-  "- Paper Table 5 summarizes existing LMER, BRMS, and BRMS parameter-recovery simulation artifacts as mechanism evidence.",
+  "- Paper Table 5 summarizes existing LMER, BRMS diagnostic/pilot, SI05/SI06 temporal weight-premium, and SI14 BRMS parameter-recovery simulation artifacts as mechanism evidence.",
   "- Economic-validity diagnostics are supplementary and suppressed by default unless `ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY=TRUE`.",
   "- Sample, panel, and industry-year counts are computed from current pipeline outputs.",
   "- Model-space outputs restrict the main manuscript matrix to M01-M10; screened external-data extensions are separated into an appendix table.",
   "- Prior predictive acceptance status uses configurable thresholds declared at the top of the script.",
   "- RQ2 materiality thresholds are design thresholds, not empirical results.",
+  "- DI09 temporal-dependence ELPD diagnostics are secondary and are not substituted for SI05/SI06 temporal weight-premium evidence.",
   "",
   "## Notes",
   if (length(notes_for_author)) paste0("- ", notes_for_author) else "- None.",
