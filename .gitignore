@@ -15,6 +15,7 @@ out/**
 !/reports/
 /reports/*
 !/reports/gitignore_artifact_hygiene.md
+!/reports/se08c_base_r_refactor_report.md
 
 # Clean-run output roots
 /out/runs/

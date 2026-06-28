@@ -18,7 +18,14 @@ forbidden <- c(
   "tidyr::",
   "%>%",
   "pivot_wider",
-  ".data$"
+  ".data$",
+  "system(",
+  "system2(",
+  "shell(",
+  "cmd.exe",
+  "Rscript",
+  "callr",
+  "processx"
 )
 for (fragment in forbidden) {
   if (grepl(fragment, txt, fixed = TRUE)) {
@@ -30,6 +37,21 @@ required_fragments <- c(
   "bind_rows_base",
   "aggregate_by_base",
   "left_join_base",
+  "se08c_collect.lock",
+  "acquire_se08c_lock",
+  "release_se08c_lock",
+  "[BLOCKER] se08c is already running",
+  "se08c_pid_alive",
+  "tools::pskill",
+  "se08c_checkpoint",
+  "grouped ex_post stacking begin",
+  "grouped real_time stacking begin",
+  "row ex_post stacking begin",
+  "row real_time stacking begin",
+  "optimize_stacking_guarded",
+  "ACCRUAL_SE08C_STACKING_TIMEOUT_SECONDS",
+  "stacking_singleton_fallback",
+  "falling back to best singleton ELPD model",
   "read_single_line_no_bom",
   "reliability_label",
   "FAILED",

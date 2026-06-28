@@ -10,6 +10,103 @@ logs_dir <- file.path(se08_root, "logs")
 dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(logs_dir, recursive = TRUE, showWarnings = FALSE)
 
+se08c_lock_path <- file.path(logs_dir, "se08c_collect.lock")
+
+se08c_pid_alive <- function(pid) {
+  pid <- suppressWarnings(as.integer(pid))
+  if (length(pid) != 1L || is.na(pid) || pid <= 0L) return(FALSE)
+  if (identical(pid, Sys.getpid())) return(TRUE)
+  isTRUE(tryCatch(tools::pskill(pid, signal = 0), error = function(e) FALSE))
+}
+
+read_se08c_lock <- function(lock_path) {
+  if (!file.exists(lock_path)) return(list(pid = NA_integer_, start_time = NA_character_))
+  lines <- readLines(lock_path, warn = FALSE)
+  values <- strsplit(lines, "=", fixed = TRUE)
+  out <- list(pid = NA_integer_, start_time = NA_character_)
+  for (entry in values) {
+    if (length(entry) >= 2L) out[[entry[[1L]]]] <- paste(entry[-1L], collapse = "=")
+  }
+  out$pid <- suppressWarnings(as.integer(out$pid))
+  out
+}
+
+acquire_se08c_lock <- function(lock_path) {
+  if (file.exists(lock_path)) {
+    lock <- read_se08c_lock(lock_path)
+    if (se08c_pid_alive(lock$pid)) {
+      stop("[BLOCKER] se08c is already running; lock=", lock_path, "; pid=", lock$pid)
+    }
+    unlink(lock_path, force = TRUE)
+  }
+  writeLines(
+    c(
+      paste0("pid=", Sys.getpid()),
+      paste0("start_time=", format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"))
+    ),
+    lock_path,
+    useBytes = TRUE
+  )
+  invisible(lock_path)
+}
+
+release_se08c_lock <- function(lock_path) {
+  lock <- read_se08c_lock(lock_path)
+  if (identical(as.integer(lock$pid), as.integer(Sys.getpid()))) {
+    unlink(lock_path, force = TRUE)
+  }
+  invisible(TRUE)
+}
+
+se08c_checkpoint <- function(label) {
+  message("[se08c][checkpoint] ", label, " | time=", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"))
+  invisible(label)
+}
+
+stacking_singleton_fallback <- function(lpd_matrix) {
+  lpd_matrix <- as.matrix(lpd_matrix)
+  singleton_elpd <- colSums(lpd_matrix)
+  best <- which.max(singleton_elpd)
+  weights <- rep(0, ncol(lpd_matrix))
+  weights[best] <- 1
+  names(weights) <- colnames(lpd_matrix)
+  weights
+}
+
+optimize_stacking_guarded <- function(lpd_matrix, context) {
+  lpd_matrix <- as.matrix(lpd_matrix)
+  if (!nrow(lpd_matrix) || !ncol(lpd_matrix)) {
+    stop("[BLOCKER] se08c stacking matrix is empty for ", context)
+  }
+  if (is.null(colnames(lpd_matrix))) {
+    colnames(lpd_matrix) <- paste0("model_", seq_len(ncol(lpd_matrix)))
+  }
+  if (any(!is.finite(lpd_matrix))) {
+    stop("[BLOCKER] se08c stacking matrix has non-finite values for ", context)
+  }
+  timeout_seconds <- env_int("ACCRUAL_SE08C_STACKING_TIMEOUT_SECONDS", 300L, min = 1L)
+  se08c_checkpoint(paste0(context, " optimizer begin"))
+  out <- tryCatch({
+    setTimeLimit(elapsed = timeout_seconds, transient = TRUE)
+    optimize_stacking_from_lpd(lpd_matrix)
+  }, error = function(e) {
+    warning(
+      "[WARNING] se08c stacking optimizer failed or timed out for ", context,
+      "; falling back to best singleton ELPD model. Reason: ", conditionMessage(e),
+      call. = FALSE
+    )
+    stacking_singleton_fallback(lpd_matrix)
+  }, finally = {
+    setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE)
+  })
+  se08c_checkpoint(paste0(context, " optimizer end"))
+  out
+}
+
+acquire_se08c_lock(se08c_lock_path)
+
+tryCatch({
+
 bind_rows_base <- function(x) {
   x <- Filter(function(z) is.data.frame(z) && nrow(z) > 0L, x)
   if (!length(x)) return(data.frame())
@@ -420,7 +517,7 @@ build_grouped_weights <- function(target_space) {
     stop("[BLOCKER] se08 grouped score vectors have unequal lengths for ", target_space)
   }
   lpd_matrix <- do.call(cbind, score_list)
-  weights <- optimize_stacking_from_lpd(lpd_matrix)
+  weights <- optimize_stacking_guarded(lpd_matrix, paste("grouped", target_space, "stacking"))
   meta_idx <- match(names(weights), meta_keys)
   out <- included[meta_idx, , drop = FALSE]
   out$Model_Key_Fold_Local <- names(weights)
@@ -461,7 +558,7 @@ build_row_weights <- function(target_space) {
     stop("[BLOCKER] se08 row score vectors have unequal lengths for ", target_space)
   }
   lpd_matrix <- do.call(cbind, score_list)
-  weights <- optimize_stacking_from_lpd(lpd_matrix)
+  weights <- optimize_stacking_guarded(lpd_matrix, paste("row", target_space, "stacking"))
   meta_idx <- match(names(weights), meta_keys)
   out <- included[meta_idx, , drop = FALSE]
   out$model_key_fold_local <- names(weights)
@@ -471,10 +568,18 @@ build_row_weights <- function(target_space) {
   out[order(out$rank_fold_local), , drop = FALSE]
 }
 
+se08c_checkpoint("grouped ex_post stacking begin")
 grouped_ep <- build_grouped_weights("ex_post")
+se08c_checkpoint("grouped ex_post stacking end")
+se08c_checkpoint("grouped real_time stacking begin")
 grouped_rt <- build_grouped_weights("real_time")
+se08c_checkpoint("grouped real_time stacking end")
+se08c_checkpoint("row ex_post stacking begin")
 row_ep <- build_row_weights("ex_post")
+se08c_checkpoint("row ex_post stacking end")
+se08c_checkpoint("row real_time stacking begin")
 row_rt <- build_row_weights("real_time")
+se08c_checkpoint("row real_time stacking end")
 write_csv_safely(grouped_ep, file.path(tables_dir, "table_se08_grouped_fold_local_weights_ex_post.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 write_csv_safely(grouped_rt, file.path(tables_dir, "table_se08_grouped_fold_local_weights_no_lookahead.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 write_csv_safely(row_ep, file.path(tables_dir, "table_se08_row_fold_local_weights_ex_post.csv"), row.names = FALSE, fileEncoding = "UTF-8")
@@ -720,3 +825,6 @@ write_csv_safely(manifest_row, file.path(logs_dir, "se08_fold_local_preprocessin
 
 message("se08c collected fold-local preprocessing sensitivity outputs.")
 phase_end("se08c", "Collect fold-local preprocessing sensitivity")
+}, finally = {
+  release_se08c_lock(se08c_lock_path)
+})
