@@ -251,6 +251,13 @@ si05_temporal_rep_results_path <- if (!is.null(si05_si06_temporal_bundle)) si05_
 si05_temporal_cell_coverage_path <- if (!is.null(si05_si06_temporal_bundle)) si05_si06_temporal_bundle$cell_coverage_path else NA_character_
 si05_temporal_decision_path <- if (!is.null(si05_si06_temporal_bundle)) si05_si06_temporal_bundle$decision_path else NA_character_
 si06_temporal_mechanism_summary_path <- if (!is.null(si05_si06_temporal_bundle)) si05_si06_temporal_bundle$mechanism_summary_path else NA_character_
+se08_fold_local_root <- file.path(output_root, "sensitivity", "fold_local_preprocessing")
+se08_fold_local_tables_dir <- file.path(se08_fold_local_root, "tables")
+se08_fold_local_decision_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_sensitivity_decision.csv")
+se08_fold_local_weight_comparison_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_vs_global_weight_comparison.csv")
+se08_fold_local_firmre_shift_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_vs_global_firmre_shift_summary.csv")
+se08_fold_local_top_model_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_vs_global_top_model_comparison.csv")
+se08_fold_local_preprocessing_audit_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_preprocessing_audit.csv")
 if (!is.null(si05_si06_temporal_bundle) && !is.na(si05_si06_temporal_bundle$tables_dir)) {
   add_note(paste("SI05/SI06 temporal evidence bundle selected:", si05_si06_temporal_bundle$tables_dir,
                  "| rho=", si05_si06_temporal_bundle$rho_values,
@@ -1778,6 +1785,52 @@ write_outputs(paper_appendix_A2,
               "paper_appendix_A2_fold_balance_prediction_rule_audit",
               "Appendix Table A2 Fold Balance and Prediction-Rule Audit")
 
+se08_fold_local_decision <- safe_read_csv(se08_fold_local_decision_path)
+se08_fold_local_weight_comparison <- safe_read_csv(se08_fold_local_weight_comparison_path)
+se08_fold_local_firmre_shift <- safe_read_csv(se08_fold_local_firmre_shift_path)
+se08_fold_local_top_model <- safe_read_csv(se08_fold_local_top_model_path)
+se08_fold_local_available <- !is.null(se08_fold_local_decision) && nrow(se08_fold_local_decision) > 0
+se08_fold_local_overall <- if (!se08_fold_local_available) {
+  "MISSING"
+} else if (any(se08_fold_local_decision$decision == "FAIL", na.rm = TRUE)) {
+  "FAIL"
+} else if (any(se08_fold_local_decision$decision == "WARN", na.rm = TRUE)) {
+  "WARN"
+} else {
+  "PASS"
+}
+
+table_3_16 <- if (se08_fold_local_available) {
+  se08_fold_local_decision %>%
+    mutate(
+      source_status = "fold_local_preprocessing_sensitivity_available",
+      source_path = se08_fold_local_decision_path,
+      manuscript_interpretation = "Primary exact K-fold results use declared global measurement preprocessing; this sensitivity tests whether row-vs-grouped Firm-RE conclusions survive train-fold-only winsorization and predictor standardization."
+    )
+} else {
+  data.frame(
+    decision_id = "fold_local_preprocessing_sensitivity_missing",
+    target_space = NA_character_,
+    metric = "fold_local_preprocessing_sensitivity_available",
+    global_value = NA_character_,
+    fold_local_value = NA_character_,
+    absolute_difference = NA_real_,
+    relative_difference = NA_real_,
+    decision = "WARN",
+    interpretation = "Fold-local preprocessing sensitivity is not yet available; primary exact K-fold results transparently remain global-preprocessing results.",
+    source_status = "fold_local_preprocessing_sensitivity_not_yet_available",
+    source_path = se08_fold_local_decision_path,
+    manuscript_interpretation = "Primary exact K-fold results use declared global measurement preprocessing. Fold-local preprocessing sensitivity is needed before making strong leakage-safe predictive validation claims.",
+    stringsAsFactors = FALSE
+  )
+}
+write_outputs(table_3_16,
+              "table_3_16_fold_local_preprocessing_sensitivity_summary",
+              "Table 3.16 Fold-Local Preprocessing Sensitivity Summary")
+write_outputs(table_3_16,
+              "paper_appendix_A7_fold_local_preprocessing_sensitivity",
+              "Appendix Table A7 Fold-Local Preprocessing Sensitivity")
+
 kfold_std_audit <- safe_read_csv(file.path(kfold_tables, "table_winsor_kfold_train_standardization_audit.csv"))
 preprocessing_audit <- bind_rows(
   data.frame(
@@ -1811,14 +1864,44 @@ preprocessing_audit <- bind_rows(
     script = "scripts/ma12b_fit_grouped_kfold_firm_workers.R; scripts/ma13b_fit_row_level_exact_kfold_workers.R",
     sample = "grouped and row exact K-fold train/test folds",
     validation_scheme = "grouped_kfold, row_exact_kfold",
-    cutoff_or_parameter_source = ifelse(!is.null(kfold_std_audit), "table_winsor_kfold_train_standardization_audit.csv", "no real fold-local standardization sensitivity artifact detected"),
+    cutoff_or_parameter_source = ifelse(!is.null(kfold_std_audit), "table_winsor_kfold_train_standardization_audit.csv",
+                                        ifelse(se08_fold_local_available, se08_fold_local_decision_path, "no real fold-local standardization sensitivity artifact detected")),
     computed_using_full_sample = FALSE,
-    computed_using_training_fold_only = !is.null(kfold_std_audit),
-    applied_to_heldout_fold = !is.null(kfold_std_audit),
-    leakage_risk_classification = ifelse(!is.null(kfold_std_audit), "fold_local_standardization_audit_available", "fold_local_preprocessing_sensitivity_not_yet_available"),
+    computed_using_training_fold_only = !is.null(kfold_std_audit) || se08_fold_local_available,
+    applied_to_heldout_fold = !is.null(kfold_std_audit) || se08_fold_local_available,
+    leakage_risk_classification = dplyr::case_when(
+      !is.null(kfold_std_audit) ~ "fold_local_standardization_audit_available",
+      se08_fold_local_available ~ "fold_local_primary_audit_missing_se08_sensitivity_available",
+      TRUE ~ "fold_local_preprocessing_sensitivity_not_yet_available"
+    ),
     required_action = ifelse(!is.null(kfold_std_audit),
                              "Review fold-local standardization audit before upgrading preprocessing QC to PASS.",
-                             "Add a real fold-local preprocessing sensitivity artifact before making strong leakage-safe predictive validation claims."),
+                             ifelse(se08_fold_local_available,
+                                    "Use Table 3.16 / Appendix A7 as the fold-local preprocessing sensitivity evidence while disclosing that the primary pipeline uses global preprocessing.",
+                                    "Add a real fold-local preprocessing sensitivity artifact before making strong leakage-safe predictive validation claims.")),
+    stringsAsFactors = FALSE
+  ),
+  data.frame(
+    preprocessing_step = ifelse(se08_fold_local_available, "fold_local_preprocessing_sensitivity_available", "fold_local_preprocessing_sensitivity_not_yet_available"),
+    script = "scripts/sensitivity/se08a_plan_fold_local_preprocessing_kfold.R; scripts/sensitivity/se08b_fit_fold_local_preprocessing_workers.R; scripts/sensitivity/se08c_collect_fold_local_preprocessing_sensitivity.R",
+    sample = "un-winsorized baseline samples with primary grouped-firm and row exact K-fold assignments",
+    validation_scheme = "grouped_kfold, row_exact_kfold",
+    cutoff_or_parameter_source = ifelse(se08_fold_local_available, se08_fold_local_decision_path, "no fold-local preprocessing sensitivity decision artifact detected"),
+    computed_using_full_sample = FALSE,
+    computed_using_training_fold_only = se08_fold_local_available,
+    applied_to_heldout_fold = se08_fold_local_available,
+    leakage_risk_classification = dplyr::case_when(
+      se08_fold_local_overall == "PASS" ~ "fold_local_preprocessing_sensitivity_available",
+      se08_fold_local_overall == "WARN" ~ "fold_local_preprocessing_sensitivity_available_warn",
+      se08_fold_local_overall == "FAIL" ~ "fold_local_preprocessing_sensitivity_failed",
+      TRUE ~ "fold_local_preprocessing_sensitivity_not_yet_available"
+    ),
+    required_action = dplyr::case_when(
+      se08_fold_local_overall == "PASS" ~ "Report fold-local preprocessing sensitivity as supporting the validation-target conclusion while retaining primary global-preprocessing disclosure.",
+      se08_fold_local_overall == "WARN" ~ "Report fold-local preprocessing sensitivity caveats; inspect Table 3.16 before making strong leakage-safe predictive validation claims.",
+      se08_fold_local_overall == "FAIL" ~ "Do not claim preprocessing-robust validation-target conclusions until the fold-local sensitivity failure is resolved.",
+      TRUE ~ "Run se08 fold-local preprocessing sensitivity before making strong leakage-safe predictive validation claims."
+    ),
     stringsAsFactors = FALSE
   )
 )
@@ -2288,6 +2371,25 @@ result_source_mapping <- data.frame(
                                "appendix", "appendix_supplementary", "appendix_optional"),
   stringsAsFactors = FALSE
 )
+result_source_mapping <- bind_rows(
+  result_source_mapping,
+  data.frame(
+    manuscript_result = "paper_appendix_A7_fold_local_preprocessing_sensitivity",
+    source_csv = paste(c(
+      se08_fold_local_decision_path,
+      se08_fold_local_weight_comparison_path,
+      se08_fold_local_firmre_shift_path,
+      se08_fold_local_top_model_path,
+      se08_fold_local_preprocessing_audit_path
+    ), collapse = ";"),
+    source_script = "scripts/sensitivity/se08a_plan_fold_local_preprocessing_kfold.R; scripts/sensitivity/se08b_fit_fold_local_preprocessing_workers.R; scripts/sensitivity/se08c_collect_fold_local_preprocessing_sensitivity.R; scripts/ma17_export_tables_figures.R",
+    run_root = output_root,
+    gate_decision = ifelse(se08_fold_local_available, paste0("fold_local_preprocessing_sensitivity_", tolower(se08_fold_local_overall)), "fold_local_preprocessing_sensitivity_not_yet_available"),
+    source_exists = se08_fold_local_available,
+    primary_or_supplementary = "appendix_sensitivity",
+    stringsAsFactors = FALSE
+  )
+)
 result_source_mapping$source_md5 <- vapply(strsplit(result_source_mapping$source_csv, ";", fixed = TRUE), function(paths) {
   paste(vapply(trimws(paths), safe_md5, character(1)), collapse = ";")
 }, character(1))
@@ -2385,13 +2487,15 @@ required_stems <- c(
   "paper_appendix_A1_panel_coverage_industry_year_cells",
   "paper_appendix_A2_fold_balance_prediction_rule_audit",
   "paper_appendix_A3_preprocessing_prior_predictive_diagnostics",
+  "paper_appendix_A7_fold_local_preprocessing_sensitivity",
   "paper_appendix_result_source_mapping",
   "table_3_1_sample_flow", "table_3_2_panel_coverage", "table_3_3_industry_year_cells",
   "table_3_4_zero_value_audit", "table_3_5_model_space_matrix",
   "appendix_screened_external_data_extensions", "table_3_6_grouped_kfold_fold_balance",
   "table_3_6b_grouped_kfold_balance_summary", "table_3_7_hierarchical_prediction_rule_audit",
   "table_3_8_preprocessing_leakage_audit", "table_3_9_prior_predictive_diagnostics",
-  "table_3_10_rq2_materiality_thresholds", "table_3_11_code_manuscript_manifest"
+  "table_3_10_rq2_materiality_thresholds", "table_3_11_code_manuscript_manifest",
+  "table_3_16_fold_local_preprocessing_sensitivity_summary"
 )
 if (table_3_12_available) {
   required_stems <- c(required_stems, "table_3_12_exact_kfold_reclassification_jaccard")
@@ -2425,12 +2529,14 @@ add_qc("QC07", "model-space matrix has exactly M01-M10", ifelse(identical(sort(m
 add_qc("QC08", "appendix external-data table excluded from main model-space matrix", ifelse(!any(model_space$model_id %in% c("M11", "M12")), "PASS", "FAIL"), "")
 add_qc("QC09", "fold-balance table exists if grouped K-fold outputs exist", ifelse(file.exists(file.path(report_dir, "table_3_6_grouped_kfold_fold_balance.csv")) && (is.null(kfold_balance_in) || nrow(fold_balance) > 0), "PASS", "WARN"), "")
 add_qc("QC10", "prediction-rule audit classifies every hierarchical validation scheme", ifelse(!any(prediction_audit$prediction_rule_classification == "unclear_requires_manual_review"), "PASS", "WARN"), paste(prediction_audit$prediction_rule_classification, collapse = ";"))
-preprocessing_sensitivity_pending <- any(preprocessing_audit$leakage_risk_classification %in% c(
-  "declared_global_measurement_preprocessing_requires_sensitivity",
-  "fold_local_preprocessing_sensitivity_not_yet_available",
-  "unclear_requires_manual_review"
-))
-add_qc("QC11", "preprocessing audit reports global measurement preprocessing and fold-local sensitivity status", ifelse(preprocessing_sensitivity_pending, "WARN", "PASS"), paste(preprocessing_audit$leakage_risk_classification, collapse = ";"))
+preprocessing_sensitivity_pending <- se08_fold_local_overall == "MISSING" ||
+  any(preprocessing_audit$leakage_risk_classification %in% c("fold_local_preprocessing_sensitivity_not_yet_available", "unclear_requires_manual_review"))
+preprocessing_sensitivity_failed <- se08_fold_local_overall == "FAIL" ||
+  any(preprocessing_audit$leakage_risk_classification == "fold_local_preprocessing_sensitivity_failed")
+preprocessing_sensitivity_warn <- se08_fold_local_overall == "WARN" ||
+  any(preprocessing_audit$leakage_risk_classification == "fold_local_preprocessing_sensitivity_available_warn")
+qc11_status <- if (preprocessing_sensitivity_failed) "FAIL" else if (preprocessing_sensitivity_pending || preprocessing_sensitivity_warn) "WARN" else "PASS"
+add_qc("QC11", "preprocessing audit reports global measurement preprocessing and fold-local sensitivity status", qc11_status, paste(preprocessing_audit$leakage_risk_classification, collapse = ";"))
 add_qc("QC12", "prior predictive table exists if prior predictive outputs exist", ifelse(file.exists(path_table("table_prior_predictive_summary.csv")) && nrow(prior_diag) > 0, "PASS", "WARN"), "")
 add_qc("QC13", "materiality threshold table exists", ifelse(file.exists(file.path(report_dir, "table_3_10_rq2_materiality_thresholds.csv")), "PASS", "FAIL"), "")
 add_qc("QC14", "manifest table exists", ifelse(file.exists(file.path(report_dir, "table_3_11_code_manuscript_manifest.csv")), "PASS", "FAIL"), "")
@@ -2493,7 +2599,11 @@ if (any(is.na(sample_flow$n_observations))) add_warning("One or more sample-flow
 if (!nrow(zero_audit)) add_warning("Zero treatment cannot be audited.")
 if (is.null(fold_assignment) || is.null(kfold_balance_in)) add_warning("Fold assignment/balance files are missing.")
 if (any(prediction_audit$prediction_rule_classification == "unclear_requires_manual_review")) add_warning("LOFO/grouped prediction rule is unclear.")
-if (preprocessing_sensitivity_pending) {
+if (preprocessing_sensitivity_failed) {
+  add_warning("Fold-local preprocessing sensitivity is available but failed; do not claim preprocessing-robust validation-target conclusions.")
+} else if (preprocessing_sensitivity_warn) {
+  add_warning("Fold-local preprocessing sensitivity is available with warnings; inspect Table 3.16 before making strong leakage-safe predictive validation claims.")
+} else if (preprocessing_sensitivity_pending) {
   add_warning("Global winsorization and predictor standardization are declared measurement preprocessing; fold-local preprocessing sensitivity is not yet available.")
 }
 if (is.null(prior_summary)) add_warning("Prior predictive diagnostics are missing.")
@@ -2513,6 +2623,8 @@ report_lines <- c(
   "## Interpretation Notes",
   "- Paper Table 3 and Table 4 are sourced from exact row-vs-grouped K-fold weight artifacts and report validation-target reallocation, not refitted estimates.",
   "- Paper Table 5 summarizes existing LMER, BRMS diagnostic/pilot, SI05/SI06 temporal weight-premium, and SI14 BRMS parameter-recovery simulation artifacts as mechanism evidence.",
+  "- Primary exact K-fold results use declared global measurement preprocessing; Appendix A7 / Table 3.16 tests whether validation-target conclusions survive fold-local winsorization and predictor standardization.",
+  "- The paper's preprocessing-robust conclusion is supported only if the row-vs-grouped Firm-RE shift remains positive and material under fold-local preprocessing.",
   "- Economic-validity diagnostics are exported as supplementary Table 3.14 / Appendix A5 when DI05 artifacts are available; they are not primary RQ evidence.",
   "- Sample, panel, and industry-year counts are computed from current pipeline outputs.",
   "- Model-space outputs restrict the main manuscript matrix to M01-M10; screened external-data extensions are separated into an appendix table.",

@@ -198,7 +198,17 @@ sensitivity_steps <- list(
   step("se04", "scripts/sensitivity/se04_stacking.R", "Sensitivity stacking"),
   step("se05", "scripts/sensitivity/se05_construct_DA.R", "Sensitivity DA reconstruction"),
   step("se06", "scripts/sensitivity/se06_validation.R", "Sensitivity validation"),
-  step("se07", "scripts/sensitivity/se07_report.R", "Sensitivity report")
+  step("se07", "scripts/sensitivity/se07_report.R", "Sensitivity report"),
+  step("se08a", "scripts/sensitivity/se08a_plan_fold_local_preprocessing_kfold.R", "Plan fold-local preprocessing exact K-fold sensitivity"),
+  step("se08b", "scripts/sensitivity/se08b_fit_fold_local_preprocessing_workers.R", "Fit fold-local preprocessing exact K-fold sensitivity with workers", heavy = TRUE,
+       requires = c(file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_fold_local_preprocessing_task_manifest.csv")),
+       require_reason = "se08a fold-local preprocessing sensitivity task manifest"),
+  step("se08c", "scripts/sensitivity/se08c_collect_fold_local_preprocessing_sensitivity.R", "Collect fold-local preprocessing exact K-fold sensitivity outputs",
+       requires = c(
+         file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_fold_local_preprocessing_task_manifest.csv"),
+         file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_fold_local_preprocessing_task_status.csv")
+       ),
+       require_reason = "se08a manifest and se08b task status")
 )
 
 simulation_steps <- list(
