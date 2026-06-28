@@ -119,7 +119,19 @@ logic_fragments <- c(
   "add_note",
   "notes_for_author",
   "exported_appendix_A5",
-  "supplementary_economic_validity_artifacts_available"
+  "supplementary_economic_validity_artifacts_available",
+  "ex_post_measurement_space",
+  "real_time_prediction_space",
+  "ex_post_main_stack",
+  "no_lookahead_main_stack",
+  "uses_cfo_lead",
+  "eligibility_note",
+  "conditional_fallback_excluded_from_stack",
+  "population_level_grouped_psis_lofo_with_conditional_fallback_excluded",
+  "low_or_secondary",
+  "declared_global_measurement_preprocessing_requires_sensitivity",
+  "fold_local_preprocessing_sensitivity_not_yet_available",
+  "Global winsorization and predictor standardization are declared measurement preprocessing"
 )
 for (fragment in logic_fragments) {
   if (!grepl(fragment, ma17, fixed = TRUE)) {
@@ -134,6 +146,20 @@ if (!grepl("Supplementary economic-validity diagnostics are exported as Appendix
 if (grepl("PASS_SUPPRESSED_BY_DESIGN", ma17, fixed = TRUE) ||
     grepl("supplementary_export_suppressed_by_default", ma17, fixed = TRUE)) {
   stop("ma17 must not suppress Table 3.14 / Appendix A5 when DI05 artifacts are available.")
+}
+
+if (grepl('Intended_Space %in% c("both", "ex_post")', ma17, fixed = TRUE) ||
+    grepl('Intended_Space %in% c("both", "real_time", "no_lookahead")', ma17, fixed = TRUE)) {
+  stop("ma17 model-space eligibility must recognize canonical registry spaces, not only old short labels.")
+}
+
+if (!grepl('c("both", "ex_post", "ex_post_measurement_space")', ma17, fixed = TRUE) ||
+    !grepl('c("both", "real_time", "no_lookahead", "real_time_prediction_space")', ma17, fixed = TRUE)) {
+  stop("ma17 must recognize ex_post_measurement_space and real_time_prediction_space eligibility values.")
+}
+
+if (grepl("uses_loglik_full <-", ma17, fixed = TRUE)) {
+  stop("ma17 must not classify every LOFO script containing log_lik() as conditional leakage.")
 }
 
 if (!grepl("paper_table_6_rq2_reclassification_jaccard_spearman", ma17, fixed = TRUE) ||

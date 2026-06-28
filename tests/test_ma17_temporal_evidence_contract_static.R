@@ -8,6 +8,9 @@ ma17 <- paste(readLines(ma17_path, warn = FALSE), collapse = "\n")
 required_fragments <- c(
   "discover_si05_si06_temporal_bundle",
   "score_temporal_weight_bundle",
+  "temporal_choose_weight_source",
+  "si05_grid_summary_preferred_over_stale_mechanism",
+  "temporal_literature_grid_score",
   "temporal_coverage_alignment",
   "si05_si06_temporal_bundle <- discover_si05_si06_temporal_bundle(output_root)",
   "coverage_match_rate",

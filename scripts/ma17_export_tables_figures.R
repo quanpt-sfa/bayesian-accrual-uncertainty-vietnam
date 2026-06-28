@@ -94,6 +94,38 @@ temporal_weight_cols_present <- function(x) {
     any(c("mean_weight_premium", "mean_row_minus_grouped_firmre_weight_premium") %in% names(x))
 }
 
+temporal_numeric_rho <- function(x) {
+  if (is.null(x) || !nrow(x) || !"rho" %in% names(x)) return(numeric())
+  rho <- suppressWarnings(as.numeric(x$rho))
+  sort(unique(rho[is.finite(rho)]))
+}
+
+temporal_literature_grid_score <- function(x) {
+  rho <- temporal_numeric_rho(x)
+  if (!length(rho)) return(0)
+  as.numeric(any(rho < 0)) * 3 +
+    as.numeric(max(abs(rho)) <= 0.11) * 3 +
+    min(length(rho), 20) / 20
+}
+
+temporal_choose_weight_source <- function(mechanism, grid) {
+  mechanism_ok <- temporal_weight_cols_present(mechanism)
+  grid_ok <- temporal_weight_cols_present(grid)
+  if (mechanism_ok && grid_ok) {
+    mechanism_rho <- temporal_numeric_rho(mechanism)
+    grid_rho <- temporal_numeric_rho(grid)
+    same_rho_grid <- identical(round(mechanism_rho, 8), round(grid_rho, 8))
+    if (!same_rho_grid &&
+        temporal_literature_grid_score(grid) > temporal_literature_grid_score(mechanism)) {
+      return(list(data = grid, source_kind = "si05_grid_summary_preferred_over_stale_mechanism"))
+    }
+    return(list(data = mechanism, source_kind = "si06_mechanism_summary"))
+  }
+  if (grid_ok) return(list(data = grid, source_kind = "si05_grid_summary"))
+  if (mechanism_ok) return(list(data = mechanism, source_kind = "si06_mechanism_summary"))
+  list(data = NULL, source_kind = "missing")
+}
+
 temporal_key_string <- function(df, keys) {
   if (!length(keys) || !nrow(df)) return(character())
   do.call(paste, c(lapply(df[keys], as.character), sep = "\r"))
@@ -132,7 +164,8 @@ score_temporal_weight_bundle <- function(tables_dir) {
   names(paths) <- names(files)
   mechanism <- safe_read_csv(paths[["mechanism_summary"]])
   grid <- safe_read_csv(paths[["grid_summary"]])
-  source <- if (temporal_weight_cols_present(mechanism)) mechanism else if (temporal_weight_cols_present(grid)) grid else NULL
+  chosen <- temporal_choose_weight_source(mechanism, grid)
+  source <- chosen$data
   if (is.null(source) || !nrow(source)) return(NULL)
   coverage <- safe_read_csv(paths[["cell_coverage"]])
   rho <- if ("rho" %in% names(source)) suppressWarnings(as.numeric(source$rho)) else NA_real_
@@ -159,6 +192,7 @@ score_temporal_weight_bundle <- function(tables_dir) {
     coverage_match_rate = alignment$match_rate,
     coverage_complete_all = alignment$complete_all,
     coverage_missing_any = alignment$missing_any,
+    source_kind = chosen$source_kind,
     grid_summary_path = paths[["grid_summary"]],
     rep_results_path = paths[["rep_results"]],
     cell_coverage_path = paths[["cell_coverage"]],
@@ -220,6 +254,7 @@ si06_temporal_mechanism_summary_path <- if (!is.null(si05_si06_temporal_bundle))
 if (!is.null(si05_si06_temporal_bundle) && !is.na(si05_si06_temporal_bundle$tables_dir)) {
   add_note(paste("SI05/SI06 temporal evidence bundle selected:", si05_si06_temporal_bundle$tables_dir,
                  "| rho=", si05_si06_temporal_bundle$rho_values,
+                 "| source_kind=", si05_si06_temporal_bundle$source_kind,
                  "| coverage_match_rate=", round(si05_si06_temporal_bundle$coverage_match_rate, 3),
                  "| coverage_complete_all=", si05_si06_temporal_bundle$coverage_complete_all))
   if (isTRUE(si05_si06_temporal_bundle$coverage_missing_any) ||
@@ -821,12 +856,14 @@ temporal_has_weight_evidence <- function(x) {
 
 select_temporal_weight_source <- function(summary_path, mechanism_path = NA_character_) {
   mechanism <- safe_read_csv(mechanism_path)
-  if (temporal_has_weight_evidence(mechanism)) {
-    return(list(data = mechanism, path = mechanism_path, source_kind = "si06_mechanism_summary"))
-  }
   summary <- safe_read_csv(summary_path)
-  if (temporal_has_weight_evidence(summary)) {
-    return(list(data = summary, path = summary_path, source_kind = "si05_grid_summary"))
+  chosen <- temporal_choose_weight_source(mechanism, summary)
+  if (!is.null(chosen$data) && nrow(chosen$data)) {
+    return(list(
+      data = chosen$data,
+      path = if (grepl("^si05_grid_summary", chosen$source_kind)) summary_path else mechanism_path,
+      source_kind = chosen$source_kind
+    ))
   }
   list(data = NULL, path = NA_character_, source_kind = "missing")
 }
@@ -1462,12 +1499,51 @@ citation_placeholder <- function(fam) {
   )
 }
 
+truthy <- function(x) {
+  if (is.logical(x)) return(ifelse(is.na(x), FALSE, x))
+  if (is.numeric(x)) return(ifelse(is.na(x), FALSE, x != 0))
+  tolower(trimws(as.character(x))) %in% c("true", "t", "yes", "y", "1")
+}
+
+registry_flag <- function(df, candidates) {
+  hit <- intersect(candidates, names(df))
+  if (!length(hit)) return(rep(NA, nrow(df)))
+  out <- truthy(df[[hit[[1]]]])
+  out[is.na(df[[hit[[1]]]])] <- NA
+  out
+}
+
+registry_text <- function(df, candidates) {
+  hit <- intersect(candidates, names(df))
+  if (!length(hit)) return(rep(NA_character_, nrow(df)))
+  as.character(df[[hit[[1]]]])
+}
+
 if (is.null(registry)) {
   add_warning("Model registry missing; model-space matrix will contain no rows.")
   model_space <- data.frame()
   appendix_models <- data.frame()
 } else {
   main_reg <- registry %>% filter(.data$Model_ID %in% sprintf("M%02d", 1:10))
+  intended_space <- registry_text(main_reg, "Intended_Space")
+  ex_post_fallback <- intended_space %in% c("both", "ex_post", "ex_post_measurement_space")
+  no_lookahead_fallback <- intended_space %in% c("both", "real_time", "no_lookahead", "real_time_prediction_space")
+  ex_post_explicit <- registry_flag(main_reg, c("In_ExPost_Stack", "Ex_Post_Eligible", "ExPost_Eligible"))
+  no_lookahead_explicit <- registry_flag(main_reg, c("In_RealTime_Stack", "In_NoLookahead_Stack", "No_Lookahead_Eligible", "Real_Time_Eligible"))
+  main_stack_inclusion <- registry_flag(main_reg, "Main_Stack_Inclusion")
+  main_stack_inclusion[is.na(main_stack_inclusion)] <- TRUE
+  secondary_robustness <- registry_flag(main_reg, "Secondary_Robustness")
+  secondary_robustness[is.na(secondary_robustness)] <- FALSE
+  uses_cfo_lead <- registry_flag(main_reg, "Uses_CFO_lead")
+  uses_cfo_lead[is.na(uses_cfo_lead)] <- grepl("CFO_lead", registry_text(main_reg, "Required_Variables"), ignore.case = TRUE)
+  lookahead_status <- registry_text(main_reg, "Lookahead_Status")
+  lookahead_status[is.na(lookahead_status) | !nzchar(lookahead_status)] <- ifelse(
+    uses_cfo_lead,
+    "lookahead_cfo_lead_ex_post_measurement_only",
+    "no_cfo_lead_lookahead"
+  )
+  ex_post_eligible <- ifelse(!is.na(ex_post_explicit), ex_post_explicit, ex_post_fallback)
+  no_lookahead_eligible <- ifelse(!is.na(no_lookahead_explicit), no_lookahead_explicit, no_lookahead_fallback)
   model_space <- main_reg %>%
     transmute(
       model_id = .data$Model_ID,
@@ -1477,12 +1553,26 @@ if (is.null(registry)) {
       construct_rationale = .data$Rationale,
       dependent_variable = .data$Dependent_Variable,
       required_variables = .data$Required_Variables,
-      ex_post_eligible = .data$Intended_Space %in% c("both", "ex_post") | .data$Model_ID %in% c("M08", "M10"),
-      no_lookahead_eligible = .data$Intended_Space %in% c("both", "real_time", "no_lookahead") | .data$Model_ID == "M10",
-      core_or_secondary = ifelse(.data$Secondary_Robustness %in% c(TRUE, "TRUE", "True"), "secondary", "core"),
+      intended_space = intended_space,
+      ex_post_eligible = ex_post_eligible,
+      no_lookahead_eligible = no_lookahead_eligible,
+      ex_post_main_stack = ex_post_eligible & main_stack_inclusion & !secondary_robustness,
+      no_lookahead_main_stack = no_lookahead_eligible & main_stack_inclusion & !secondary_robustness,
+      secondary_robustness = secondary_robustness,
+      uses_cfo_lead = uses_cfo_lead,
+      lookahead_status = lookahead_status,
+      core_or_secondary = ifelse(secondary_robustness, "secondary", "core"),
       sample_used = .data$Sample_Group,
       reason_for_inclusion = .data$Main_Stack_Reason,
-      lookahead_risk = .data$Lookahead_Status,
+      lookahead_risk = lookahead_status,
+      eligibility_note = dplyr::case_when(
+        uses_cfo_lead & ex_post_eligible & !no_lookahead_eligible ~ "CFO-lead model is valid for ex-post measurement space and excluded from no-lookahead prediction space.",
+        secondary_robustness ~ "Secondary robustness model; not part of the primary main stack.",
+        ex_post_eligible & no_lookahead_eligible ~ "Eligible in both ex-post measurement and no-lookahead prediction spaces.",
+        ex_post_eligible ~ "Eligible in ex-post measurement space.",
+        no_lookahead_eligible ~ "Eligible in no-lookahead prediction space.",
+        TRUE ~ "Eligibility requires manual review."
+      ),
       notes = .data$Notes
     ) %>%
     arrange(.data$model_id)
@@ -1604,27 +1694,65 @@ script_text <- function(path) if (file.exists(path)) paste(readLines(path, warn 
 audit_prediction <- function(path, scheme) {
   txt <- script_text(path)
   uses_re_na <- grepl("re_formula\\s*=\\s*NA", txt)
-  samples_new <- grepl("sample_new_levels|gaussian|uncertainty|marginal", txt, ignore.case = TRUE) && grepl("allow_new_levels\\s*=\\s*TRUE", txt)
-  uses_loglik_full <- grepl("log_lik\\(", txt) && scheme == "LOFO"
-  classification <- if (uses_loglik_full) {
-    "conditional_prediction_leakage_risk"
+  uses_allow_new_levels <- grepl("allow_new_levels\\s*=\\s*TRUE", txt)
+  samples_new <- grepl("sample_new_levels|gaussian|uncertainty|marginal", txt, ignore.case = TRUE) && uses_allow_new_levels
+  lofo_primary_population <- scheme == "LOFO" && grepl("log_lik\\s*\\([^\\n\\)]*re_formula\\s*=\\s*NA", txt)
+  conditional_fallback_detected <- scheme == "LOFO" &&
+    (grepl("conditional_grouped_LOFO_not_primary", txt, fixed = TRUE) || grepl("brms::log_lik\\s*\\(\\s*fit\\s*\\)", txt))
+  conditional_fallback_excluded_from_stack <- scheme == "LOFO" &&
+    conditional_fallback_detected &&
+    grepl("included\\s*<-\\s*!fallback_used\\s*&&\\s*reliability\\s*!=\\s*\"FAILED\"", txt) &&
+    grepl("computed only for diagnostics", txt, fixed = TRUE)
+  primary_loglik_rule <- if (scheme == "LOFO" && lofo_primary_population) {
+    "primary_log_lik_re_formula_NA_population_level"
+  } else if (scheme == "LOFO" && grepl("log_lik\\s*\\(", txt)) {
+    "log_lik_primary_rule_requires_manual_review"
+  } else if (uses_re_na && uses_allow_new_levels) {
+    "heldout_scoring_re_formula_NA_allow_new_levels_TRUE"
   } else if (uses_re_na) {
+    "population_level_re_formula_NA_detected"
+  } else {
+    "not_detected"
+  }
+  classification <- if (scheme == "LOFO" && lofo_primary_population && conditional_fallback_excluded_from_stack) {
+    "population_level_grouped_psis_lofo_with_conditional_fallback_excluded"
+  } else if (scheme == "LOFO" && lofo_primary_population && conditional_fallback_detected) {
+    "conditional_fallback_requires_manual_review"
+  } else if (scheme == "LOFO" && lofo_primary_population) {
+    "population_level_grouped_psis_lofo"
+  } else if (scheme == "LOFO" && conditional_fallback_detected) {
+    "conditional_fallback_requires_manual_review"
+  } else if (uses_re_na && uses_allow_new_levels) {
     "population_level_new_firm_prediction"
   } else if (samples_new) {
     "marginal_new_firm_prediction"
   } else {
     "unclear_requires_manual_review"
   }
+  reviewer_risk <- dplyr::case_when(
+    classification == "population_level_grouped_psis_lofo_with_conditional_fallback_excluded" ~ "low_or_secondary",
+    classification %in% c("conditional_fallback_requires_manual_review", "unclear_requires_manual_review") ~ "author_review_required",
+    TRUE ~ "low"
+  )
   data.frame(
     script = path,
     validation_scheme = scheme,
     model_variant = "Firm RE (Random Intercept + Year FE)",
-    uses_fitted_random_effect_for_heldout_firm = classification == "conditional_prediction_leakage_risk",
-    uses_population_level_prediction_re_formula_NA = uses_re_na && classification == "population_level_new_firm_prediction",
+    primary_loglik_rule = primary_loglik_rule,
+    conditional_fallback_detected = conditional_fallback_detected,
+    conditional_fallback_excluded_from_stack = conditional_fallback_excluded_from_stack,
+    uses_fitted_random_effect_for_heldout_firm = classification == "conditional_fallback_requires_manual_review",
+    uses_population_level_prediction_re_formula_NA = uses_re_na && classification %in% c(
+      "population_level_new_firm_prediction",
+      "population_level_grouped_psis_lofo_with_conditional_fallback_excluded",
+      "population_level_grouped_psis_lofo"
+    ),
     marginalizes_or_samples_new_group_effect = samples_new,
     prediction_rule_classification = classification,
-    reviewer_risk = ifelse(classification %in% c("conditional_prediction_leakage_risk", "unclear_requires_manual_review"), "author_review_required", "low"),
-    notes = ifelse(scheme == "LOFO", "Grouped PSIS-LOFO sums observation log-likelihood by company from fitted models.", "Exact grouped K-fold held-out scoring inspected from script text."),
+    reviewer_risk = reviewer_risk,
+    notes = ifelse(scheme == "LOFO",
+                   "Grouped PSIS-LOFO primary path uses population-level log_lik(re_formula = NA); conditional fallback is diagnostic-only when excluded from stacking.",
+                   "Exact grouped K-fold held-out scoring inspected from script text."),
     stringsAsFactors = FALSE
   )
 }
@@ -1633,7 +1761,9 @@ prediction_audit <- bind_rows(
   audit_prediction("scripts/ma12b_fit_grouped_kfold_firm_workers.R", "grouped_kfold")
 )
 if (any(prediction_audit$prediction_rule_classification == "unclear_requires_manual_review")) add_warning("Prediction-rule audit has unclear classifications.")
-if (any(prediction_audit$prediction_rule_classification == "conditional_prediction_leakage_risk")) add_warning("LOFO prediction-rule audit detected conditional/full-fit grouped PSIS risk.")
+if (any(prediction_audit$prediction_rule_classification == "conditional_fallback_requires_manual_review")) {
+  add_warning("LOFO conditional fallback requires manual review because fallback exclusion from stacking was not verified.")
+}
 write_outputs(prediction_audit, "table_3_7_hierarchical_prediction_rule_audit", "Table 3.7 Hierarchical Prediction-Rule Audit")
 
 paper_appendix_A2 <- bind_rows(
@@ -1651,7 +1781,7 @@ write_outputs(paper_appendix_A2,
 kfold_std_audit <- safe_read_csv(file.path(kfold_tables, "table_winsor_kfold_train_standardization_audit.csv"))
 preprocessing_audit <- bind_rows(
   data.frame(
-    preprocessing_step = "winsorization",
+    preprocessing_step = "global_winsorization_declared_measurement_preprocessing",
     script = "scripts/ma05_winsorize_common_samples.R",
     sample = "winsorized analysis samples",
     validation_scheme = "row_loo, LOFO, grouped_kfold",
@@ -1659,25 +1789,39 @@ preprocessing_audit <- bind_rows(
     computed_using_full_sample = TRUE,
     computed_using_training_fold_only = FALSE,
     applied_to_heldout_fold = TRUE,
-    leakage_risk_classification = "measurement_transformation_global_declared",
-    required_action = "Report as declared measurement preprocessing; consider fold-specific sensitivity only if predictive validation is interpreted causally.",
+    leakage_risk_classification = "declared_global_measurement_preprocessing_requires_sensitivity",
+    required_action = "Report as declared measurement preprocessing and qualify leakage-safe predictive validation claims until fold-local winsorization sensitivity is available.",
     stringsAsFactors = FALSE
   ),
   data.frame(
-    preprocessing_step = "standardization",
-    script = "scripts/ma12c_collect_grouped_kfold_firm_scores.R",
-    sample = "grouped K-fold train/test folds",
-    validation_scheme = "grouped_kfold",
-    cutoff_or_parameter_source = ifelse(!is.null(kfold_std_audit), "table_winsor_kfold_train_standardization_audit.csv Train_Mean/Train_SD", "missing audit output"),
+    preprocessing_step = "global_predictor_standardization_declared_measurement_preprocessing",
+    script = "scripts/utils/analysis_helpers.R::read_winsor_sample -> standardize_predictors",
+    sample = "winsorized samples before model fitting/scoring",
+    validation_scheme = "row_loo, LOFO, grouped_kfold",
+    cutoff_or_parameter_source = "standardize_predictors(df) called when reading winsor samples before validation splits/scoring",
+    computed_using_full_sample = TRUE,
+    computed_using_training_fold_only = FALSE,
+    applied_to_heldout_fold = TRUE,
+    leakage_risk_classification = "declared_global_measurement_preprocessing_requires_sensitivity",
+    required_action = "Report as declared measurement preprocessing and qualify leakage-safe predictive validation claims until fold-local standardization sensitivity is available.",
+    stringsAsFactors = FALSE
+  ),
+  data.frame(
+    preprocessing_step = "fold_local_standardization_audit_missing",
+    script = "scripts/ma12b_fit_grouped_kfold_firm_workers.R; scripts/ma13b_fit_row_level_exact_kfold_workers.R",
+    sample = "grouped and row exact K-fold train/test folds",
+    validation_scheme = "grouped_kfold, row_exact_kfold",
+    cutoff_or_parameter_source = ifelse(!is.null(kfold_std_audit), "table_winsor_kfold_train_standardization_audit.csv", "no real fold-local standardization sensitivity artifact detected"),
     computed_using_full_sample = FALSE,
     computed_using_training_fold_only = !is.null(kfold_std_audit),
     applied_to_heldout_fold = !is.null(kfold_std_audit),
-    leakage_risk_classification = ifelse(!is.null(kfold_std_audit), "no_leakage_training_fold_only", "unclear_requires_manual_review"),
-    required_action = ifelse(!is.null(kfold_std_audit), "None for grouped K-fold standardization audit.", "Run split ma12a/ma12b/ma12c stages to produce train-standardization audit."),
+    leakage_risk_classification = ifelse(!is.null(kfold_std_audit), "fold_local_standardization_audit_available", "fold_local_preprocessing_sensitivity_not_yet_available"),
+    required_action = ifelse(!is.null(kfold_std_audit),
+                             "Review fold-local standardization audit before upgrading preprocessing QC to PASS.",
+                             "Add a real fold-local preprocessing sensitivity artifact before making strong leakage-safe predictive validation claims."),
     stringsAsFactors = FALSE
   )
 )
-if (any(preprocessing_audit$leakage_risk_classification %in% c("potential_predictive_leakage", "unclear_requires_manual_review"))) add_warning("Preprocessing audit has leakage/unclear risks.")
 write_outputs(preprocessing_audit, "table_3_8_preprocessing_leakage_audit", "Table 3.8 Preprocessing Leakage Audit")
 
 prior_summary <- safe_read_csv(path_table("table_prior_predictive_summary.csv"))
@@ -2281,7 +2425,12 @@ add_qc("QC07", "model-space matrix has exactly M01-M10", ifelse(identical(sort(m
 add_qc("QC08", "appendix external-data table excluded from main model-space matrix", ifelse(!any(model_space$model_id %in% c("M11", "M12")), "PASS", "FAIL"), "")
 add_qc("QC09", "fold-balance table exists if grouped K-fold outputs exist", ifelse(file.exists(file.path(report_dir, "table_3_6_grouped_kfold_fold_balance.csv")) && (is.null(kfold_balance_in) || nrow(fold_balance) > 0), "PASS", "WARN"), "")
 add_qc("QC10", "prediction-rule audit classifies every hierarchical validation scheme", ifelse(!any(prediction_audit$prediction_rule_classification == "unclear_requires_manual_review"), "PASS", "WARN"), paste(prediction_audit$prediction_rule_classification, collapse = ";"))
-add_qc("QC11", "preprocessing leakage audit classifies every preprocessing step", ifelse(!any(preprocessing_audit$leakage_risk_classification == "unclear_requires_manual_review"), "PASS", "WARN"), paste(preprocessing_audit$leakage_risk_classification, collapse = ";"))
+preprocessing_sensitivity_pending <- any(preprocessing_audit$leakage_risk_classification %in% c(
+  "declared_global_measurement_preprocessing_requires_sensitivity",
+  "fold_local_preprocessing_sensitivity_not_yet_available",
+  "unclear_requires_manual_review"
+))
+add_qc("QC11", "preprocessing audit reports global measurement preprocessing and fold-local sensitivity status", ifelse(preprocessing_sensitivity_pending, "WARN", "PASS"), paste(preprocessing_audit$leakage_risk_classification, collapse = ";"))
 add_qc("QC12", "prior predictive table exists if prior predictive outputs exist", ifelse(file.exists(path_table("table_prior_predictive_summary.csv")) && nrow(prior_diag) > 0, "PASS", "WARN"), "")
 add_qc("QC13", "materiality threshold table exists", ifelse(file.exists(file.path(report_dir, "table_3_10_rq2_materiality_thresholds.csv")), "PASS", "FAIL"), "")
 add_qc("QC14", "manifest table exists", ifelse(file.exists(file.path(report_dir, "table_3_11_code_manuscript_manifest.csv")), "PASS", "FAIL"), "")
@@ -2344,7 +2493,9 @@ if (any(is.na(sample_flow$n_observations))) add_warning("One or more sample-flow
 if (!nrow(zero_audit)) add_warning("Zero treatment cannot be audited.")
 if (is.null(fold_assignment) || is.null(kfold_balance_in)) add_warning("Fold assignment/balance files are missing.")
 if (any(prediction_audit$prediction_rule_classification == "unclear_requires_manual_review")) add_warning("LOFO/grouped prediction rule is unclear.")
-if (any(preprocessing_audit$leakage_risk_classification %in% c("potential_predictive_leakage", "unclear_requires_manual_review"))) add_warning("Preprocessing leakage risk is detected or unclear.")
+if (preprocessing_sensitivity_pending) {
+  add_warning("Global winsorization and predictor standardization are declared measurement preprocessing; fold-local preprocessing sensitivity is not yet available.")
+}
 if (is.null(prior_summary)) add_warning("Prior predictive diagnostics are missing.")
 if (is.null(diag) || is.null(kfold_balance_in)) add_warning("MCMC/fold outputs are not fully available.")
 if (!file.exists(denominator_diagnostics_decision_path)) add_warning("Denominator diagnostics are missing.")
