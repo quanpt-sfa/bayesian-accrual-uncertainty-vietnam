@@ -1808,12 +1808,11 @@ economic_validity <- safe_read_csv(economic_validity_path)
 economic_validity_means <- safe_read_csv(economic_validity_means_path)
 economic_validity_decision <- safe_read_csv(economic_validity_decision_path)
 table_3_14_available <- FALSE
-if (!isTRUE(EXPORT_SUPPLEMENTARY_ECON_VALIDITY) &&
+if (!is.null(economic_validity) && nrow(economic_validity) > 0 &&
     !is.null(economic_validity_decision) && nrow(economic_validity_decision) > 0) {
-  add_note("Supplementary economic-validity diagnostics are suppressed by design; set ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY=TRUE to export Appendix A5.")
-} else if (isTRUE(EXPORT_SUPPLEMENTARY_ECON_VALIDITY) &&
-    !is.null(economic_validity) && nrow(economic_validity) > 0 &&
-    !is.null(economic_validity_decision) && nrow(economic_validity_decision) > 0) {
+  if (!isTRUE(EXPORT_SUPPLEMENTARY_ECON_VALIDITY)) {
+    add_note("Supplementary economic-validity diagnostics are exported as Appendix A5 and Table 3.14 when DI05 artifacts are available; they remain supplementary, not primary RQ evidence.")
+  }
   out_set <- unique(as.character(economic_validity$outcome))
   if (any(grepl("persistence", out_set, ignore.case = TRUE))) {
     stop("[BLOCKER] future_Earnings_persistence present in economic-validity outcomes. Re-run corrected di05.")
@@ -2003,7 +2002,7 @@ result_source_mapping <- data.frame(
     "simulation_artifact_summary_no_refit",
     Exact_KFold_Reclassification_Decision,
     ifelse(file.exists(denominator_diagnostics_decision_path), "denominator_decision_available", "denominator_decision_missing"),
-    ifelse(EXPORT_SUPPLEMENTARY_ECON_VALIDITY, "supplementary_export_enabled", "supplementary_export_suppressed_by_default"),
+    ifelse(table_3_14_available, "supplementary_economic_validity_artifacts_available", "supplementary_economic_validity_artifacts_missing"),
     ifelse(si05_si06_temporal_source_exists, "si05_si06_temporal_weight_evidence_available", "si05_si06_temporal_weight_evidence_missing")
   ),
   source_exists = c(
@@ -2019,7 +2018,7 @@ result_source_mapping <- data.frame(
     si05_si06_temporal_source_exists
   ),
   primary_or_supplementary = c("primary", "primary", "primary", "primary", "primary", "primary",
-                               "appendix", "appendix_suppressed_by_default", "appendix_optional"),
+                               "appendix", "appendix_supplementary", "appendix_optional"),
   stringsAsFactors = FALSE
 )
 result_source_mapping$source_md5 <- vapply(strsplit(result_source_mapping$source_csv, ";", fixed = TRUE), function(paths) {
@@ -2102,7 +2101,7 @@ manifest <- data.frame(
     "PASS/OK included; FAIL/LOW_RELIABILITY excluded; REVIEW/CAUTION included only with MCMC_REVIEW_INCLUDED_WITH_EXACT_REFIT_PASS when exact-refit reliability is acceptable.",
     allow_suppressed_tail_flags,
     ifelse(Tail_Flag_Primary_Output_Allowed, "primary_allowed", "suppressed_or_non_primary"),
-    ifelse(EXPORT_SUPPLEMENTARY_ECON_VALIDITY, "enabled_appendix_A5", "suppressed_by_default"),
+    ifelse(table_3_14_available, "exported_appendix_A5", "missing_or_unavailable"),
     file.path(report_dir, "paper_appendix_result_source_mapping.csv")
   ),
   stringsAsFactors = FALSE
@@ -2170,14 +2169,11 @@ add_qc("QC16", "denominator diagnostics manuscript table available when di04 dec
        ifelse(file.exists(denominator_diagnostics_decision_path) && !table_3_13_available, "FAIL",
               ifelse(!file.exists(denominator_diagnostics_decision_path), "WARN", "PASS")),
        ifelse(file.exists(denominator_diagnostics_decision_path), file.path(report_dir, "table_3_13_denominator_diagnostics_summary.csv"), "di04 decision not present"))
-add_qc("QC17", "supplementary economic-validity export is opt-in",
-       ifelse(EXPORT_SUPPLEMENTARY_ECON_VALIDITY && file.exists(economic_validity_decision_path) && !table_3_14_available, "FAIL",
-              ifelse(!file.exists(economic_validity_decision_path), "WARN",
-                     "PASS")),
+add_qc("QC17", "supplementary economic-validity tables export when DI05 artifacts exist",
+       ifelse(file.exists(economic_validity_decision_path) && !table_3_14_available, "FAIL",
+              ifelse(!file.exists(economic_validity_decision_path), "WARN", "PASS")),
        ifelse(file.exists(economic_validity_decision_path),
-              ifelse(EXPORT_SUPPLEMENTARY_ECON_VALIDITY,
-                     file.path(report_dir, "paper_appendix_A5_supplementary_economic_validity_diagnostics.csv"),
-                     "PASS_SUPPRESSED_BY_DESIGN: di05 decision present but Appendix A5 suppressed by default; set ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY=TRUE"),
+              file.path(report_dir, "paper_appendix_A5_supplementary_economic_validity_diagnostics.csv"),
               "di05 decision not present"))
 add_qc("QC18", "SI05/SI06 temporal-dependence weight-premium table available",
        ifelse(si05_si06_temporal_source_exists && !table_3_15_available, "FAIL",
@@ -2243,7 +2239,7 @@ report_lines <- c(
   "## Interpretation Notes",
   "- Paper Table 3 and Table 4 are sourced from exact row-vs-grouped K-fold weight artifacts and report validation-target reallocation, not refitted estimates.",
   "- Paper Table 5 summarizes existing LMER, BRMS diagnostic/pilot, SI05/SI06 temporal weight-premium, and SI14 BRMS parameter-recovery simulation artifacts as mechanism evidence.",
-  "- Economic-validity diagnostics are supplementary and suppressed by default unless `ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY=TRUE`.",
+  "- Economic-validity diagnostics are exported as supplementary Table 3.14 / Appendix A5 when DI05 artifacts are available; they are not primary RQ evidence.",
   "- Sample, panel, and industry-year counts are computed from current pipeline outputs.",
   "- Model-space outputs restrict the main manuscript matrix to M01-M10; screened external-data extensions are separated into an appendix table.",
   "- Prior predictive acceptance status uses configurable thresholds declared at the top of the script.",

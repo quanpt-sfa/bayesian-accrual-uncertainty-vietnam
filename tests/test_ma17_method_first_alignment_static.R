@@ -118,8 +118,8 @@ logic_fragments <- c(
   "table_3_14_economic_validity_signed",
   "add_note",
   "notes_for_author",
-  "suppressed_by_default",
-  "PASS_SUPPRESSED_BY_DESIGN"
+  "exported_appendix_A5",
+  "supplementary_economic_validity_artifacts_available"
 )
 for (fragment in logic_fragments) {
   if (!grepl(fragment, ma17, fixed = TRUE)) {
@@ -127,12 +127,13 @@ for (fragment in logic_fragments) {
   }
 }
 
-if (!grepl("if \\(!isTRUE\\(EXPORT_SUPPLEMENTARY_ECON_VALIDITY\\)", ma17)) {
-  stop("Economic-validity exports must be suppressed by default in ma17.")
+if (!grepl("Supplementary economic-validity diagnostics are exported as Appendix A5 and Table 3.14", ma17, fixed = TRUE)) {
+  stop("Economic-validity diagnostics must export Table 3.14 / Appendix A5 when DI05 artifacts are available.")
 }
 
-if (grepl("Supplementary economic-validity diagnostics are suppressed by default", ma17, fixed = TRUE)) {
-  stop("Intentional economic-validity suppression must be a non-warning note, not an author-review warning.")
+if (grepl("PASS_SUPPRESSED_BY_DESIGN", ma17, fixed = TRUE) ||
+    grepl("supplementary_export_suppressed_by_default", ma17, fixed = TRUE)) {
+  stop("ma17 must not suppress Table 3.14 / Appendix A5 when DI05 artifacts are available.")
 }
 
 if (!grepl("paper_table_6_rq2_reclassification_jaccard_spearman", ma17, fixed = TRUE) ||
