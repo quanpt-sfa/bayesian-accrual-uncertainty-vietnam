@@ -7,8 +7,13 @@ lines <- readLines(se08c_path, warn = FALSE, encoding = "UTF-8")
 txt <- paste(lines, collapse = "\n")
 
 non_comment <- trimws(lines[!grepl("^\\s*(#|$)", lines)])
-if (!length(non_comment) || !identical(non_comment[1], "source(\"scripts/ma00_setup.R\")")) {
-  stop("SE08C must source scripts/ma00_setup.R before project helper use.")
+if (!length(non_comment) || !identical(non_comment[1], "se08c_top_lock <- local({")) {
+  stop("SE08C first non-comment executable statement must be the deterministic lock guard.")
+}
+source_idx <- grep("source\\(\"scripts/ma00_setup.R\"\\)", non_comment)
+lock_idx <- grep("se08c_top_lock <- local\\(\\{", non_comment)
+if (!length(source_idx) || !length(lock_idx) || min(lock_idx) >= min(source_idx)) {
+  stop("SE08C must acquire the deterministic lock before sourcing scripts/ma00_setup.R.")
 }
 
 forbidden <- c(
@@ -25,7 +30,9 @@ forbidden <- c(
   "cmd.exe",
   "Rscript",
   "callr",
-  "processx"
+  "processx",
+  ".rs.restartR",
+  "rstudioapi"
 )
 for (fragment in forbidden) {
   if (grepl(fragment, txt, fixed = TRUE)) {
@@ -37,11 +44,15 @@ required_fragments <- c(
   "bind_rows_base",
   "aggregate_by_base",
   "left_join_base",
+  "se08c_top_lock",
   "se08c_collect.lock",
-  "acquire_se08c_lock",
-  "release_se08c_lock",
+  "logs_dir_lock_path",
+  "PID=",
+  "commandArgs=",
+  "working_directory=",
+  "duplicate_count",
+  "[BLOCKER] duplicate se08c process detected",
   "[BLOCKER] se08c is already running",
-  "se08c_pid_alive",
   "tools::pskill",
   "se08c_checkpoint",
   "grouped ex_post stacking begin",

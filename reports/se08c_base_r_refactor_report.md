@@ -30,19 +30,31 @@ A repository search for `system`, `system2`, `shell`, `cmd.exe`, `Rscript`, `cal
 
 `scripts/ma00_setup.R` only sources focused helper modules. The sourced helper modules do not call `Rscript` or `cmd.exe` for SE08C. The only startup-level process-launch candidate found in the repository is the project `.Rprofile`, which sources `renv/activate.R`; `renv/activate.R` contains bootstrap-time `system2()` logic used by renv itself. That is outside SE08C collector logic.
 
-To make duplicate execution harmless and explicit, SE08C now creates:
+The initial lock implementation lived after `source("scripts/ma00_setup.R")`, which was too late to guard against any startup/setup relaunch behavior. The second patch moves the lock guard to the first non-comment executable expression in SE08C, before shared setup and before `phase_begin()`.
+
+To make duplicate execution harmless and explicit, SE08C now creates a deterministic pre-setup lock independent of `output_root`:
 
 ```text
 out/interim/winsor/sensitivity/fold_local_preprocessing/logs/se08c_collect.lock
 ```
 
-The lock records the current PID and start time. If the lock exists and the recorded PID is alive, SE08C stops with:
+The lock records the current PID, start time, `commandArgs()`, and working directory. If the lock exists and the recorded PID is alive, SE08C stops before sourcing setup with:
 
 ```text
-[BLOCKER] se08c is already running
+[BLOCKER] se08c is already running; lock PID=<pid>; lock=<path>
 ```
 
 The lock is removed in a `finally` block on normal or error exit.
+
+The lock acquisition writes a temporary lock file and renames it into place, so concurrent collectors cannot silently overwrite each other's lock file. After setup is sourced, SE08C confirms that it is still using the deterministic top-level lock and does not create a second independent `logs_dir` lock.
+
+SE08C also performs a best-effort duplicate-process self-check before setup. If the optional `ps` package is available, it counts running command lines matching `se08c_collect_fold_local_preprocessing_sensitivity.R` and stops with:
+
+```text
+[BLOCKER] duplicate se08c process detected
+```
+
+No shell command is used for this check.
 
 ## Stacking Guard
 
@@ -82,9 +94,11 @@ No model fitting is triggered. SE08C remains a collector/post-processing stage a
 
 Static validation confirms SE08C contains no `library(dplyr)`, `dplyr::`, `%>%`, `tidyr::`, or `pivot_wider` usage.
 
-Static validation also confirms SE08C contains no `system`, `system2`, `shell`, `cmd.exe`, `Rscript`, `callr`, or `processx` self-invocation fragments.
+Static validation also confirms SE08C contains no `system`, `system2`, `shell`, `cmd.exe`, `Rscript`, `callr`, `processx`, `.rs.restartR`, or `rstudioapi` self-invocation fragments.
 
 A lightweight behavioral smoke test creates synthetic SE08A/SE08B-style manifest, status, RDS outputs, and primary global weight pins under a temporary output root, then runs SE08C end-to-end. The smoke test verifies all expected SE08C outputs and the collect manifest are written without installing tidyverse packages or refitting models.
+
+A separate lock behavioral test writes `se08c_collect.lock` with the current live PID and verifies SE08C blocks immediately before setup with `[BLOCKER] se08c is already running`.
 
 ## Remaining Runtime Requirement
 

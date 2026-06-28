@@ -1,6 +1,82 @@
 # Script: se08c_collect_fold_local_preprocessing_sensitivity.R
 # Purpose: Collect fold-local preprocessing sensitivity outputs and decisions.
 
+se08c_top_lock <- local({
+  lock_path <- file.path("out", "interim", "winsor", "sensitivity", "fold_local_preprocessing", "logs", "se08c_collect.lock")
+  dir.create(dirname(lock_path), recursive = TRUE, showWarnings = FALSE)
+
+  pid_alive <- function(pid) {
+    pid <- suppressWarnings(as.integer(pid))
+    if (length(pid) != 1L || is.na(pid) || pid <= 0L) return(FALSE)
+    if (identical(pid, Sys.getpid())) return(TRUE)
+    isTRUE(tryCatch(tools::pskill(pid, signal = 0), error = function(e) FALSE))
+  }
+
+  read_lock <- function(path) {
+    if (!file.exists(path)) return(list(pid = NA_integer_))
+    lines <- readLines(path, warn = FALSE)
+    parts <- strsplit(lines, "=", fixed = TRUE)
+    out <- list(pid = NA_integer_)
+    for (part in parts) {
+      if (length(part) >= 2L) out[[tolower(part[[1L]])]] <- paste(part[-1L], collapse = "=")
+    }
+    out$pid <- suppressWarnings(as.integer(out$pid))
+    out
+  }
+
+  duplicate_count <- function() {
+    if (!requireNamespace("ps", quietly = TRUE)) return(NA_integer_)
+    script_name <- "se08c_collect_fold_local_preprocessing_sensitivity.R"
+    procs <- tryCatch(ps::ps(), error = function(e) list())
+    hits <- vapply(procs, function(proc) {
+      cmd <- tryCatch(ps::ps_cmdline(proc), error = function(e) character())
+      any(grepl(script_name, cmd, fixed = TRUE))
+    }, logical(1))
+    sum(hits, na.rm = TRUE)
+  }
+
+  n_matches <- duplicate_count()
+  if (!is.na(n_matches) && n_matches > 1L) {
+    stop("[BLOCKER] duplicate se08c process detected; matches=", n_matches, "; lock=", lock_path)
+  }
+
+  if (file.exists(lock_path)) {
+    lock <- read_lock(lock_path)
+    if (pid_alive(lock$pid)) {
+      stop("[BLOCKER] se08c is already running; lock PID=", lock$pid, "; lock=", lock_path)
+    }
+    unlink(lock_path, force = TRUE)
+  }
+
+  lock_lines <- c(
+    paste0("PID=", Sys.getpid()),
+    paste0("start_time=", format(Sys.time(), "%Y-%m-%d %H:%M:%S %z")),
+    paste0("commandArgs=", paste(commandArgs(), collapse = " ")),
+    paste0("working_directory=", getwd())
+  )
+  tmp_lock <- tempfile("se08c_collect_", tmpdir = dirname(lock_path), fileext = ".tmp")
+  writeLines(lock_lines, tmp_lock, useBytes = TRUE)
+  if (!file.rename(tmp_lock, lock_path)) {
+    unlink(tmp_lock, force = TRUE)
+    lock <- read_lock(lock_path)
+    stop("[BLOCKER] se08c is already running; lock PID=", lock$pid, "; lock=", lock_path)
+  }
+
+  list(
+    path = lock_path,
+    pid = Sys.getpid(),
+    release = function() {
+      lock <- read_lock(lock_path)
+      if (identical(as.integer(lock$pid), as.integer(Sys.getpid()))) {
+        unlink(lock_path, force = TRUE)
+      }
+      invisible(TRUE)
+    }
+  )
+})
+
+tryCatch({
+
 source("scripts/ma00_setup.R")
 phase_begin("se08c", "Collect fold-local preprocessing sensitivity")
 
@@ -10,52 +86,15 @@ logs_dir <- file.path(se08_root, "logs")
 dir.create(tables_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(logs_dir, recursive = TRUE, showWarnings = FALSE)
 
-se08c_lock_path <- file.path(logs_dir, "se08c_collect.lock")
-
-se08c_pid_alive <- function(pid) {
-  pid <- suppressWarnings(as.integer(pid))
-  if (length(pid) != 1L || is.na(pid) || pid <= 0L) return(FALSE)
-  if (identical(pid, Sys.getpid())) return(TRUE)
-  isTRUE(tryCatch(tools::pskill(pid, signal = 0), error = function(e) FALSE))
+se08c_lock_path <- se08c_top_lock$path
+logs_dir_lock_path <- se08c_top_lock$path
+expected_se08c_lock_path <- file.path("out", "interim", "winsor", "sensitivity", "fold_local_preprocessing", "logs", "se08c_collect.lock")
+if (!identical(normalizePath(se08c_lock_path, winslash = "/", mustWork = FALSE),
+               normalizePath(expected_se08c_lock_path, winslash = "/", mustWork = FALSE))) {
+  stop("[BLOCKER] se08c lock path mismatch after setup; lock=", se08c_lock_path)
 }
-
-read_se08c_lock <- function(lock_path) {
-  if (!file.exists(lock_path)) return(list(pid = NA_integer_, start_time = NA_character_))
-  lines <- readLines(lock_path, warn = FALSE)
-  values <- strsplit(lines, "=", fixed = TRUE)
-  out <- list(pid = NA_integer_, start_time = NA_character_)
-  for (entry in values) {
-    if (length(entry) >= 2L) out[[entry[[1L]]]] <- paste(entry[-1L], collapse = "=")
-  }
-  out$pid <- suppressWarnings(as.integer(out$pid))
-  out
-}
-
-acquire_se08c_lock <- function(lock_path) {
-  if (file.exists(lock_path)) {
-    lock <- read_se08c_lock(lock_path)
-    if (se08c_pid_alive(lock$pid)) {
-      stop("[BLOCKER] se08c is already running; lock=", lock_path, "; pid=", lock$pid)
-    }
-    unlink(lock_path, force = TRUE)
-  }
-  writeLines(
-    c(
-      paste0("pid=", Sys.getpid()),
-      paste0("start_time=", format(Sys.time(), "%Y-%m-%d %H:%M:%S %z"))
-    ),
-    lock_path,
-    useBytes = TRUE
-  )
-  invisible(lock_path)
-}
-
-release_se08c_lock <- function(lock_path) {
-  lock <- read_se08c_lock(lock_path)
-  if (identical(as.integer(lock$pid), as.integer(Sys.getpid()))) {
-    unlink(lock_path, force = TRUE)
-  }
-  invisible(TRUE)
+if (!identical(logs_dir_lock_path, se08c_lock_path)) {
+  stop("[BLOCKER] se08c logs_dir lock path mismatch after setup.")
 }
 
 se08c_checkpoint <- function(label) {
@@ -102,10 +141,6 @@ optimize_stacking_guarded <- function(lpd_matrix, context) {
   se08c_checkpoint(paste0(context, " optimizer end"))
   out
 }
-
-acquire_se08c_lock(se08c_lock_path)
-
-tryCatch({
 
 bind_rows_base <- function(x) {
   x <- Filter(function(z) is.data.frame(z) && nrow(z) > 0L, x)
@@ -826,5 +861,5 @@ write_csv_safely(manifest_row, file.path(logs_dir, "se08_fold_local_preprocessin
 message("se08c collected fold-local preprocessing sensitivity outputs.")
 phase_end("se08c", "Collect fold-local preprocessing sensitivity")
 }, finally = {
-  release_se08c_lock(se08c_lock_path)
+  se08c_top_lock$release()
 })
