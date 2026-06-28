@@ -79,6 +79,114 @@ latest_file_by_names <- function(root, file_names) {
   hits[which.max(info$mtime)]
 }
 
+temporal_weight_bundle_files <- function() {
+  c(
+    grid_summary = "table_lmer_temporal_dependence_grid_summary.csv",
+    rep_results = "table_lmer_temporal_dependence_rep_results.csv",
+    cell_coverage = "table_si05_lmer_temporal_cell_coverage.csv",
+    decision = "table_si05_lmer_temporal_decision.csv",
+    mechanism_summary = "table_temporal_dependence_mechanism_summary.csv"
+  )
+}
+
+temporal_weight_cols_present <- function(x) {
+  !is.null(x) && nrow(x) > 0 &&
+    any(c("mean_weight_premium", "mean_row_minus_grouped_firmre_weight_premium") %in% names(x))
+}
+
+temporal_key_string <- function(df, keys) {
+  if (!length(keys) || !nrow(df)) return(character())
+  do.call(paste, c(lapply(df[keys], as.character), sep = "\r"))
+}
+
+temporal_coverage_alignment <- function(source, coverage) {
+  if (is.null(source) || !nrow(source) || is.null(coverage) || !nrow(coverage)) {
+    return(list(match_rate = NA_real_, complete_all = FALSE, missing_any = TRUE))
+  }
+  keys <- intersect(c("T", "sigma_firm", "rho"), intersect(names(source), names(coverage)))
+  if (!length(keys)) return(list(match_rate = NA_real_, complete_all = FALSE, missing_any = TRUE))
+  source_cells <- unique(source[keys])
+  coverage_cells <- unique(coverage[keys])
+  source_keys <- temporal_key_string(source_cells, keys)
+  coverage_keys <- temporal_key_string(coverage_cells, keys)
+  matched <- source_keys %in% coverage_keys
+  if ("complete" %in% names(coverage)) {
+    coverage_complete <- aggregate(as.logical(coverage$complete), coverage[keys], function(z) {
+      z <- z[!is.na(z)]
+      length(z) > 0 && all(z)
+    })
+    names(coverage_complete)[ncol(coverage_complete)] <- "complete_cell"
+    source_coverage <- merge(source_cells, coverage_complete, by = keys, all.x = TRUE)
+    complete_all <- all(!is.na(source_coverage$complete_cell) & source_coverage$complete_cell)
+    missing_any <- any(is.na(source_coverage$complete_cell))
+  } else {
+    complete_all <- FALSE
+    missing_any <- TRUE
+  }
+  list(match_rate = mean(matched), complete_all = complete_all, missing_any = missing_any || any(!matched))
+}
+
+score_temporal_weight_bundle <- function(tables_dir) {
+  files <- temporal_weight_bundle_files()
+  paths <- file.path(tables_dir, unname(files))
+  names(paths) <- names(files)
+  mechanism <- safe_read_csv(paths[["mechanism_summary"]])
+  grid <- safe_read_csv(paths[["grid_summary"]])
+  source <- if (temporal_weight_cols_present(mechanism)) mechanism else if (temporal_weight_cols_present(grid)) grid else NULL
+  if (is.null(source) || !nrow(source)) return(NULL)
+  coverage <- safe_read_csv(paths[["cell_coverage"]])
+  rho <- if ("rho" %in% names(source)) suppressWarnings(as.numeric(source$rho)) else NA_real_
+  rho <- rho[is.finite(rho)]
+  max_mtime <- suppressWarnings(max(file.info(paths[file.exists(paths)])$mtime, na.rm = TRUE))
+  if (!is.finite(as.numeric(max_mtime))) max_mtime <- as.POSIXct("1970-01-01", tz = "UTC")
+  alignment <- temporal_coverage_alignment(source, coverage)
+  score <- 0
+  score <- score + ifelse(file.exists(paths[["mechanism_summary"]]), 200, 0)
+  score <- score + ifelse(file.exists(paths[["grid_summary"]]), 200, 0)
+  score <- score + ifelse(file.exists(paths[["cell_coverage"]]), 250, 0)
+  score <- score + ifelse(file.exists(paths[["decision"]]), 100, 0)
+  score <- score + ifelse(isTRUE(alignment$complete_all), 500, 0)
+  score <- score + ifelse(is.finite(alignment$match_rate), 200 * alignment$match_rate, 0)
+  score <- score + ifelse(length(rho) && any(rho < 0), 1500, 0)
+  score <- score + ifelse(length(rho) && max(abs(rho)) <= 0.11, 1000, 0)
+  score <- score + min(length(unique(rho)), 20)
+  score <- score + as.numeric(max_mtime) / 1e10
+  list(
+    tables_dir = tables_dir,
+    score = score,
+    mtime = max_mtime,
+    rho_values = if (length(rho)) paste(sort(unique(rho)), collapse = ",") else NA_character_,
+    coverage_match_rate = alignment$match_rate,
+    coverage_complete_all = alignment$complete_all,
+    coverage_missing_any = alignment$missing_any,
+    grid_summary_path = paths[["grid_summary"]],
+    rep_results_path = paths[["rep_results"]],
+    cell_coverage_path = paths[["cell_coverage"]],
+    decision_path = paths[["decision"]],
+    mechanism_summary_path = paths[["mechanism_summary"]]
+  )
+}
+
+discover_si05_si06_temporal_bundle <- function(root = output_root) {
+  files <- temporal_weight_bundle_files()
+  if (is.null(root) || length(root) != 1L || is.na(root) || !dir.exists(root)) {
+    return(score_temporal_weight_bundle(file.path(root, "simulation", "lmer_temporal_dependence", "tables")))
+  }
+  hits <- unlist(lapply(unname(files), function(file_name) {
+    list.files(root, pattern = paste0("^", escape_regex(file_name), "$"),
+               recursive = TRUE, full.names = TRUE, ignore.case = FALSE)
+  }), use.names = FALSE)
+  candidate_dirs <- unique(dirname(hits[file.exists(hits)]))
+  fallback_dir <- file.path(root, "simulation", "lmer_temporal_dependence", "tables")
+  candidate_dirs <- unique(c(candidate_dirs, fallback_dir))
+  bundles <- lapply(candidate_dirs, score_temporal_weight_bundle)
+  bundles <- Filter(Negate(is.null), bundles)
+  if (!length(bundles)) return(score_temporal_weight_bundle(fallback_dir))
+  scores <- vapply(bundles, function(x) x$score, numeric(1))
+  mtimes <- vapply(bundles, function(x) as.numeric(x$mtime), numeric(1))
+  bundles[[order(scores, mtimes, decreasing = TRUE)[[1]]]]
+}
+
 read_required_gate <- function(path, column, label) {
   x <- safe_read_csv(path)
   if (is.null(x) || !nrow(x) || !column %in% names(x)) {
@@ -102,13 +210,24 @@ economic_validity_means_path <- file.path(output_root, "diagnostics", "table_top
 economic_validity_decision_path <- file.path(output_root, "diagnostics", "table_top_tail_group_economic_validity_decision.csv")
 di09_temporal_elpd_premium_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_firmre_premium.csv")
 di09_temporal_elpd_decision_path <- file.path(output_root, "simulation", "temporal_dependence", "tables", "table_temporal_dependence_decision.csv")
-lmer_temporal_root <- file.path(output_root, "simulation", "lmer_temporal_dependence")
-lmer_temporal_tables_dir <- file.path(lmer_temporal_root, "tables")
-si05_temporal_grid_summary_path <- file.path(lmer_temporal_tables_dir, "table_lmer_temporal_dependence_grid_summary.csv")
-si05_temporal_rep_results_path <- file.path(lmer_temporal_tables_dir, "table_lmer_temporal_dependence_rep_results.csv")
-si05_temporal_cell_coverage_path <- file.path(lmer_temporal_tables_dir, "table_si05_lmer_temporal_cell_coverage.csv")
-si05_temporal_decision_path <- file.path(lmer_temporal_tables_dir, "table_si05_lmer_temporal_decision.csv")
-si06_temporal_mechanism_summary_path <- file.path(lmer_temporal_tables_dir, "table_temporal_dependence_mechanism_summary.csv")
+si05_si06_temporal_bundle <- discover_si05_si06_temporal_bundle(output_root)
+lmer_temporal_tables_dir <- if (!is.null(si05_si06_temporal_bundle)) si05_si06_temporal_bundle$tables_dir else NA_character_
+si05_temporal_grid_summary_path <- if (!is.null(si05_si06_temporal_bundle)) si05_si06_temporal_bundle$grid_summary_path else NA_character_
+si05_temporal_rep_results_path <- if (!is.null(si05_si06_temporal_bundle)) si05_si06_temporal_bundle$rep_results_path else NA_character_
+si05_temporal_cell_coverage_path <- if (!is.null(si05_si06_temporal_bundle)) si05_si06_temporal_bundle$cell_coverage_path else NA_character_
+si05_temporal_decision_path <- if (!is.null(si05_si06_temporal_bundle)) si05_si06_temporal_bundle$decision_path else NA_character_
+si06_temporal_mechanism_summary_path <- if (!is.null(si05_si06_temporal_bundle)) si05_si06_temporal_bundle$mechanism_summary_path else NA_character_
+if (!is.null(si05_si06_temporal_bundle) && !is.na(si05_si06_temporal_bundle$tables_dir)) {
+  add_note(paste("SI05/SI06 temporal evidence bundle selected:", si05_si06_temporal_bundle$tables_dir,
+                 "| rho=", si05_si06_temporal_bundle$rho_values,
+                 "| coverage_match_rate=", round(si05_si06_temporal_bundle$coverage_match_rate, 3),
+                 "| coverage_complete_all=", si05_si06_temporal_bundle$coverage_complete_all))
+  if (isTRUE(si05_si06_temporal_bundle$coverage_missing_any) ||
+      !isTRUE(si05_si06_temporal_bundle$coverage_complete_all)) {
+    add_warning(paste("Selected SI05/SI06 temporal evidence bundle has incomplete or unmatched coverage:",
+                      si05_si06_temporal_bundle$tables_dir))
+  }
+}
 # Row exact-KFold artifacts are produced by ma13c under Row_KFold_Root/tables
 # and pinned by output_root/row_exact_kfold/LATEST_COMPLETED_RUN.txt.
 # Do not assume output_root/row_exact_kfold/tables contains the weight CSVs.
@@ -824,7 +943,7 @@ build_temporal_weight_appendix <- function(summary_path,
       expected_replications = finite_sum(.data$expected_replications),
       observed_rows = finite_sum(.data$observed_rows),
       missing_replication_count = finite_sum(.data$missing_replication_count),
-      complete = ifelse(all(is.na(.data$complete)), NA, all(as.logical(.data$complete), na.rm = TRUE)),
+      complete = ifelse(all(is.na(.data$complete)), NA, all(!is.na(.data$complete) & as.logical(.data$complete))),
       mean_weight_row_firmre = finite_mean(.data$mean_weight_row_firmre),
       mean_weight_group_firmre = finite_mean(.data$mean_weight_group_firmre),
       mean_weight_premium = finite_mean(.data$mean_weight_premium),
@@ -833,19 +952,23 @@ build_temporal_weight_appendix <- function(summary_path,
     ) %>%
     arrange(.data$sigma_firm, .data$T, .data$rho)
 
-  source_status <- if (is.na(coverage_path) || !file.exists(coverage_path)) {
+  coverage_available <- !is.na(coverage_path) && file.exists(coverage_path)
+  source_status <- if (!coverage_available) {
     "summary_available_coverage_missing"
-  } else if (any(!is.na(out$complete) & !out$complete)) {
+  } else if (any(is.na(out$complete) | !out$complete)) {
     "available_incomplete_cell_coverage"
   } else {
     "summary_and_coverage_available"
   }
+  coverage_complete_for_fields <- if (coverage_available) out$complete else rep(NA, nrow(out))
   fields <- lapply(seq_len(nrow(out)), function(i) {
-    temporal_mechanism_fields(out$sigma_firm[[i]], out$mean_weight_premium[[i]], out$complete[[i]])
+    temporal_mechanism_fields(out$sigma_firm[[i]], out$mean_weight_premium[[i]], coverage_complete_for_fields[[i]])
   })
   out$mechanism_read <- vapply(fields, `[[`, character(1), "mechanism_read")
   out$mechanism_interpretation <- vapply(fields, `[[`, character(1), "interpretation")
-  out$source_status <- ifelse(!is.na(out$complete) & !out$complete, "available_incomplete_cell_coverage", source_status)
+  out$source_status <- ifelse(coverage_available & (is.na(out$complete) | !out$complete),
+                              "available_incomplete_cell_coverage",
+                              source_status)
   out$source_path <- paste(na.omit(c(selected$path,
                                      if (!is.na(coverage_path) && file.exists(coverage_path)) coverage_path,
                                      if (!is.na(decision_path) && file.exists(decision_path)) decision_path)),

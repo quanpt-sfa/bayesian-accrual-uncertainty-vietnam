@@ -6,7 +6,13 @@ if (!file.exists(ma17_path)) {
 ma17 <- paste(readLines(ma17_path, warn = FALSE), collapse = "\n")
 
 required_fragments <- c(
-  "lmer_temporal_root <- file.path(output_root, \"simulation\", \"lmer_temporal_dependence\")",
+  "discover_si05_si06_temporal_bundle",
+  "score_temporal_weight_bundle",
+  "temporal_coverage_alignment",
+  "si05_si06_temporal_bundle <- discover_si05_si06_temporal_bundle(output_root)",
+  "coverage_match_rate",
+  "coverage_complete_all",
+  "Selected SI05/SI06 temporal evidence bundle has incomplete or unmatched coverage",
   "si05_temporal_grid_summary_path",
   "table_lmer_temporal_dependence_grid_summary.csv",
   "si05_temporal_rep_results_path",
@@ -46,6 +52,10 @@ if (grepl("temporal_decision_value", ma17, fixed = TRUE)) {
 
 if (grepl("WARN_ROW_PREMIUM_INCREASES_WITH_TEMPORAL_DEPENDENCE", ma17, fixed = TRUE)) {
   stop("ma17 must not use DI09 global row-premium warning as SI05/SI06 leakage-weight evidence.")
+}
+
+if (grepl("lmer_temporal_root <- file.path\\(output_root, \"simulation\", \"lmer_temporal_dependence\"\\)", ma17)) {
+  stop("ma17 must discover the current SI05/SI06 temporal bundle instead of hard-coding one lmer_temporal_dependence path.")
 }
 
 if (!grepl("paper_appendix_A6_temporal_dependence_robustness", ma17, fixed = TRUE) ||
