@@ -4,6 +4,7 @@ paths <- c(
   plan = "scripts/sensitivity/se08a_plan_fold_local_preprocessing_kfold.R",
   worker = "scripts/sensitivity/se08b_fit_fold_local_preprocessing_workers.R",
   collect = "scripts/sensitivity/se08c_collect_fold_local_preprocessing_sensitivity.R",
+  da = "scripts/sensitivity/se08d_construct_fold_local_DA_reclassification.R",
   ma17 = "scripts/ma17_export_tables_figures.R",
   run = "run.R"
 )
@@ -49,6 +50,11 @@ required_worker_fragments <- c(
   "same_firm_history_available",
   "new_company_in_row_fold",
   "primary_row_target_inclusion",
+  "pred_mean",
+  "pred_sd",
+  "posterior_epred",
+  "posterior_predict",
+  "score_brms_fold_local",
   "default_prior_list",
   "brms_family",
   "Effective_Seed"
@@ -86,6 +92,11 @@ for (fragment in required_collect_fragments) {
   if (!grepl(fragment, collect, fixed = TRUE)) stop("se08 collector missing fragment: ", fragment)
 }
 
+if (grepl("table_se08_fold_local_reclassification_jaccard.csv", collect, fixed = TRUE) ||
+    grepl("table_se08_fold_local_vs_global_reclassification_comparison.csv", collect, fixed = TRUE)) {
+  stop("se08c must not write empty RQ2 reclassification placeholders; se08d owns DA/reclassification outputs.")
+}
+
 required_ma17_fragments <- c(
   "paper_appendix_A7_fold_local_preprocessing_sensitivity",
   "table_3_16_fold_local_preprocessing_sensitivity_summary",
@@ -102,7 +113,8 @@ for (fragment in required_ma17_fragments) {
 for (fragment in c(
   "scripts/sensitivity/se08a_plan_fold_local_preprocessing_kfold.R",
   "scripts/sensitivity/se08b_fit_fold_local_preprocessing_workers.R",
-  "scripts/sensitivity/se08c_collect_fold_local_preprocessing_sensitivity.R"
+  "scripts/sensitivity/se08c_collect_fold_local_preprocessing_sensitivity.R",
+  "scripts/sensitivity/se08d_construct_fold_local_DA_reclassification.R"
 )) {
   if (!grepl(fragment, run, fixed = TRUE)) stop("run.R sensitivity target missing se08 step: ", fragment)
 }

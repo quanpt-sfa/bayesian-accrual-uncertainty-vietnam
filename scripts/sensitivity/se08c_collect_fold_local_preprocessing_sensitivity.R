@@ -403,9 +403,6 @@ decision_rows <- lapply(seq_len(nrow(firmre_summary)), function(i) {
 decision <- bind_rows(decision_rows)
 write_csv_safely(decision, file.path(tables_dir, "table_se08_fold_local_sensitivity_decision.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 
-write_csv_safely(data.frame(), file.path(tables_dir, "table_se08_fold_local_reclassification_jaccard.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-write_csv_safely(data.frame(), file.path(tables_dir, "table_se08_fold_local_vs_global_reclassification_comparison.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-
 manifest_row <- data.frame(
   Script_Name = "scripts/sensitivity/se08c_collect_fold_local_preprocessing_sensitivity.R",
   Sensitivity_Root = se08_root,

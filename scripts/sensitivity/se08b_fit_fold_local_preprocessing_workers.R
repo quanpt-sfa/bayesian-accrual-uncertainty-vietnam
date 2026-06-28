@@ -56,6 +56,23 @@ apply_standardization_params <- function(df, params) {
   df
 }
 
+score_brms_fold_local <- function(fit, newdata, re_formula, allow_new_levels, sample_new_levels = NULL) {
+  if (!nrow(newdata)) {
+    return(list(lpd = numeric(), pred_mean = numeric(), pred_sd = numeric(), pred_sd_available = logical()))
+  }
+  args <- list(fit, newdata = newdata, re_formula = re_formula, allow_new_levels = allow_new_levels)
+  if (!is.null(sample_new_levels)) args$sample_new_levels <- sample_new_levels
+  ll <- do.call(brms::log_lik, args)
+  ep <- do.call(brms::posterior_epred, args)
+  pred <- tryCatch(do.call(brms::posterior_predict, args), error = function(e) NULL)
+  list(
+    lpd = apply(ll, 2, log_mean_exp),
+    pred_mean = colMeans(ep),
+    pred_sd = if (is.null(pred)) rep(NA_real_, nrow(newdata)) else apply(pred, 2, stats::sd),
+    pred_sd_available = rep(!is.null(pred), nrow(newdata))
+  )
+}
+
 read_global_cutoffs <- function(path, target_space) {
   if (is.na(path) || !nzchar(path) || !file.exists(path)) return(data.frame())
   x <- read.csv(path, stringsAsFactors = FALSE)
@@ -203,30 +220,55 @@ fit_se08_task_worker <- function(task) {
       saveRDS(fit, task$fit_path)
     }
     if (identical(task$Validation_Scheme, "grouped_firm_kfold")) {
-      ll <- brms::log_lik(fit, newdata = test_df, re_formula = NA, allow_new_levels = TRUE)
-      ep <- brms::posterior_epred(fit, newdata = test_df, re_formula = NA, allow_new_levels = TRUE)
+      score <- score_brms_fold_local(fit, test_df, re_formula = NA, allow_new_levels = TRUE)
       obs <- data.frame(
         Target_Space = task$Target_Space, Sample_Group = task$Sample_Group, Fold_ID = as.integer(task$Fold_ID),
         Obs_ID = paste(task$Target_Space, test_df$company, test_df$year, sep = "::"),
         company = test_df$company, year = test_df$year, Model_ID = task$Model_ID,
         Model_Name = task$Model_Name, Heterogeneity_Variant = task$Heterogeneity_Variant,
-        lpd_obs = apply(ll, 2, log_mean_exp), y_actual = test_df$TA_scaled, pred_mean = colMeans(ep),
+        lpd_obs = score$lpd, y_actual = test_df$TA_scaled,
+        pred_mean = score$pred_mean,
+        pred_sd = score$pred_sd,
+        predictive_sd_available = score$pred_sd_available,
         Prediction_Rule = "fold_local_grouped_firm_log_lik_re_formula_NA_population_level",
         stringsAsFactors = FALSE
       )
     } else {
       same_firm_history <- test_df$company %in% train_df$company
-      ll <- if (any(!same_firm_history)) {
-        brms::log_lik(fit, newdata = test_df, re_formula = NULL, allow_new_levels = TRUE, sample_new_levels = "uncertainty")
-      } else {
-        brms::log_lik(fit, newdata = test_df, re_formula = NULL, allow_new_levels = FALSE)
+      lpd <- pred_mean <- pred_sd <- rep(NA_real_, nrow(test_df))
+      pred_sd_available <- rep(FALSE, nrow(test_df))
+      if (any(same_firm_history)) {
+        idx <- which(same_firm_history)
+        score_same <- score_brms_fold_local(fit, test_df[idx, , drop = FALSE], re_formula = NULL, allow_new_levels = FALSE)
+        lpd[idx] <- score_same$lpd
+        pred_mean[idx] <- score_same$pred_mean
+        pred_sd[idx] <- score_same$pred_sd
+        pred_sd_available[idx] <- score_same$pred_sd_available
+      }
+      if (any(!same_firm_history)) {
+        idx <- which(!same_firm_history)
+        score_new <- score_brms_fold_local(
+          fit,
+          test_df[idx, , drop = FALSE],
+          re_formula = NULL,
+          allow_new_levels = TRUE,
+          sample_new_levels = "uncertainty"
+        )
+        lpd[idx] <- score_new$lpd
+        pred_mean[idx] <- score_new$pred_mean
+        pred_sd[idx] <- score_new$pred_sd
+        pred_sd_available[idx] <- score_new$pred_sd_available
       }
       obs <- data.frame(
         target_space = task$Target_Space, model_id = task$Model_ID, model_name = task$Model_Name,
         heterogeneity_variant = task$Heterogeneity_Variant, sample_group = task$Sample_Group,
         fold = as.integer(task$Fold_ID), company = test_df$company, year = test_df$year,
         row_id = test_df$row_id, observation_id = paste(task$Target_Space, test_df$row_id, test_df$company, test_df$year, sep = ":"),
-        observed_TA_scaled = test_df$TA_scaled, log_predictive_density = apply(ll, 2, log_mean_exp),
+        observed_TA_scaled = test_df$TA_scaled,
+        log_predictive_density = lpd,
+        pred_mean = pred_mean,
+        pred_sd = pred_sd,
+        predictive_sd_available = pred_sd_available,
         prediction_rule = ifelse(same_firm_history, "fold_local_heldout_log_lik_re_formula_NULL_same_firm_history", "fold_local_heldout_log_lik_re_formula_NULL_new_level_uncertainty_fallback"),
         same_firm_history_available = same_firm_history,
         new_company_in_row_fold = !same_firm_history,
@@ -308,6 +350,7 @@ results <- accrual_run_task_pool(
     "apply_winsor_cutoffs",
     "compute_train_standardization_params",
     "apply_standardization_params",
+    "score_brms_fold_local",
     "prepare_fold_local_train_test",
     "audit_fold_local_preprocessing",
     "read_global_cutoffs"

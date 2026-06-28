@@ -208,7 +208,18 @@ sensitivity_steps <- list(
          file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_fold_local_preprocessing_task_manifest.csv"),
          file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_fold_local_preprocessing_task_status.csv")
        ),
-       require_reason = "se08a manifest and se08b task status")
+       require_reason = "se08a manifest and se08b task status"),
+  step("se08d", "scripts/sensitivity/se08d_construct_fold_local_DA_reclassification.R",
+       "Construct fold-local DA objects and RQ2 reclassification sensitivity",
+       requires = c(
+         file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_grouped_fold_local_observation_scores.csv"),
+         file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_row_fold_local_observation_scores.csv"),
+         file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_grouped_fold_local_weights_ex_post.csv"),
+         file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_grouped_fold_local_weights_no_lookahead.csv"),
+         file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_row_fold_local_weights_ex_post.csv"),
+         file.path(output_root, "sensitivity", "fold_local_preprocessing", "tables", "table_se08_row_fold_local_weights_no_lookahead.csv")
+       ),
+       require_reason = "se08c fold-local observation scores and stacking weights")
 )
 
 simulation_steps <- list(

@@ -30,6 +30,7 @@ required_stems <- c(
   "paper_appendix_A5_supplementary_economic_validity_diagnostics",
   "paper_appendix_A6_temporal_dependence_robustness",
   "paper_appendix_A7_fold_local_preprocessing_sensitivity",
+  "table_3_17_fold_local_RQ2_reclassification_sensitivity",
   "paper_appendix_result_source_mapping"
 )
 for (stem in required_stems) {
@@ -134,6 +135,9 @@ logic_fragments <- c(
   "fold_local_preprocessing_sensitivity_not_yet_available",
   "fold_local_preprocessing_sensitivity_available",
   "table_3_16_fold_local_preprocessing_sensitivity_summary",
+  "table_3_17_fold_local_RQ2_reclassification_sensitivity",
+  "QC21",
+  "fold_local_RQ2_reclassification_sensitivity_not_yet_available",
   "paper_appendix_A7_fold_local_preprocessing_sensitivity",
   "Global winsorization and predictor standardization are declared measurement preprocessing"
 )

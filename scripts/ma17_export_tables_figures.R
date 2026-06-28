@@ -258,6 +258,10 @@ se08_fold_local_weight_comparison_path <- file.path(se08_fold_local_tables_dir, 
 se08_fold_local_firmre_shift_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_vs_global_firmre_shift_summary.csv")
 se08_fold_local_top_model_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_vs_global_top_model_comparison.csv")
 se08_fold_local_preprocessing_audit_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_preprocessing_audit.csv")
+se08_fold_local_rq2_jaccard_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_reclassification_jaccard.csv")
+se08_fold_local_rq2_comparison_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_vs_global_reclassification_comparison.csv")
+se08_fold_local_rq2_decision_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_RQ2_decision.csv")
+se08_fold_local_da_finite_gate_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_DA_finite_gate.csv")
 if (!is.null(si05_si06_temporal_bundle) && !is.na(si05_si06_temporal_bundle$tables_dir)) {
   add_note(paste("SI05/SI06 temporal evidence bundle selected:", si05_si06_temporal_bundle$tables_dir,
                  "| rho=", si05_si06_temporal_bundle$rho_values,
@@ -1789,12 +1793,26 @@ se08_fold_local_decision <- safe_read_csv(se08_fold_local_decision_path)
 se08_fold_local_weight_comparison <- safe_read_csv(se08_fold_local_weight_comparison_path)
 se08_fold_local_firmre_shift <- safe_read_csv(se08_fold_local_firmre_shift_path)
 se08_fold_local_top_model <- safe_read_csv(se08_fold_local_top_model_path)
+se08_fold_local_rq2_jaccard <- safe_read_csv(se08_fold_local_rq2_jaccard_path)
+se08_fold_local_rq2_comparison <- safe_read_csv(se08_fold_local_rq2_comparison_path)
+se08_fold_local_rq2_decision <- safe_read_csv(se08_fold_local_rq2_decision_path)
+se08_fold_local_da_finite_gate <- safe_read_csv(se08_fold_local_da_finite_gate_path)
 se08_fold_local_available <- !is.null(se08_fold_local_decision) && nrow(se08_fold_local_decision) > 0
 se08_fold_local_overall <- if (!se08_fold_local_available) {
   "MISSING"
 } else if (any(se08_fold_local_decision$decision == "FAIL", na.rm = TRUE)) {
   "FAIL"
 } else if (any(se08_fold_local_decision$decision == "WARN", na.rm = TRUE)) {
+  "WARN"
+} else {
+  "PASS"
+}
+se08_fold_local_rq2_available <- !is.null(se08_fold_local_rq2_decision) && nrow(se08_fold_local_rq2_decision) > 0
+se08_fold_local_rq2_overall <- if (!se08_fold_local_rq2_available) {
+  "MISSING"
+} else if (any(se08_fold_local_rq2_decision$decision == "FAIL", na.rm = TRUE)) {
+  "FAIL"
+} else if (any(se08_fold_local_rq2_decision$decision == "WARN", na.rm = TRUE)) {
   "WARN"
 } else {
   "PASS"
@@ -1827,7 +1845,42 @@ table_3_16 <- if (se08_fold_local_available) {
 write_outputs(table_3_16,
               "table_3_16_fold_local_preprocessing_sensitivity_summary",
               "Table 3.16 Fold-Local Preprocessing Sensitivity Summary")
-write_outputs(table_3_16,
+
+table_3_17 <- if (se08_fold_local_rq2_available) {
+  se08_fold_local_rq2_decision %>%
+    mutate(
+      source_status = "fold_local_RQ2_reclassification_sensitivity_available",
+      source_path = se08_fold_local_rq2_decision_path,
+      manuscript_interpretation = "Fold-local RQ2 sensitivity is separate from RQ1 weight sensitivity; RQ2 robustness is supported only if row-vs-grouped abnormal-accrual object divergence remains material."
+    )
+} else {
+  data.frame(
+    decision_id = "fold_local_RQ2_reclassification_sensitivity_missing",
+    target_space = NA_character_,
+    metric = "fold_local_RQ2_reclassification_sensitivity_available",
+    fold_local_value = NA_real_,
+    global_value = NA_real_,
+    decision = "WARN",
+    interpretation = "SE08D fold-local abnormal-accrual object reclassification/Jaccard sensitivity is not yet available; do not claim RQ2 fold-local robustness.",
+    source_status = "fold_local_RQ2_reclassification_sensitivity_not_yet_available",
+    source_path = se08_fold_local_rq2_decision_path,
+    manuscript_interpretation = "RQ1 fold-local preprocessing sensitivity may be reported separately, but RQ2 fold-local robustness requires SE08D reclassification evidence.",
+    stringsAsFactors = FALSE
+  )
+}
+write_outputs(table_3_17,
+              "table_3_17_fold_local_RQ2_reclassification_sensitivity",
+              "Table 3.17 Fold-Local RQ2 Reclassification Sensitivity")
+
+paper_appendix_A7 <- bind_rows(
+  table_3_16 %>%
+    mutate(appendix_component = "RQ1_weight_preprocessing_sensitivity") %>%
+    mutate(across(everything(), as.character)),
+  table_3_17 %>%
+    mutate(appendix_component = "RQ2_DA_object_reclassification_sensitivity") %>%
+    mutate(across(everything(), as.character))
+)
+write_outputs(paper_appendix_A7,
               "paper_appendix_A7_fold_local_preprocessing_sensitivity",
               "Appendix Table A7 Fold-Local Preprocessing Sensitivity")
 
@@ -2380,9 +2433,13 @@ result_source_mapping <- bind_rows(
       se08_fold_local_weight_comparison_path,
       se08_fold_local_firmre_shift_path,
       se08_fold_local_top_model_path,
-      se08_fold_local_preprocessing_audit_path
+      se08_fold_local_preprocessing_audit_path,
+      se08_fold_local_rq2_jaccard_path,
+      se08_fold_local_rq2_comparison_path,
+      se08_fold_local_rq2_decision_path,
+      se08_fold_local_da_finite_gate_path
     ), collapse = ";"),
-    source_script = "scripts/sensitivity/se08a_plan_fold_local_preprocessing_kfold.R; scripts/sensitivity/se08b_fit_fold_local_preprocessing_workers.R; scripts/sensitivity/se08c_collect_fold_local_preprocessing_sensitivity.R; scripts/ma17_export_tables_figures.R",
+    source_script = "scripts/sensitivity/se08a_plan_fold_local_preprocessing_kfold.R; scripts/sensitivity/se08b_fit_fold_local_preprocessing_workers.R; scripts/sensitivity/se08c_collect_fold_local_preprocessing_sensitivity.R; scripts/sensitivity/se08d_construct_fold_local_DA_reclassification.R; scripts/ma17_export_tables_figures.R",
     run_root = output_root,
     gate_decision = ifelse(se08_fold_local_available, paste0("fold_local_preprocessing_sensitivity_", tolower(se08_fold_local_overall)), "fold_local_preprocessing_sensitivity_not_yet_available"),
     source_exists = se08_fold_local_available,
@@ -2495,7 +2552,8 @@ required_stems <- c(
   "table_3_6b_grouped_kfold_balance_summary", "table_3_7_hierarchical_prediction_rule_audit",
   "table_3_8_preprocessing_leakage_audit", "table_3_9_prior_predictive_diagnostics",
   "table_3_10_rq2_materiality_thresholds", "table_3_11_code_manuscript_manifest",
-  "table_3_16_fold_local_preprocessing_sensitivity_summary"
+  "table_3_16_fold_local_preprocessing_sensitivity_summary",
+  "table_3_17_fold_local_RQ2_reclassification_sensitivity"
 )
 if (table_3_12_available) {
   required_stems <- c(required_stems, "table_3_12_exact_kfold_reclassification_jaccard")
@@ -2587,6 +2645,12 @@ table5_blocks_ok <- c(
 add_qc("QC20", "Table 5 simulation evidence has non-missing metrics for LMER, BRMS, SI05/SI06, and SI14",
        ifelse(all(table5_blocks_ok), "PASS", "FAIL"),
        paste(names(table5_blocks_ok), table5_blocks_ok, sep = "=", collapse = "; "))
+add_qc("QC21", "fold-local RQ2 reclassification sensitivity available",
+       ifelse(se08_fold_local_rq2_overall == "FAIL", "FAIL",
+              ifelse(se08_fold_local_rq2_overall == "MISSING", "WARN", "PASS")),
+       ifelse(se08_fold_local_rq2_available,
+              paste("SE08D RQ2 decision:", se08_fold_local_rq2_overall, se08_fold_local_rq2_decision_path),
+              "SE08D RQ2 fold-local reclassification sensitivity not present; do not claim RQ2 fold-local robustness."))
 
 report_path <- file.path(report_dir, "chapter3_methods_tables_report.md")
 qc_path <- file.path(report_dir, "chapter3_methods_tables_qc.csv")
@@ -2605,6 +2669,13 @@ if (preprocessing_sensitivity_failed) {
   add_warning("Fold-local preprocessing sensitivity is available with warnings; inspect Table 3.16 before making strong leakage-safe predictive validation claims.")
 } else if (preprocessing_sensitivity_pending) {
   add_warning("Global winsorization and predictor standardization are declared measurement preprocessing; fold-local preprocessing sensitivity is not yet available.")
+}
+if (se08_fold_local_rq2_overall == "MISSING") {
+  add_warning("SE08D fold-local RQ2 reclassification sensitivity is missing; do not claim RQ2 fold-local preprocessing robustness.")
+} else if (se08_fold_local_rq2_overall == "FAIL") {
+  add_warning("SE08D fold-local RQ2 reclassification sensitivity failed; do not claim RQ2 fold-local preprocessing robustness.")
+} else if (se08_fold_local_rq2_overall == "WARN") {
+  add_warning("SE08D fold-local RQ2 reclassification sensitivity is available with warnings; inspect Table 3.17.")
 }
 if (is.null(prior_summary)) add_warning("Prior predictive diagnostics are missing.")
 if (is.null(diag) || is.null(kfold_balance_in)) add_warning("MCMC/fold outputs are not fully available.")
@@ -2625,6 +2696,7 @@ report_lines <- c(
   "- Paper Table 5 summarizes existing LMER, BRMS diagnostic/pilot, SI05/SI06 temporal weight-premium, and SI14 BRMS parameter-recovery simulation artifacts as mechanism evidence.",
   "- Primary exact K-fold results use declared global measurement preprocessing; Appendix A7 / Table 3.16 tests whether validation-target conclusions survive fold-local winsorization and predictor standardization.",
   "- The paper's preprocessing-robust conclusion is supported only if the row-vs-grouped Firm-RE shift remains positive and material under fold-local preprocessing.",
+  "- RQ2 fold-local robustness is a separate SE08D abnormal-accrual object reclassification claim; it should be made only when Table 3.17 reports supporting Jaccard/Spearman evidence.",
   "- Economic-validity diagnostics are exported as supplementary Table 3.14 / Appendix A5 when DI05 artifacts are available; they are not primary RQ evidence.",
   "- Sample, panel, and industry-year counts are computed from current pipeline outputs.",
   "- Model-space outputs restrict the main manuscript matrix to M01-M10; screened external-data extensions are separated into an appendix table.",
