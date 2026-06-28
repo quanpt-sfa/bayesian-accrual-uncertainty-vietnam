@@ -392,3 +392,150 @@ read_original_weight_file <- function(space) {
   df$Original_Weight_Source <- source_path
   df
 }
+
+normalize_rq2_metric_key <- function(x) {
+  y <- tolower(trimws(as.character(x)))
+  y <- gsub("\\s+", "", y)
+  y <- gsub("^abs\\((.*)\\)$", "\\1", y)
+  y <- gsub("_stacked$", "", y)
+  out <- rep(NA_character_, length(y))
+  out[grepl("^raw$|da_raw|^raw_magnitude$", y)] <- "DA_raw"
+  out[grepl("^z_est$|^z_estimation$|da_z_est|estimation_scaled", y)] <- "DA_z_estimation"
+  unknown <- is.na(out) & !is.na(y) & nzchar(y)
+  out[unknown] <- as.character(x)[unknown]
+  out
+}
+
+first_existing_name <- function(x, candidates, context = "table", required = TRUE) {
+  hit <- candidates[candidates %in% names(x)][1]
+  if ((is.na(hit) || !nzchar(hit)) && isTRUE(required)) {
+    stop("[BLOCKER] Missing required column for ", context, ": one of ", paste(candidates, collapse = ", "))
+  }
+  if (is.na(hit)) NA_character_ else hit
+}
+
+standardize_rq2_jaccard_table <- function(x, source_label = "RQ2 Jaccard table") {
+  if (!is.data.frame(x) || !nrow(x)) {
+    stop("[BLOCKER] ", source_label, " is missing or empty.")
+  }
+  target_col <- first_existing_name(x, c("target_space", "Target_Space"), source_label)
+  metric_col <- first_existing_name(
+    x,
+    c("source_score_variable", "score_variable", "reported_score_variable", "metric"),
+    source_label
+  )
+  jaccard_col <- first_existing_name(x, c("jaccard", "Jaccard", "top_tail_jaccard", "top5_jaccard"), source_label)
+  spearman_col <- first_existing_name(
+    x,
+    c("spearman_rank_correlation", "Spearman", "spearman", "rank_spearman"),
+    source_label,
+    required = FALSE
+  )
+  out <- data.frame(
+    target_space = as.character(x[[target_col]]),
+    metric = normalize_rq2_metric_key(x[[metric_col]]),
+    jaccard = suppressWarnings(as.numeric(x[[jaccard_col]])),
+    spearman_rank_correlation = if (!is.na(spearman_col)) suppressWarnings(as.numeric(x[[spearman_col]])) else NA_real_,
+    stringsAsFactors = FALSE
+  )
+  out <- out[!is.na(out$target_space) & nzchar(out$target_space) & !is.na(out$metric) & nzchar(out$metric), , drop = FALSE]
+  if (!nrow(out)) stop("[BLOCKER] ", source_label, " has no usable target_space/metric rows.")
+  aggregate(
+    cbind(jaccard, spearman_rank_correlation) ~ target_space + metric,
+    data = out,
+    FUN = function(v) {
+      v <- v[is.finite(v)]
+      if (!length(v)) NA_real_ else v[1]
+    },
+    na.action = na.pass
+  )
+}
+
+build_se08d_rq2_global_fold_local_comparison <- function(global_jaccard, fold_local_jaccard) {
+  global_std <- standardize_rq2_jaccard_table(global_jaccard, "SE08D global RQ2 Jaccard baseline")
+  fold_std <- standardize_rq2_jaccard_table(fold_local_jaccard, "SE08D fold-local RQ2 Jaccard")
+  names(global_std)[names(global_std) == "jaccard"] <- "global_jaccard"
+  names(global_std)[names(global_std) == "spearman_rank_correlation"] <- "global_spearman_rank_correlation"
+  names(fold_std)[names(fold_std) == "jaccard"] <- "fold_local_jaccard"
+  names(fold_std)[names(fold_std) == "spearman_rank_correlation"] <- "fold_local_spearman_rank_correlation"
+  comparison <- merge(
+    fold_std,
+    global_std,
+    by = c("target_space", "metric"),
+    all.x = TRUE,
+    sort = FALSE
+  )
+  missing <- comparison[!is.finite(comparison$global_jaccard), c("target_space", "metric"), drop = FALSE]
+  if (nrow(missing)) {
+    missing_keys <- paste(missing$target_space, missing$metric, sep = "/")
+    stop(
+      "[BLOCKER] se08d global-vs-fold-local RQ2 comparison is incomplete; missing global Jaccard for: ",
+      paste(missing_keys, collapse = ", "),
+      "."
+    )
+  }
+  comparison$absolute_difference <- comparison$fold_local_jaccard - comparison$global_jaccard
+  comparison$abs_absolute_difference <- abs(comparison$absolute_difference)
+  comparison$global_material_turnover <- is.finite(comparison$global_jaccard) & comparison$global_jaccard < 0.80
+  comparison$fold_local_material_turnover <- is.finite(comparison$fold_local_jaccard) & comparison$fold_local_jaccard < 0.80
+  comparison$materiality_conclusion_unchanged <- comparison$global_material_turnover == comparison$fold_local_material_turnover
+  comparison[, c(
+    "target_space",
+    "metric",
+    "global_jaccard",
+    "fold_local_jaccard",
+    "absolute_difference",
+    "abs_absolute_difference",
+    "global_material_turnover",
+    "fold_local_material_turnover",
+    "materiality_conclusion_unchanged",
+    "global_spearman_rank_correlation",
+    "fold_local_spearman_rank_correlation"
+  ), drop = FALSE]
+}
+
+decide_se08d_rq2_global_fold_local <- function(comparison) {
+  if (!is.data.frame(comparison) || !nrow(comparison)) {
+    stop("[BLOCKER] SE08D RQ2 comparison is missing or empty.")
+  }
+  required <- c(
+    "target_space", "metric", "global_jaccard", "fold_local_jaccard",
+    "absolute_difference", "abs_absolute_difference", "global_material_turnover",
+    "fold_local_material_turnover", "materiality_conclusion_unchanged"
+  )
+  missing <- setdiff(required, names(comparison))
+  if (length(missing)) stop("[BLOCKER] SE08D RQ2 comparison lacks columns: ", paste(missing, collapse = ", "))
+  decision <- rep("PASS", nrow(comparison))
+  decision[!is.finite(comparison$global_jaccard) | !is.finite(comparison$fold_local_jaccard)] <- "FAIL"
+  decision[is.finite(comparison$fold_local_jaccard) & comparison$fold_local_jaccard >= 0.80] <- "FAIL"
+  unchanged <- !is.na(comparison$materiality_conclusion_unchanged) & comparison$materiality_conclusion_unchanged
+  warn <- decision == "PASS" & (
+    !unchanged |
+      (is.finite(comparison$abs_absolute_difference) & comparison$abs_absolute_difference > 0.10)
+  )
+  decision[warn] <- "WARN"
+  interpretation <- ifelse(
+    decision == "PASS",
+    "Fold-local row-vs-grouped DA object divergence remains material and stable relative to the primary global-preprocessing baseline.",
+    ifelse(
+      decision == "WARN",
+      "Fold-local row-vs-grouped DA object divergence remains reviewer-relevant but changes materially relative to the global-preprocessing baseline; qualify RQ2 robustness.",
+      "Fold-local preprocessing does not support the RQ2 robustness claim because the global-vs-fold-local comparison is incomplete or material top-tail turnover is not present."
+    )
+  )
+  data.frame(
+    decision_id = paste(comparison$target_space, comparison$metric, "rq2_fold_local_global_comparison", sep = "_"),
+    target_space = comparison$target_space,
+    metric = comparison$metric,
+    fold_local_value = comparison$fold_local_jaccard,
+    global_value = comparison$global_jaccard,
+    absolute_difference = comparison$absolute_difference,
+    abs_absolute_difference = comparison$abs_absolute_difference,
+    global_material_turnover = comparison$global_material_turnover,
+    fold_local_material_turnover = comparison$fold_local_material_turnover,
+    materiality_conclusion_unchanged = comparison$materiality_conclusion_unchanged,
+    decision = decision,
+    interpretation = interpretation,
+    stringsAsFactors = FALSE
+  )
+}

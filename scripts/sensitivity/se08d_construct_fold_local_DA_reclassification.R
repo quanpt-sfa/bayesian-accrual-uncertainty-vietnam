@@ -270,15 +270,6 @@ matched_jaccard <- function(joined, target_space, metric) {
   list(summary = summary, sets = sets)
 }
 
-global_metric_key <- function(x) {
-  y <- tolower(as.character(x))
-  dplyr::case_when(
-    grepl("da_raw", y) ~ "DA_raw",
-    grepl("da_z_est", y) ~ "DA_z_estimation",
-    TRUE ~ as.character(x)
-  )
-}
-
 grouped_scores <- standardize_grouped_scores(must_read_csv(paths$grouped_scores))
 row_scores <- standardize_row_scores(must_read_csv(paths$row_scores))
 weights <- bind_rows(
@@ -346,81 +337,11 @@ write_csv_safely(
   fileEncoding = "UTF-8"
 )
 
-global_j <- optional_read_csv(paths$global_jaccard)
-comparison <- if (nrow(global_j)) {
-  if (!"source_score_variable" %in% names(global_j) && "score_variable" %in% names(global_j)) {
-    global_j$source_score_variable <- global_j$score_variable
-  }
-  global_j$metric_key <- global_metric_key(global_j$source_score_variable)
-  jaccard$metric_key <- jaccard$source_score_variable
-  jaccard %>%
-    left_join(
-      global_j %>%
-        transmute(
-          target_space = .data$target_space,
-          metric_key = .data$metric_key,
-          global_jaccard = suppressWarnings(as.numeric(.data$jaccard)),
-          global_spearman_rank_correlation = if ("spearman_rank_correlation" %in% names(global_j)) suppressWarnings(as.numeric(.data$spearman_rank_correlation)) else NA_real_
-        ),
-      by = c("target_space", "metric_key")
-    ) %>%
-    transmute(
-      target_space = .data$target_space,
-      metric = .data$metric_key,
-      global_jaccard = .data$global_jaccard,
-      fold_local_jaccard = .data$jaccard,
-      absolute_difference = .data$fold_local_jaccard - .data$global_jaccard,
-      global_material_turnover = is.finite(.data$global_jaccard) & .data$global_jaccard < 0.80,
-      fold_local_material_turnover = is.finite(.data$fold_local_jaccard) & .data$fold_local_jaccard < 0.80,
-      materiality_conclusion_unchanged = .data$global_material_turnover == .data$fold_local_material_turnover,
-      global_spearman_rank_correlation = .data$global_spearman_rank_correlation,
-      fold_local_spearman_rank_correlation = .data$spearman_rank_correlation
-    )
-} else {
-  jaccard %>%
-    transmute(
-      target_space = .data$target_space,
-      metric = .data$source_score_variable,
-      global_jaccard = NA_real_,
-      fold_local_jaccard = .data$jaccard,
-      absolute_difference = NA_real_,
-      global_material_turnover = NA,
-      fold_local_material_turnover = is.finite(.data$jaccard) & .data$jaccard < 0.80,
-      materiality_conclusion_unchanged = NA,
-      global_spearman_rank_correlation = NA_real_,
-      fold_local_spearman_rank_correlation = .data$spearman_rank_correlation
-    )
-}
+global_j <- must_read_csv(paths$global_jaccard)
+comparison <- build_se08d_rq2_global_fold_local_comparison(global_j, jaccard)
 write_csv_safely(comparison, file.path(tables_dir, "table_se08_fold_local_vs_global_reclassification_comparison.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 
-decision <- jaccard %>%
-  mutate(
-    decision_id = paste(.data$target_space, .data$source_score_variable, "rq2_fold_local", sep = "_"),
-    fold_local_value = .data$jaccard,
-    global_value = comparison$global_jaccard[match(paste(.data$target_space, .data$source_score_variable),
-                                                   paste(comparison$target_space, comparison$metric))],
-    decision = dplyr::case_when(
-      !is.finite(.data$jaccard) ~ "FAIL",
-      .data$jaccard < 0.80 & is.finite(.data$spearman_rank_correlation) & .data$spearman_rank_correlation < 0.95 ~ "PASS",
-      .data$jaccard < 0.80 ~ "PASS",
-      .data$jaccard < 0.90 | (is.finite(.data$spearman_rank_correlation) & .data$spearman_rank_correlation < 0.98) ~ "WARN",
-      TRUE ~ "FAIL"
-    ),
-    interpretation = dplyr::case_when(
-      .data$decision == "PASS" ~ "Fold-local row-vs-grouped DA object divergence remains material under the primary top-5% Jaccard threshold.",
-      .data$decision == "WARN" ~ "Fold-local DA objects remain different but evidence is weaker; inspect Jaccard and Spearman before claiming RQ2 robustness.",
-      TRUE ~ "Fold-local preprocessing makes row and grouped DA objects too similar or unavailable for a robust RQ2 claim."
-    )
-  ) %>%
-  transmute(
-    decision_id = .data$decision_id,
-    target_space = .data$target_space,
-    metric = .data$source_score_variable,
-    fold_local_value = .data$fold_local_value,
-    global_value = .data$global_value,
-    decision = .data$decision,
-    interpretation = .data$interpretation
-  )
+decision <- decide_se08d_rq2_global_fold_local(comparison)
 write_csv_safely(decision, file.path(tables_dir, "table_se08_fold_local_RQ2_decision.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 
 message("se08d constructed fold-local DA and RQ2 reclassification sensitivity outputs.")
