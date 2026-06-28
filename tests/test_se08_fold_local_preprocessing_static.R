@@ -23,6 +23,7 @@ required_plan_fragments <- c(
   "table_se08_fold_local_preprocessing_task_manifest.csv",
   "table_se08_fold_local_preprocessing_task_status.csv",
   "LATEST_COMPLETED_RUN.txt",
+  "read_single_line_no_bom",
   "[BLOCKER] se08 requires the completed",
   "final_common_ex_post_sample.csv",
   "final_common_realtime_sample.csv",
@@ -35,6 +36,10 @@ required_plan_fragments <- c(
 )
 for (fragment in required_plan_fragments) {
   if (!grepl(fragment, plan, fixed = TRUE)) stop("se08 planner missing fragment: ", fragment)
+}
+
+if (grepl("trimws\\s*\\(\\s*readLines\\s*\\(\\s*pin", plan, perl = TRUE)) {
+  stop("se08 planner must use BOM-safe completed-run pin reading, not raw trimws(readLines(pin)).")
 }
 
 required_worker_fragments <- c(

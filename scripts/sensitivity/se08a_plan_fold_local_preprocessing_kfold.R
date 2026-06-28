@@ -20,9 +20,15 @@ resolve_completed_run_root <- function(kind) {
   if (!file.exists(pin)) {
     stop("[BLOCKER] se08 requires the completed ", kind, " exact K-fold run pin and will not generate new folds. Missing: ", pin)
   }
-  run_root <- trimws(readLines(pin, warn = FALSE)[1])
-  if (!nzchar(run_root) || !dir.exists(run_root)) {
-    stop("[BLOCKER] se08 completed ", kind, " exact K-fold run pin is empty or points to a missing run root: ", pin)
+  run_root <- read_single_line_no_bom(pin, paste0("se08 completed ", kind, " exact K-fold run pin"))
+  if (!dir.exists(run_root)) {
+    stop(
+      "[BLOCKER] se08 completed ", kind,
+      " exact K-fold run pin points to a missing run root after BOM cleanup. Pin: ",
+      pin,
+      "; cleaned value: ",
+      run_root
+    )
   }
   normalizePath(run_root, winslash = "/", mustWork = TRUE)
 }

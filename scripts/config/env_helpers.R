@@ -53,6 +53,24 @@ env_first <- function(names, default) {
   default
 }
 
+read_single_line_no_bom <- function(path, context = "text file") {
+  if (!file.exists(path)) {
+    stop("[BLOCKER] ", context, " is missing: ", path)
+  }
+  line <- readLines(path, n = 1L, warn = FALSE, encoding = "UTF-8")
+  if (!length(line)) {
+    stop("[BLOCKER] ", context, " is empty: ", path)
+  }
+  value <- line[[1L]]
+  value <- sub("^\ufeff", "", value)
+  value <- sub("^ï»¿", "", value)
+  value <- trimws(value)
+  if (!nzchar(value)) {
+    stop("[BLOCKER] ", context, " first line is empty after BOM/whitespace cleanup: ", path)
+  }
+  value
+}
+
 # --- Phase logging & timing (single source for all pipeline lines) ---
 .phase_clock <- new.env(parent = emptyenv())
 
@@ -64,22 +82,53 @@ phase_begin <- function(phase_id, phase_label = "") {
   invisible(t0)
 }
 
+safe_write_phase_runtime_log <- function(row, log_path) {
+  tryCatch({
+    dir.create(dirname(log_path), recursive = TRUE, showWarnings = FALSE)
+    old <- NULL
+    if (file.exists(log_path)) {
+      old <- tryCatch(
+        read.csv(log_path, stringsAsFactors = FALSE),
+        error = function(e) NULL
+      )
+    }
+    if (!is.null(old) && nrow(old)) {
+      missing_cols <- setdiff(names(row), names(old))
+      for (nm in missing_cols) old[[nm]] <- NA
+      extra_cols <- setdiff(names(old), names(row))
+      for (nm in extra_cols) row[[nm]] <- NA
+      out <- rbind(old[, names(row), drop = FALSE], row)
+    } else {
+      out <- row
+    }
+    if (exists("write_csv_safely", mode = "function")) {
+      write_csv_safely(out, log_path, row.names = FALSE)
+    } else {
+      tmp <- paste0(log_path, ".tmp")
+      write.table(out, tmp, sep = ",", row.names = FALSE, col.names = TRUE)
+      copied <- file.copy(tmp, log_path, overwrite = TRUE)
+      unlink(tmp)
+      if (!copied) stop("Could not replace phase runtime log: ", log_path)
+    }
+  }, error = function(e) invisible(NULL))
+  invisible(log_path)
+}
+
 phase_end <- function(phase_id, phase_label = "") {
   t1 <- Sys.time()
   t0 <- get0(phase_id, envir = .phase_clock, ifnotfound = t1)
   secs <- as.numeric(difftime(t1, t0, units = "secs"))
   message(sprintf("[%s] END    %s | end=%s | elapsed=%.1fs (%.2f min)",
                   phase_id, phase_label, format(t1, "%H:%M:%S"), secs, secs / 60))
+  if (env_flag("ACCRUAL_DISABLE_PHASE_RUNTIME_LOG", "FALSE")) {
+    return(invisible(secs))
+  }
   log_path <- file.path(env_value("ACCRUAL_LOG_ROOT", file.path("out", "logs")), "phase_runtime_log.csv")
-  tryCatch({
-    dir.create(dirname(log_path), recursive = TRUE, showWarnings = FALSE)
-    row <- data.frame(phase_id = phase_id, phase_label = phase_label,
-      start_time = format(t0, "%Y-%m-%d %H:%M:%S"), end_time = format(t1, "%Y-%m-%d %H:%M:%S"),
-      elapsed_seconds = round(secs, 1), elapsed_minutes = round(secs / 60, 2),
-      run_date = format(Sys.Date()), stringsAsFactors = FALSE)
-    write.table(row, log_path, sep = ",", row.names = FALSE,
-                col.names = !file.exists(log_path), append = file.exists(log_path))
-  }, error = function(e) invisible(NULL))
+  row <- data.frame(phase_id = phase_id, phase_label = phase_label,
+    start_time = format(t0, "%Y-%m-%d %H:%M:%S"), end_time = format(t1, "%Y-%m-%d %H:%M:%S"),
+    elapsed_seconds = round(secs, 1), elapsed_minutes = round(secs / 60, 2),
+    run_date = format(Sys.Date()), stringsAsFactors = FALSE)
+  safe_write_phase_runtime_log(row, log_path)
   invisible(secs)
 }
 
