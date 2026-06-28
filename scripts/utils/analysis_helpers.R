@@ -111,6 +111,127 @@ optimize_stacking_from_lpd <- function(lpd_matrix) {
   w
 }
 
+optimize_stacking_from_lpd_fast <- function(lpd_matrix, maxit = 500L, reltol = 1e-8) {
+  lpd_matrix <- as.matrix(lpd_matrix)
+  if (!nrow(lpd_matrix) || !ncol(lpd_matrix)) {
+    stop("[BLOCKER] optimize_stacking_from_lpd_fast() requires a non-empty matrix.")
+  }
+  if (is.null(colnames(lpd_matrix))) {
+    colnames(lpd_matrix) <- paste0("model_", seq_len(ncol(lpd_matrix)))
+  }
+  if (any(!is.finite(lpd_matrix))) {
+    stop("[BLOCKER] optimize_stacking_from_lpd_fast() requires finite log predictive densities.")
+  }
+
+  n <- nrow(lpd_matrix)
+  k <- ncol(lpd_matrix)
+  row_max <- apply(lpd_matrix, 1L, max)
+  p <- exp(lpd_matrix - row_max)
+
+  singleton_elpd <- colSums(lpd_matrix)
+  best_singleton <- which.max(singleton_elpd)
+  singleton_w <- rep(0, k)
+  singleton_w[best_singleton] <- 1
+  names(singleton_w) <- colnames(lpd_matrix)
+  singleton_objective <- as.numeric(singleton_elpd[best_singleton])
+
+  if (k == 1L) {
+    return(list(
+      weights = singleton_w,
+      objective = singleton_objective,
+      singleton_objective = singleton_objective,
+      convergence = 0L,
+      fallback_used = FALSE,
+      method = "fast_exact",
+      message = "single_model"
+    ))
+  }
+
+  softmax_eta <- function(theta) {
+    eta <- c(theta, 0)
+    eta <- eta - max(eta)
+    w <- exp(eta)
+    w / sum(w)
+  }
+
+  mixture_objective_value <- function(w) {
+    denom <- as.vector(p %*% w)
+    sum(row_max + log(pmax(denom, .Machine$double.xmin)))
+  }
+
+  fn <- function(theta) {
+    w <- softmax_eta(theta)
+    -mixture_objective_value(w)
+  }
+
+  gr <- function(theta) {
+    w <- softmax_eta(theta)
+    denom <- as.vector(p %*% w)
+    resp <- sweep(p, 2L, w, "*") / pmax(denom, .Machine$double.xmin)
+    s <- colSums(resp)
+    grad_eta <- s - n * w
+    -grad_eta[seq_len(k - 1L)]
+  }
+
+  starts <- list(rep(0, k - 1L))
+  if (k > 1L) {
+    eta <- rep(-4, k)
+    eta[best_singleton] <- 4
+    starts[[2L]] <- eta[-k]
+  }
+
+  fits <- lapply(starts, function(start) {
+    tryCatch(
+      stats::optim(
+        par = start,
+        fn = fn,
+        gr = gr,
+        method = "BFGS",
+        control = list(maxit = as.integer(maxit), reltol = reltol)
+      ),
+      error = function(e) e
+    )
+  })
+  ok <- vapply(fits, function(x) is.list(x) && !inherits(x, "error") && is.finite(x$value), logical(1))
+  if (!any(ok)) {
+    return(list(
+      weights = singleton_w,
+      objective = singleton_objective,
+      singleton_objective = singleton_objective,
+      convergence = NA_integer_,
+      fallback_used = TRUE,
+      method = "fast_exact",
+      message = "optim_failed_all_starts"
+    ))
+  }
+
+  fits_ok <- fits[ok]
+  vals <- vapply(fits_ok, function(fit) -fit$value, numeric(1))
+  fit <- fits_ok[[which.max(vals)]]
+  w <- softmax_eta(fit$par)
+  names(w) <- colnames(lpd_matrix)
+  objective <- mixture_objective_value(w)
+
+  fallback_used <- FALSE
+  message <- fit$message
+  if (objective + 1e-6 < singleton_objective) {
+    w <- singleton_w
+    objective <- singleton_objective
+    fallback_used <- TRUE
+    message <- "optimized_objective_below_singleton"
+  }
+
+  list(
+    weights = w,
+    objective = objective,
+    singleton_objective = singleton_objective,
+    convergence = as.integer(fit$convergence),
+    fallback_used = fallback_used,
+    method = "fast_exact",
+    message = if (is.null(message)) NA_character_ else as.character(message)
+  )
+}
+
 assert_training_factor_level_coverage <- function(train, test, factor_cols = c("industry", "year"), context = "unknown") {
   for (col in factor_cols) {
     if (col %in% names(train) && col %in% names(test)) {
@@ -271,4 +392,3 @@ read_original_weight_file <- function(space) {
   df$Original_Weight_Source <- source_path
   df
 }
-

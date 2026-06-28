@@ -38,10 +38,10 @@ To make duplicate execution harmless and explicit, SE08C now creates a determini
 out/interim/winsor/sensitivity/fold_local_preprocessing/logs/se08c_collect.lock
 ```
 
-The lock records the current PID, start time, `commandArgs()`, and working directory. If the lock exists and the recorded PID is alive, SE08C stops before sourcing setup with:
+The lock records the current PID, start time, `commandArgs()`, and working directory. If the lock exists, SE08C stops before sourcing setup with:
 
 ```text
-[BLOCKER] se08c is already running; lock PID=<pid>; lock=<path>
+[BLOCKER] se08c lock exists; refusing to start another collector. Remove the lock manually only after verifying no SE08C process is running. lock PID=<pid>; lock=<path>
 ```
 
 The lock is removed in a `finally` block on normal or error exit.
@@ -56,7 +56,7 @@ SE08C also performs a best-effort duplicate-process self-check before setup. If 
 
 No shell command is used for this check.
 
-## Stacking Guard
+## Stacking Guard And Fast Optimizer
 
 SE08C now emits checkpoint logs around all four stacking blocks:
 
@@ -65,7 +65,33 @@ SE08C now emits checkpoint logs around all four stacking blocks:
 - row ex-post
 - row real-time
 
-The stacking optimizer is wrapped by `optimize_stacking_guarded()`, which applies `ACCRUAL_SE08C_STACKING_TIMEOUT_SECONDS` and falls back to the best singleton ELPD model if optimization fails or times out. This prevents the collector from waiting indefinitely inside a stacking optimization call.
+The previous guard still called the legacy `optimize_stacking_from_lpd()` path, which uses multi-start BFGS with finite-difference gradients and can become idle on Windows before writing the fold-local weight files.
+
+The collector now defaults to:
+
+```text
+ACCRUAL_SE08C_STACKING_METHOD=fast_exact
+```
+
+`fast_exact` uses `optimize_stacking_from_lpd_fast()`, a softmax-parameterized optimizer with a numerically stable stacking objective and an analytic gradient. It uses at most two starts and `stats::optim(..., method = "BFGS", maxit = 500, reltol = 1e-8)`.
+
+Allowed methods are:
+
+- `fast_exact`: default analytic-gradient optimizer.
+- `singleton`: deterministic best-singleton fallback.
+- `pseudo_bma`: deterministic softmax over singleton ELPD values.
+- `exact_legacy`: the old multi-start optimizer, only when explicitly requested.
+
+For every grouped and row fold-local weight table, SE08C now writes stacking metadata:
+
+- `Stacking_Method_Fold_Local`
+- `Stacking_Fallback_Used`
+- `Stacking_Convergence_Code`
+- `Stacking_Objective`
+- `Singleton_Objective`
+- `Stacking_Context`
+
+The optimizer compares the fitted mixture objective against the best-singleton ELPD. If the optimized mixture is worse than the best singleton within tolerance, SE08C falls back to the singleton solution and records this in the metadata.
 
 ## Output Compatibility
 
@@ -98,7 +124,17 @@ Static validation also confirms SE08C contains no `system`, `system2`, `shell`, 
 
 A lightweight behavioral smoke test creates synthetic SE08A/SE08B-style manifest, status, RDS outputs, and primary global weight pins under a temporary output root, then runs SE08C end-to-end. The smoke test verifies all expected SE08C outputs and the collect manifest are written without installing tidyverse packages or refitting models.
 
-A separate lock behavioral test writes `se08c_collect.lock` with the current live PID and verifies SE08C blocks immediately before setup with `[BLOCKER] se08c is already running`.
+A separate lock behavioral test writes `se08c_collect.lock` and verifies SE08C blocks immediately before setup with `[BLOCKER] se08c lock exists; refusing to start another collector`.
+
+The second lock patch changed SE08C to fail closed on Windows: if `se08c_collect.lock` exists, SE08C refuses to start another collector and does not use `tools::pskill(signal = 0)` to decide whether the lock is stale. Stale-lock removal now requires:
+
+```text
+ACCRUAL_SE08C_CLEAR_STALE_LOCK=TRUE
+```
+
+The lock behavioral test verifies that an existing lock is not removed automatically and that explicit clear mode reaches the normal setup blocker.
+
+`tests/test_se08c_fast_stacking_static_behavioral.R` verifies the new fast optimizer returns finite nonnegative weights summing to one, does not return an objective below the best singleton, and that SE08C calls the legacy optimizer only inside the explicit `exact_legacy` branch.
 
 ## Remaining Runtime Requirement
 

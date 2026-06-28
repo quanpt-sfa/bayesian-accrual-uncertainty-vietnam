@@ -5,13 +5,6 @@ se08c_top_lock <- local({
   lock_path <- file.path("out", "interim", "winsor", "sensitivity", "fold_local_preprocessing", "logs", "se08c_collect.lock")
   dir.create(dirname(lock_path), recursive = TRUE, showWarnings = FALSE)
 
-  pid_alive <- function(pid) {
-    pid <- suppressWarnings(as.integer(pid))
-    if (length(pid) != 1L || is.na(pid) || pid <= 0L) return(FALSE)
-    if (identical(pid, Sys.getpid())) return(TRUE)
-    isTRUE(tryCatch(tools::pskill(pid, signal = 0), error = function(e) FALSE))
-  }
-
   read_lock <- function(path) {
     if (!file.exists(path)) return(list(pid = NA_integer_))
     lines <- readLines(path, warn = FALSE)
@@ -35,17 +28,22 @@ se08c_top_lock <- local({
     sum(hits, na.rm = TRUE)
   }
 
+  if (file.exists(lock_path)) {
+    lock <- read_lock(lock_path)
+    clear_stale <- toupper(Sys.getenv("ACCRUAL_SE08C_CLEAR_STALE_LOCK", unset = "FALSE")) %in% c("TRUE", "1", "YES", "Y")
+    if (!clear_stale) {
+      stop(
+        "[BLOCKER] se08c lock exists; refusing to start another collector. ",
+        "Remove the lock manually only after verifying no SE08C process is running. ",
+        "lock PID=", lock$pid, "; lock=", lock_path
+      )
+    }
+    unlink(lock_path, force = TRUE)
+  }
+
   n_matches <- duplicate_count()
   if (!is.na(n_matches) && n_matches > 1L) {
     stop("[BLOCKER] duplicate se08c process detected; matches=", n_matches, "; lock=", lock_path)
-  }
-
-  if (file.exists(lock_path)) {
-    lock <- read_lock(lock_path)
-    if (pid_alive(lock$pid)) {
-      stop("[BLOCKER] se08c is already running; lock PID=", lock$pid, "; lock=", lock_path)
-    }
-    unlink(lock_path, force = TRUE)
   }
 
   lock_lines <- c(
@@ -59,7 +57,11 @@ se08c_top_lock <- local({
   if (!file.rename(tmp_lock, lock_path)) {
     unlink(tmp_lock, force = TRUE)
     lock <- read_lock(lock_path)
-    stop("[BLOCKER] se08c is already running; lock PID=", lock$pid, "; lock=", lock_path)
+    stop(
+      "[BLOCKER] se08c lock exists; refusing to start another collector. ",
+      "Remove the lock manually only after verifying no SE08C process is running. ",
+      "lock PID=", lock$pid, "; lock=", lock_path
+    )
   }
 
   list(
@@ -112,6 +114,23 @@ stacking_singleton_fallback <- function(lpd_matrix) {
   weights
 }
 
+stacking_objective_value <- function(lpd_matrix, weights) {
+  lpd_matrix <- as.matrix(lpd_matrix)
+  row_max <- apply(lpd_matrix, 1L, max)
+  centered <- exp(lpd_matrix - row_max)
+  denom <- as.vector(centered %*% as.numeric(weights))
+  sum(row_max + log(pmax(denom, .Machine$double.xmin)))
+}
+
+pseudo_bma_weights <- function(lpd_matrix) {
+  elpd <- colSums(as.matrix(lpd_matrix))
+  z <- elpd - max(elpd)
+  w <- exp(z)
+  w <- w / sum(w)
+  names(w) <- colnames(lpd_matrix)
+  w
+}
+
 optimize_stacking_guarded <- function(lpd_matrix, context) {
   lpd_matrix <- as.matrix(lpd_matrix)
   if (!nrow(lpd_matrix) || !ncol(lpd_matrix)) {
@@ -123,23 +142,97 @@ optimize_stacking_guarded <- function(lpd_matrix, context) {
   if (any(!is.finite(lpd_matrix))) {
     stop("[BLOCKER] se08c stacking matrix has non-finite values for ", context)
   }
-  timeout_seconds <- env_int("ACCRUAL_SE08C_STACKING_TIMEOUT_SECONDS", 300L, min = 1L)
-  se08c_checkpoint(paste0(context, " optimizer begin"))
-  out <- tryCatch({
-    setTimeLimit(elapsed = timeout_seconds, transient = TRUE)
-    optimize_stacking_from_lpd(lpd_matrix)
+  method <- tolower(Sys.getenv("ACCRUAL_SE08C_STACKING_METHOD", unset = "fast_exact"))
+  allowed <- c("fast_exact", "singleton", "pseudo_bma", "exact_legacy")
+  if (!method %in% allowed) {
+    stop("[BLOCKER] ACCRUAL_SE08C_STACKING_METHOD must be one of: ", paste(allowed, collapse = ", "))
+  }
+  started <- Sys.time()
+  se08c_checkpoint(paste0(
+    context,
+    " optimizer begin | n_obs=", nrow(lpd_matrix),
+    " | n_models=", ncol(lpd_matrix),
+    " | method=", method
+  ))
+
+  singleton_w <- stacking_singleton_fallback(lpd_matrix)
+  singleton_objective <- stacking_objective_value(lpd_matrix, singleton_w)
+  result <- tryCatch({
+    if (identical(method, "fast_exact")) {
+      optimize_stacking_from_lpd_fast(
+        lpd_matrix,
+        maxit = env_int("ACCRUAL_SE08C_FAST_STACKING_MAXIT", 500L, min = 1L),
+        reltol = env_num("ACCRUAL_SE08C_FAST_STACKING_RELTOL", 1e-8, min = 0)
+      )
+    } else if (identical(method, "singleton")) {
+      list(
+        weights = singleton_w,
+        objective = singleton_objective,
+        singleton_objective = singleton_objective,
+        convergence = 0L,
+        fallback_used = TRUE,
+        method = "singleton",
+        message = "forced_singleton"
+      )
+    } else if (identical(method, "pseudo_bma")) {
+      w <- pseudo_bma_weights(lpd_matrix)
+      list(
+        weights = w,
+        objective = stacking_objective_value(lpd_matrix, w),
+        singleton_objective = singleton_objective,
+        convergence = 0L,
+        fallback_used = FALSE,
+        method = "pseudo_bma",
+        message = "pseudo_bma_softmax_elpd"
+      )
+    } else {
+      w <- optimize_stacking_from_lpd(lpd_matrix)
+      list(
+        weights = w,
+        objective = stacking_objective_value(lpd_matrix, w),
+        singleton_objective = singleton_objective,
+        convergence = NA_integer_,
+        fallback_used = FALSE,
+        method = "exact_legacy",
+        message = "legacy_optimizer_explicitly_requested"
+      )
+    }
   }, error = function(e) {
     warning(
-      "[WARNING] se08c stacking optimizer failed or timed out for ", context,
+      "[WARNING] se08c stacking optimizer failed for ", context,
       "; falling back to best singleton ELPD model. Reason: ", conditionMessage(e),
       call. = FALSE
     )
-    stacking_singleton_fallback(lpd_matrix)
-  }, finally = {
-    setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE)
+    list(
+      weights = singleton_w,
+      objective = singleton_objective,
+      singleton_objective = singleton_objective,
+      convergence = NA_integer_,
+      fallback_used = TRUE,
+      method = method,
+      message = conditionMessage(e)
+    )
   })
-  se08c_checkpoint(paste0(context, " optimizer end"))
-  out
+
+  if (!isTRUE(result$objective + 1e-6 >= result$singleton_objective)) {
+    result$weights <- singleton_w
+    result$objective <- singleton_objective
+    result$fallback_used <- TRUE
+    result$message <- "objective_below_singleton_guard"
+  }
+
+  elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+  se08c_checkpoint(paste0(
+    context,
+    " optimizer end | elapsed_seconds=", round(elapsed, 3),
+    " | convergence=", ifelse(is.na(result$convergence), "NA", result$convergence),
+    " | fallback_used=", result$fallback_used,
+    " | objective=", round(result$objective, 6),
+    " | singleton_objective=", round(result$singleton_objective, 6)
+  ))
+  result$elapsed_seconds <- elapsed
+  result$context <- context
+  result
 }
 
 bind_rows_base <- function(x) {
@@ -552,13 +645,20 @@ build_grouped_weights <- function(target_space) {
     stop("[BLOCKER] se08 grouped score vectors have unequal lengths for ", target_space)
   }
   lpd_matrix <- do.call(cbind, score_list)
-  weights <- optimize_stacking_guarded(lpd_matrix, paste("grouped", target_space, "stacking"))
+  stacking <- optimize_stacking_guarded(lpd_matrix, paste("grouped", target_space, "stacking"))
+  weights <- stacking$weights
   meta_idx <- match(names(weights), meta_keys)
   out <- included[meta_idx, , drop = FALSE]
   out$Model_Key_Fold_Local <- names(weights)
   out$Weight_Fold_Local <- as.numeric(weights)
   out$Singleton_ELPD <- as.numeric(colSums(lpd_matrix)[names(weights)])
   out$Rank_Fold_Local <- rank_desc_base(out$Weight_Fold_Local)
+  out$Stacking_Method_Fold_Local <- stacking$method
+  out$Stacking_Fallback_Used <- isTRUE(stacking$fallback_used)
+  out$Stacking_Convergence_Code <- stacking$convergence
+  out$Stacking_Objective <- stacking$objective
+  out$Singleton_Objective <- stacking$singleton_objective
+  out$Stacking_Context <- stacking$context
   out[order(out$Rank_Fold_Local), , drop = FALSE]
 }
 
@@ -593,13 +693,20 @@ build_row_weights <- function(target_space) {
     stop("[BLOCKER] se08 row score vectors have unequal lengths for ", target_space)
   }
   lpd_matrix <- do.call(cbind, score_list)
-  weights <- optimize_stacking_guarded(lpd_matrix, paste("row", target_space, "stacking"))
+  stacking <- optimize_stacking_guarded(lpd_matrix, paste("row", target_space, "stacking"))
+  weights <- stacking$weights
   meta_idx <- match(names(weights), meta_keys)
   out <- included[meta_idx, , drop = FALSE]
   out$model_key_fold_local <- names(weights)
   out$weight_fold_local <- as.numeric(weights)
   out$singleton_elpd <- as.numeric(colSums(lpd_matrix)[names(weights)])
   out$rank_fold_local <- rank_desc_base(out$weight_fold_local)
+  out$Stacking_Method_Fold_Local <- stacking$method
+  out$Stacking_Fallback_Used <- isTRUE(stacking$fallback_used)
+  out$Stacking_Convergence_Code <- stacking$convergence
+  out$Stacking_Objective <- stacking$objective
+  out$Singleton_Objective <- stacking$singleton_objective
+  out$Stacking_Context <- stacking$context
   out[order(out$rank_fold_local), , drop = FALSE]
 }
 

@@ -90,7 +90,12 @@ required_collect_fragments <- c(
   "table_se08_fold_local_sensitivity_decision.csv",
   "row_minus_grouped_firmre_shift",
   "row_over_grouped_firmre_ratio",
+  "optimize_stacking_from_lpd_fast",
   "optimize_stacking_from_lpd",
+  "Stacking_Method_Fold_Local",
+  "Stacking_Fallback_Used",
+  "Stacking_Objective",
+  "Singleton_Objective",
   "LATEST_COMPLETED_RUN.txt"
 )
 for (fragment in required_collect_fragments) {

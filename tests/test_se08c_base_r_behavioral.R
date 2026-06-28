@@ -199,6 +199,26 @@ expected_outputs <- file.path(tables_dir, c(
 missing <- expected_outputs[!file.exists(expected_outputs)]
 if (length(missing)) stop("SE08C smoke missing expected outputs: ", paste(missing, collapse = ", "))
 
+weight_check <- read.csv(file.path(tables_dir, "table_se08_grouped_fold_local_weights_ex_post.csv"), stringsAsFactors = FALSE)
+required_weight_cols <- c(
+  "Stacking_Method_Fold_Local",
+  "Stacking_Fallback_Used",
+  "Stacking_Convergence_Code",
+  "Stacking_Objective",
+  "Singleton_Objective",
+  "Stacking_Context"
+)
+missing_weight_cols <- setdiff(required_weight_cols, names(weight_check))
+if (length(missing_weight_cols)) {
+  stop("SE08C smoke grouped weight table missing stacking metadata: ", paste(missing_weight_cols, collapse = ", "))
+}
+if (!all(weight_check$Stacking_Method_Fold_Local == "fast_exact")) {
+  stop("SE08C smoke should use fast_exact stacking by default.")
+}
+if (abs(sum(weight_check$Weight_Fold_Local) - 1) > 1e-8) {
+  stop("SE08C smoke grouped fast_exact weights must sum to 1.")
+}
+
 decision <- read.csv(file.path(tables_dir, "table_se08_fold_local_sensitivity_decision.csv"), stringsAsFactors = FALSE)
 if (!nrow(decision)) stop("SE08C smoke decision table is empty.")
 
