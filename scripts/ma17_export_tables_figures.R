@@ -32,6 +32,7 @@ RQ2_FLAG_COUNT_REL_CHANGE_MATERIAL <- 0.25
 MIN_FIRMS_PER_FOLD_STABLE <- env_int("ACCRUAL_METHODS_MIN_FIRMS_PER_FOLD_STABLE", 30L, min = 1L)
 EXPORT_SUPPLEMENTARY_ECON_VALIDITY <- env_flag("ACCRUAL_EXPORT_SUPPLEMENTARY_ECON_VALIDITY", "FALSE")
 EXPORT_DI09_TEMPORAL_ELPD_DIAGNOSTIC <- env_flag("ACCRUAL_EXPORT_DI09_TEMPORAL_ELPD_DIAGNOSTIC", "FALSE")
+REQUIRE_SE10_POOLED_ONLY <- env_flag("ACCRUAL_REQUIRE_SE10_POOLED_ONLY", "FALSE")
 
 report_dir <- file.path(reports_root, "chapter3_methods_tables")
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
@@ -262,6 +263,21 @@ se08_fold_local_rq2_jaccard_path <- file.path(se08_fold_local_tables_dir, "table
 se08_fold_local_rq2_comparison_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_vs_global_reclassification_comparison.csv")
 se08_fold_local_rq2_decision_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_RQ2_decision.csv")
 se08_fold_local_da_finite_gate_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_DA_finite_gate.csv")
+resolve_se10_pooled_only_root <- function() {
+  se10_root <- file.path(output_root, "sensitivity", "pooled_only_substacking")
+  pin <- file.path(se10_root, "LATEST_COMPLETED_RUN.txt")
+  if (file.exists(pin)) {
+    pinned <- trimws(readLines(pin, warn = FALSE))
+    pinned <- pinned[nzchar(pinned)]
+    if (length(pinned) && dir.exists(pinned[[1]])) return(pinned[[1]])
+    add_warning(paste("SE10 pooled-only completed-run pin is invalid; falling back to direct sensitivity root:", pin))
+  }
+  se10_root
+}
+se10_pooled_only_root <- resolve_se10_pooled_only_root()
+se10_pooled_only_tables_dir <- file.path(se10_pooled_only_root, "tables")
+se10_pooled_only_family_shift_path <- file.path(se10_pooled_only_tables_dir, "table_se10_pooled_only_row_vs_grouped_family_shift.csv")
+se10_pooled_only_decision_path <- file.path(se10_pooled_only_tables_dir, "table_se10_pooled_only_decision.csv")
 if (!is.null(si05_si06_temporal_bundle) && !is.na(si05_si06_temporal_bundle$tables_dir)) {
   add_note(paste("SI05/SI06 temporal evidence bundle selected:", si05_si06_temporal_bundle$tables_dir,
                  "| rho=", si05_si06_temporal_bundle$rho_values,
@@ -1751,6 +1767,29 @@ ma12d_weights_no_lookahead_available <- export_optional_ma12d(
   "No-Lookahead Grouped K-Fold Weights Under Marginal New-Firm Scoring"
 )
 
+export_optional_se10 <- function(path, stem, title) {
+  x <- safe_read_csv(path)
+  if (is.null(x) || !nrow(x)) {
+    msg <- paste("SE10 pooled-only artifact is missing or empty; manuscript export skipped:", path)
+    if (isTRUE(REQUIRE_SE10_POOLED_ONLY)) stop("[BLOCKER] ", msg)
+    add_warning(msg)
+    return(FALSE)
+  }
+  write_outputs(x, stem, title)
+  TRUE
+}
+
+se10_pooled_only_family_shift_available <- export_optional_se10(
+  se10_pooled_only_family_shift_path,
+  "table_se10_pooled_only_row_vs_grouped_family_shift",
+  "SE10 Pooled-Only Row-vs-Grouped Accounting-Family Shift"
+)
+se10_pooled_only_decision_available <- export_optional_se10(
+  se10_pooled_only_decision_path,
+  "table_se10_pooled_only_decision",
+  "SE10 Pooled-Only Sub-Stacking Decision"
+)
+
 script_text <- function(path) if (file.exists(path)) paste(readLines(path, warn = FALSE), collapse = "\n") else ""
 audit_prediction <- function(path, scheme) {
   txt <- script_text(path)
@@ -2501,6 +2540,20 @@ result_source_mapping <- bind_rows(
     stringsAsFactors = FALSE
   ),
   data.frame(
+    manuscript_result = "SE10 pooled-only row-vs-grouped sub-stacking sensitivity",
+    output_stem = "table_se10_pooled_only_decision",
+    source_csv = paste(c(
+      se10_pooled_only_family_shift_path,
+      se10_pooled_only_decision_path
+    ), collapse = ";"),
+    source_script = "scripts/sensitivity/se10_pooled_only_substacking.R; scripts/ma17_export_tables_figures.R",
+    run_root = se10_pooled_only_root,
+    gate_decision = ifelse(se10_pooled_only_decision_available, "se10_pooled_only_available", "se10_pooled_only_missing"),
+    source_exists = se10_pooled_only_decision_available,
+    primary_or_supplementary = "appendix_sensitivity",
+    stringsAsFactors = FALSE
+  ),
+  data.frame(
     manuscript_result = "paper_appendix_A7_fold_local_preprocessing_sensitivity",
     source_csv = paste(c(
       se08_fold_local_decision_path,
@@ -2655,6 +2708,12 @@ if (ma12d_weights_ex_post_available) {
 }
 if (ma12d_weights_no_lookahead_available) {
   required_stems <- c(required_stems, "table_winsor_kfold_weights_no_lookahead_marginal_new_firm")
+}
+if (se10_pooled_only_family_shift_available) {
+  required_stems <- c(required_stems, "table_se10_pooled_only_row_vs_grouped_family_shift")
+}
+if (se10_pooled_only_decision_available) {
+  required_stems <- c(required_stems, "table_se10_pooled_only_decision")
 }
 
 qc_rows <- list()
