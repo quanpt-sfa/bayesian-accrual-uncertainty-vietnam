@@ -203,7 +203,7 @@ source_paths <- data.frame(
     file.path("scripts", "robustness", "ro01_lofo_stacking.R"),
     file.path("scripts", "ma12b_fit_grouped_kfold_firm_workers.R"),
     file.path("scripts", "ma12c_collect_grouped_kfold_firm_scores.R"),
-    file.path("scripts", "ma12d_compute_grouped_new_firm_marginal_scores.R"),
+    file.path("scripts", "ma12e_compute_grouped_new_firm_marginal_workers.R"),
     file.path("scripts", "simulation", "si03b_fit_brms_leakage_confirmation_workers.R"),
     file.path("scripts", "ma13b_fit_row_level_exact_kfold_workers.R"),
     file.path("scripts", "ma13c_collect_row_level_exact_kfold_scores.R"),

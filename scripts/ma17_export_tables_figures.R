@@ -1689,10 +1689,25 @@ write_outputs(fold_summary, "table_3_6b_grouped_kfold_balance_summary", "Table 3
 
 grouped_kfold_weights_ex_post_path <- file.path(kfold_tables, "table_winsor_kfold_weights_ex_post.csv")
 grouped_kfold_weights_no_lookahead_path <- file.path(kfold_tables, "table_winsor_kfold_weights_no_lookahead.csv")
-ma12d_marginal_comparison_path <- file.path(output_root, "tables", "table_grouped_population_vs_marginal_new_firm_weight_comparison.csv")
-ma12d_marginal_decision_path <- file.path(output_root, "tables", "table_grouped_marginal_new_firm_decision.csv")
-ma12d_marginal_weights_ex_post_path <- file.path(output_root, "tables", "table_winsor_kfold_weights_ex_post_marginal_new_firm.csv")
-ma12d_marginal_weights_no_lookahead_path <- file.path(output_root, "tables", "table_winsor_kfold_weights_no_lookahead_marginal_new_firm.csv")
+resolve_ma12d_marginal_table <- function(file_name) {
+  latest_completed <- file.path(output_root, "grouped_new_firm_marginal", "LATEST_COMPLETED_RUN.txt")
+  if (file.exists(latest_completed)) {
+    run_root <- trimws(readLines(latest_completed, warn = FALSE))
+    run_root <- run_root[nzchar(run_root)]
+    if (length(run_root)) {
+      candidate <- file.path(run_root[[1]], "tables", file_name)
+      if (file.exists(candidate)) return(candidate)
+      add_warning(paste("MA12D latest completed run is pinned but artifact is missing; falling back to compatibility table:", candidate))
+    }
+  }
+  fallback <- file.path(output_root, "tables", file_name)
+  add_warning(paste("MA12D latest completed run artifact unavailable; using compatibility table if present:", fallback))
+  fallback
+}
+ma12d_marginal_comparison_path <- resolve_ma12d_marginal_table("table_grouped_population_vs_marginal_new_firm_weight_comparison.csv")
+ma12d_marginal_decision_path <- resolve_ma12d_marginal_table("table_grouped_marginal_new_firm_decision.csv")
+ma12d_marginal_weights_ex_post_path <- resolve_ma12d_marginal_table("table_winsor_kfold_weights_ex_post_marginal_new_firm.csv")
+ma12d_marginal_weights_no_lookahead_path <- resolve_ma12d_marginal_table("table_winsor_kfold_weights_no_lookahead_marginal_new_firm.csv")
 rq1_weight_comparison <- build_weight_comparison(grouped_kfold_weights_ex_post_path,
                                                  grouped_kfold_weights_no_lookahead_path)
 paper_table_3 <- build_rq1_weight_reallocation_table(rq1_weight_comparison)
@@ -1812,7 +1827,7 @@ audit_prediction <- function(path, scheme) {
 prediction_audit <- bind_rows(
   audit_prediction("scripts/robustness/ro01_lofo_stacking.R", "LOFO"),
   audit_prediction("scripts/ma12b_fit_grouped_kfold_firm_workers.R", "grouped_kfold"),
-  audit_prediction("scripts/ma12d_compute_grouped_new_firm_marginal_scores.R", "grouped_kfold_marginal_new_firm")
+  audit_prediction("scripts/ma12e_compute_grouped_new_firm_marginal_workers.R", "grouped_kfold_marginal_new_firm")
 )
 if (any(prediction_audit$prediction_rule_classification == "unclear_requires_manual_review")) add_warning("Prediction-rule audit has unclear classifications.")
 if (any(prediction_audit$prediction_rule_classification == "conditional_fallback_requires_manual_review")) {
@@ -2478,7 +2493,7 @@ result_source_mapping <- bind_rows(
       ma12d_marginal_weights_ex_post_path,
       ma12d_marginal_weights_no_lookahead_path
     ), collapse = ";"),
-    source_script = "scripts/ma12d_compute_grouped_new_firm_marginal_scores.R; scripts/ma17_export_tables_figures.R",
+    source_script = "scripts/ma12d_prepare_grouped_new_firm_marginal_tasks.R; scripts/ma12e_compute_grouped_new_firm_marginal_workers.R; scripts/ma12f_collect_grouped_new_firm_marginal_scores.R; scripts/ma12d_compute_grouped_new_firm_marginal_scores.R; scripts/ma17_export_tables_figures.R",
     run_root = output_root,
     gate_decision = ifelse(ma12d_decision_available, "ma12d_marginal_new_firm_decision_available", "ma12d_marginal_new_firm_decision_missing"),
     source_exists = ma12d_decision_available,
