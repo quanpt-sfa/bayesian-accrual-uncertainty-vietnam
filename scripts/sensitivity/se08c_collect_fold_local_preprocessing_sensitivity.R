@@ -906,6 +906,26 @@ top_model_comparison <- aggregate_by_base(
 )
 write_csv_safely(top_model_comparison, file.path(tables_dir, "table_se08_fold_local_vs_global_top_model_comparison.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 
+se08c_decision_interpretation <- function(metric, decision) {
+  key <- paste(metric, decision, sep = "|")
+  switch(
+    key,
+    "row_minus_grouped_Firm_RE_shift|PASS" =
+      "Fold-local preprocessing preserves the positive row-minus-grouped Firm-RE weight shift and retains at least 70% of the global-preprocessing shift; the aggregate RQ1 weight-reallocation conclusion is robust.",
+    "row_minus_grouped_Firm_RE_shift|WARN" =
+      "Fold-local preprocessing preserves the direction of the row-minus-grouped Firm-RE shift but attenuates its magnitude below the 70% stability threshold; report the aggregate RQ1 result with this sensitivity caveat.",
+    "row_minus_grouped_Firm_RE_shift|FAIL" =
+      "Fold-local preprocessing does not preserve the required positive row-minus-grouped Firm-RE shift; do not claim aggregate RQ1 fold-local robustness for this target space.",
+    "top_model_heterogeneity_axis|PASS" =
+      "Fold-local preprocessing preserves the substantive grouped-vs-row top-model heterogeneity-axis conclusion; top-model-axis evidence is stable.",
+    "top_model_heterogeneity_axis|WARN" =
+      "Fold-local preprocessing changes at least one top-model heterogeneity-axis classification; do not claim full top-model-axis robustness, but evaluate this caveat separately from the aggregate Firm-RE weight-shift result.",
+    "top_model_heterogeneity_axis|FAIL" =
+      "Fold-local preprocessing materially disrupts the top-model heterogeneity-axis conclusion; do not use top-model identity or heterogeneity-axis stability as supporting evidence for this target space.",
+    stop("[BLOCKER] Missing SE08C interpretation for metric=", metric, "; decision=", decision)
+  )
+}
+
 decision_rows <- lapply(seq_len(nrow(firmre_summary)), function(i) {
   row <- firmre_summary[i, , drop = FALSE]
   target_space <- row$target_space
@@ -935,19 +955,18 @@ decision_rows <- lapply(seq_len(nrow(firmre_summary)), function(i) {
   } else {
     "WARN"
   }
+  metrics <- c("row_minus_grouped_Firm_RE_shift", "top_model_heterogeneity_axis")
+  decisions <- c(shift_decision, axis_decision)
   data.frame(
     decision_id = c(paste0(target_space, "_firmre_shift"), paste0(target_space, "_top_model_axis")),
     target_space = target_space,
-    metric = c("row_minus_grouped_Firm_RE_shift", "top_model_heterogeneity_axis"),
+    metric = metrics,
     global_value = c(global_shift, paste(top_target$top_heterogeneity_axis_global, collapse = ";")),
     fold_local_value = c(fold_shift, paste(top_target$top_heterogeneity_axis_fold_local, collapse = ";")),
     absolute_difference = c(fold_shift - global_shift, NA_real_),
     relative_difference = c(rel, NA_real_),
-    decision = c(shift_decision, axis_decision),
-    interpretation = c(
-      "PASS if row-minus-grouped Firm-RE shift remains positive and at least 70% of the global-preprocessing shift.",
-      "PASS if the grouped-vs-row pooling/firm-specificity conclusion remains substantively unchanged."
-    ),
+    decision = decisions,
+    interpretation = mapply(se08c_decision_interpretation, metrics, decisions, USE.NAMES = FALSE),
     stringsAsFactors = FALSE
   )
 })

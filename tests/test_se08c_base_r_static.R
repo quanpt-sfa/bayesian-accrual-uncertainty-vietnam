@@ -98,6 +98,13 @@ required_fragments <- c(
   "table_se08_fold_local_vs_global_firmre_shift_summary.csv",
   "table_se08_fold_local_vs_global_top_model_comparison.csv",
   "table_se08_fold_local_sensitivity_decision.csv",
+  "se08c_decision_interpretation",
+  "Fold-local preprocessing preserves the positive row-minus-grouped Firm-RE weight shift",
+  "attenuates its magnitude below the 70% stability threshold",
+  "do not claim aggregate RQ1 fold-local robustness",
+  "top-model-axis evidence is stable",
+  "do not claim full top-model-axis robustness",
+  "do not use top-model identity or heterogeneity-axis stability",
   "se08_fold_local_preprocessing_collect_manifest.csv"
 )
 for (fragment in required_fragments) {
@@ -108,6 +115,9 @@ for (fragment in required_fragments) {
 
 if (grepl("trimws\\s*\\(\\s*readLines\\s*\\(\\s*pin", txt, perl = TRUE)) {
   stop("SE08C must use BOM-safe completed-run pin reading, not raw trimws(readLines(pin)).")
+}
+if (grepl("PASS if", txt, fixed = TRUE)) {
+  stop("SE08C decision interpretations must be decision-specific and must not use generic 'PASS if' threshold prose.")
 }
 
 source("scripts/ma00_setup.R")

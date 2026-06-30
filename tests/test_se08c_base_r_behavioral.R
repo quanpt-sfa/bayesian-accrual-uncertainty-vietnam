@@ -221,6 +221,17 @@ if (abs(sum(weight_check$Weight_Fold_Local) - 1) > 1e-8) {
 
 decision <- read.csv(file.path(tables_dir, "table_se08_fold_local_sensitivity_decision.csv"), stringsAsFactors = FALSE)
 if (!nrow(decision)) stop("SE08C smoke decision table is empty.")
+if (any(decision$decision %in% c("WARN", "FAIL") & grepl("^PASS if", decision$interpretation))) {
+  stop("SE08C smoke WARN/FAIL decision rows must not receive generic 'PASS if' interpretations.")
+}
+axis_warn <- decision[decision$metric == "top_model_heterogeneity_axis" & decision$decision == "WARN", , drop = FALSE]
+if (nrow(axis_warn) && !any(grepl("do not claim full top-model-axis robustness", axis_warn$interpretation, fixed = TRUE))) {
+  stop("SE08C smoke top-model-axis WARN row must explain that full top-model-axis robustness should not be claimed.")
+}
+shift_pass <- decision[decision$metric == "row_minus_grouped_Firm_RE_shift" & decision$decision == "PASS", , drop = FALSE]
+if (nrow(shift_pass) && !any(grepl("aggregate RQ1 weight-reallocation conclusion is robust", shift_pass$interpretation, fixed = TRUE))) {
+  stop("SE08C smoke Firm-RE shift PASS row must carry a positive robustness interpretation.")
+}
 
 collect_manifest <- file.path(root, "sensitivity", "fold_local_preprocessing", "logs", "se08_fold_local_preprocessing_collect_manifest.csv")
 if (!file.exists(collect_manifest)) stop("SE08C smoke missing collect manifest.")
