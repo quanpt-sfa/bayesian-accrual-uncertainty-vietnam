@@ -1689,6 +1689,10 @@ write_outputs(fold_summary, "table_3_6b_grouped_kfold_balance_summary", "Table 3
 
 grouped_kfold_weights_ex_post_path <- file.path(kfold_tables, "table_winsor_kfold_weights_ex_post.csv")
 grouped_kfold_weights_no_lookahead_path <- file.path(kfold_tables, "table_winsor_kfold_weights_no_lookahead.csv")
+ma12d_marginal_comparison_path <- file.path(output_root, "tables", "table_grouped_population_vs_marginal_new_firm_weight_comparison.csv")
+ma12d_marginal_decision_path <- file.path(output_root, "tables", "table_grouped_marginal_new_firm_decision.csv")
+ma12d_marginal_weights_ex_post_path <- file.path(output_root, "tables", "table_winsor_kfold_weights_ex_post_marginal_new_firm.csv")
+ma12d_marginal_weights_no_lookahead_path <- file.path(output_root, "tables", "table_winsor_kfold_weights_no_lookahead_marginal_new_firm.csv")
 rq1_weight_comparison <- build_weight_comparison(grouped_kfold_weights_ex_post_path,
                                                  grouped_kfold_weights_no_lookahead_path)
 paper_table_3 <- build_rq1_weight_reallocation_table(rq1_weight_comparison)
@@ -1701,12 +1705,46 @@ write_outputs(paper_table_4,
               "paper_table_4_rq1_top_model_weights_by_validation_target",
               "Table 4 RQ1 Top Model Weights by Validation Target")
 
+export_optional_ma12d <- function(path, stem, title) {
+  x <- safe_read_csv(path)
+  if (is.null(x) || !nrow(x)) {
+    add_warning(paste("MA12D marginal new-firm artifact is missing or empty; manuscript export skipped:", path))
+    return(FALSE)
+  }
+  write_outputs(x, stem, title)
+  TRUE
+}
+
+ma12d_comparison_available <- export_optional_ma12d(
+  ma12d_marginal_comparison_path,
+  "table_grouped_population_vs_marginal_new_firm_weight_comparison",
+  "Grouped Population-Level vs Marginal New-Firm Weight Comparison"
+)
+ma12d_decision_available <- export_optional_ma12d(
+  ma12d_marginal_decision_path,
+  "table_grouped_marginal_new_firm_decision",
+  "Grouped Marginal New-Firm Decision"
+)
+ma12d_weights_ex_post_available <- export_optional_ma12d(
+  ma12d_marginal_weights_ex_post_path,
+  "table_winsor_kfold_weights_ex_post_marginal_new_firm",
+  "Ex-Post Grouped K-Fold Weights Under Marginal New-Firm Scoring"
+)
+ma12d_weights_no_lookahead_available <- export_optional_ma12d(
+  ma12d_marginal_weights_no_lookahead_path,
+  "table_winsor_kfold_weights_no_lookahead_marginal_new_firm",
+  "No-Lookahead Grouped K-Fold Weights Under Marginal New-Firm Scoring"
+)
+
 script_text <- function(path) if (file.exists(path)) paste(readLines(path, warn = FALSE), collapse = "\n") else ""
 audit_prediction <- function(path, scheme) {
   txt <- script_text(path)
   uses_re_na <- grepl("re_formula\\s*=\\s*NA", txt)
   uses_allow_new_levels <- grepl("allow_new_levels\\s*=\\s*TRUE", txt)
   samples_new <- grepl("sample_new_levels|gaussian|uncertainty|marginal", txt, ignore.case = TRUE) && uses_allow_new_levels
+  custom_u_new <- grepl("u_new", txt, fixed = TRUE) &&
+    grepl("sigma_u", txt, fixed = TRUE) &&
+    grepl("rnorm\\s*\\(", txt, perl = TRUE)
   lofo_primary_population <- scheme == "LOFO" && grepl("log_lik\\s*\\([^\\n\\)]*re_formula\\s*=\\s*NA", txt)
   conditional_fallback_detected <- scheme == "LOFO" &&
     (grepl("conditional_grouped_LOFO_not_primary", txt, fixed = TRUE) || grepl("brms::log_lik\\s*\\(\\s*fit\\s*\\)", txt))
@@ -1714,7 +1752,9 @@ audit_prediction <- function(path, scheme) {
     conditional_fallback_detected &&
     grepl("included\\s*<-\\s*!fallback_used\\s*&&\\s*reliability\\s*!=\\s*\"FAILED\"", txt) &&
     grepl("computed only for diagnostics", txt, fixed = TRUE)
-  primary_loglik_rule <- if (scheme == "LOFO" && lofo_primary_population) {
+  primary_loglik_rule <- if (custom_u_new) {
+    "custom_marginal_new_firm_integrated"
+  } else if (scheme == "LOFO" && lofo_primary_population) {
     "primary_log_lik_re_formula_NA_population_level"
   } else if (scheme == "LOFO" && grepl("log_lik\\s*\\(", txt)) {
     "log_lik_primary_rule_requires_manual_review"
@@ -1725,7 +1765,9 @@ audit_prediction <- function(path, scheme) {
   } else {
     "not_detected"
   }
-  classification <- if (scheme == "LOFO" && lofo_primary_population && conditional_fallback_excluded_from_stack) {
+  classification <- if (custom_u_new) {
+    "marginal_new_firm_prediction"
+  } else if (scheme == "LOFO" && lofo_primary_population && conditional_fallback_excluded_from_stack) {
     "population_level_grouped_psis_lofo_with_conditional_fallback_excluded"
   } else if (scheme == "LOFO" && lofo_primary_population && conditional_fallback_detected) {
     "conditional_fallback_requires_manual_review"
@@ -1758,7 +1800,7 @@ audit_prediction <- function(path, scheme) {
       "population_level_grouped_psis_lofo_with_conditional_fallback_excluded",
       "population_level_grouped_psis_lofo"
     ),
-    marginalizes_or_samples_new_group_effect = samples_new,
+    marginalizes_or_samples_new_group_effect = samples_new || custom_u_new,
     prediction_rule_classification = classification,
     reviewer_risk = reviewer_risk,
     notes = ifelse(scheme == "LOFO",
@@ -1769,7 +1811,8 @@ audit_prediction <- function(path, scheme) {
 }
 prediction_audit <- bind_rows(
   audit_prediction("scripts/robustness/ro01_lofo_stacking.R", "LOFO"),
-  audit_prediction("scripts/ma12b_fit_grouped_kfold_firm_workers.R", "grouped_kfold")
+  audit_prediction("scripts/ma12b_fit_grouped_kfold_firm_workers.R", "grouped_kfold"),
+  audit_prediction("scripts/ma12d_compute_grouped_new_firm_marginal_scores.R", "grouped_kfold_marginal_new_firm")
 )
 if (any(prediction_audit$prediction_rule_classification == "unclear_requires_manual_review")) add_warning("Prediction-rule audit has unclear classifications.")
 if (any(prediction_audit$prediction_rule_classification == "conditional_fallback_requires_manual_review")) {
@@ -1931,7 +1974,7 @@ preprocessing_audit <- bind_rows(
                              "Review fold-local standardization audit before upgrading preprocessing QC to PASS.",
                              ifelse(se08_fold_local_available,
                                     "Use Table 3.16 / Appendix A7 as the fold-local preprocessing sensitivity evidence while disclosing that the primary pipeline uses global preprocessing.",
-                                    "Add a real fold-local preprocessing sensitivity artifact before making strong leakage-safe predictive validation claims.")),
+                                    "Run split ma12a/ma12b/ma12c stages to produce train-standardization audit. Add a real fold-local preprocessing sensitivity artifact before making strong leakage-safe predictive validation claims.")),
     stringsAsFactors = FALSE
   ),
   data.frame(
@@ -2427,6 +2470,22 @@ result_source_mapping <- data.frame(
 result_source_mapping <- bind_rows(
   result_source_mapping,
   data.frame(
+    manuscript_result = "MA12D grouped Firm-RE marginal new-firm scoring decision",
+    output_stem = "table_grouped_marginal_new_firm_decision",
+    source_csv = paste(c(
+      ma12d_marginal_comparison_path,
+      ma12d_marginal_decision_path,
+      ma12d_marginal_weights_ex_post_path,
+      ma12d_marginal_weights_no_lookahead_path
+    ), collapse = ";"),
+    source_script = "scripts/ma12d_compute_grouped_new_firm_marginal_scores.R; scripts/ma17_export_tables_figures.R",
+    run_root = output_root,
+    gate_decision = ifelse(ma12d_decision_available, "ma12d_marginal_new_firm_decision_available", "ma12d_marginal_new_firm_decision_missing"),
+    source_exists = ma12d_decision_available,
+    primary_or_supplementary = "primary_method_alignment_check",
+    stringsAsFactors = FALSE
+  ),
+  data.frame(
     manuscript_result = "paper_appendix_A7_fold_local_preprocessing_sensitivity",
     source_csv = paste(c(
       se08_fold_local_decision_path,
@@ -2569,6 +2628,18 @@ if (table_3_14_available) {
 if (table_3_15_available) {
   required_stems <- c(required_stems, "table_3_15_temporal_dependence_robustness_summary",
                       "paper_appendix_A6_temporal_dependence_robustness")
+}
+if (ma12d_comparison_available) {
+  required_stems <- c(required_stems, "table_grouped_population_vs_marginal_new_firm_weight_comparison")
+}
+if (ma12d_decision_available) {
+  required_stems <- c(required_stems, "table_grouped_marginal_new_firm_decision")
+}
+if (ma12d_weights_ex_post_available) {
+  required_stems <- c(required_stems, "table_winsor_kfold_weights_ex_post_marginal_new_firm")
+}
+if (ma12d_weights_no_lookahead_available) {
+  required_stems <- c(required_stems, "table_winsor_kfold_weights_no_lookahead_marginal_new_firm")
 }
 
 qc_rows <- list()

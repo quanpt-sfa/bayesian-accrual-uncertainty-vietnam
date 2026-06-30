@@ -191,6 +191,7 @@ source_paths <- data.frame(
     "grouped_PSIS_LOFO",
     "exact_grouped_kfold_worker",
     "exact_grouped_kfold_collector",
+    "exact_grouped_kfold_marginal_new_firm_rescoring",
     "BRMS_leakage_confirmation",
     "exact_row_kfold_worker",
     "exact_row_kfold_collector",
@@ -202,6 +203,7 @@ source_paths <- data.frame(
     file.path("scripts", "robustness", "ro01_lofo_stacking.R"),
     file.path("scripts", "ma12b_fit_grouped_kfold_firm_workers.R"),
     file.path("scripts", "ma12c_collect_grouped_kfold_firm_scores.R"),
+    file.path("scripts", "ma12d_compute_grouped_new_firm_marginal_scores.R"),
     file.path("scripts", "simulation", "si03b_fit_brms_leakage_confirmation_workers.R"),
     file.path("scripts", "ma13b_fit_row_level_exact_kfold_workers.R"),
     file.path("scripts", "ma13c_collect_row_level_exact_kfold_scores.R"),
@@ -227,6 +229,11 @@ candidate_outputs <- data.frame(
     "grouped_kfold_model_scores",
     "grouped_kfold_weights_ex_post",
     "grouped_kfold_weights_no_lookahead",
+    "grouped_kfold_marginal_new_firm_observation_scores",
+    "grouped_kfold_marginal_new_firm_model_scores",
+    "grouped_kfold_marginal_new_firm_weights_ex_post",
+    "grouped_kfold_marginal_new_firm_weights_no_lookahead",
+    "grouped_kfold_marginal_new_firm_decision",
     "row_exact_kfold_observation_scores",
     "row_exact_kfold_model_scores",
     "psis_reliability_gate"
@@ -238,6 +245,11 @@ candidate_outputs <- data.frame(
     "exact_grouped_kfold_collector",
     "exact_grouped_kfold_collector",
     "exact_grouped_kfold_collector",
+    "exact_grouped_kfold_marginal_new_firm_rescoring",
+    "exact_grouped_kfold_marginal_new_firm_rescoring",
+    "exact_grouped_kfold_marginal_new_firm_rescoring",
+    "exact_grouped_kfold_marginal_new_firm_rescoring",
+    "exact_grouped_kfold_marginal_new_firm_rescoring",
     "exact_row_kfold_worker",
     "exact_row_kfold_collector",
     "psis_reliability_gate_candidate"
@@ -249,6 +261,11 @@ candidate_outputs <- data.frame(
     ifelse(is.na(kfold_root_latest), file.path(winsor_root, "kfold_firm", "UNKNOWN", "tables", "table_winsor_kfold_model_scores.csv"), file.path(kfold_root_latest, "tables", "table_winsor_kfold_model_scores.csv")),
     ifelse(is.na(kfold_root_latest), file.path(winsor_root, "kfold_firm", "UNKNOWN", "tables", "table_winsor_kfold_weights_ex_post.csv"), file.path(kfold_root_latest, "tables", "table_winsor_kfold_weights_ex_post.csv")),
     ifelse(is.na(kfold_root_latest), file.path(winsor_root, "kfold_firm", "UNKNOWN", "tables", "table_winsor_kfold_weights_no_lookahead.csv"), file.path(kfold_root_latest, "tables", "table_winsor_kfold_weights_no_lookahead.csv")),
+    file.path(output_root, "tables", "table_winsor_kfold_observation_scores_marginal_new_firm.csv"),
+    file.path(output_root, "tables", "table_winsor_kfold_model_scores_marginal_new_firm.csv"),
+    file.path(output_root, "tables", "table_winsor_kfold_weights_ex_post_marginal_new_firm.csv"),
+    file.path(output_root, "tables", "table_winsor_kfold_weights_no_lookahead_marginal_new_firm.csv"),
+    file.path(output_root, "tables", "table_grouped_marginal_new_firm_decision.csv"),
     ifelse(is.na(row_kfold_root_latest), file.path(winsor_root, "row_exact_kfold", "UNKNOWN", "tables", "table_winsor_row_exact_kfold_observation_scores.csv"), file.path(row_kfold_root_latest, "tables", "table_winsor_row_exact_kfold_observation_scores.csv")),
     ifelse(is.na(row_kfold_root_latest), file.path(winsor_root, "row_exact_kfold", "UNKNOWN", "tables", "table_winsor_row_exact_kfold_model_scores.csv"), file.path(row_kfold_root_latest, "tables", "table_winsor_row_exact_kfold_model_scores.csv")),
     file.path(output_root, "psis_reliability_gate", "tables", "table_psis_reliability_gate.csv")
@@ -353,13 +370,29 @@ infer_quantity_rows_from_artifact <- function(output_role, expected_source_role,
         TRUE ~ "no_firmre_indicator_detected"
       ),
       out_of_firm_target = dplyr::case_when(
-        output_role %in% c("grouped_kfold_observation_scores", "grouped_kfold_model_scores") ~ TRUE,
+        output_role %in% c(
+          "grouped_kfold_observation_scores",
+          "grouped_kfold_model_scores",
+          "grouped_kfold_marginal_new_firm_observation_scores",
+          "grouped_kfold_marginal_new_firm_model_scores",
+          "grouped_kfold_marginal_new_firm_weights_ex_post",
+          "grouped_kfold_marginal_new_firm_weights_no_lookahead",
+          "grouped_kfold_marginal_new_firm_decision"
+        ) ~ TRUE,
         grepl("lofo|out_of_firm", output_role, ignore.case = TRUE) ~ TRUE,
         stacked_predictive_tail_ambiguous ~ TRUE,
         TRUE ~ FALSE
       ),
       out_of_firm_basis = dplyr::case_when(
-        output_role %in% c("grouped_kfold_observation_scores", "grouped_kfold_model_scores") ~ "grouped_firm_validation_target",
+        output_role %in% c(
+          "grouped_kfold_observation_scores",
+          "grouped_kfold_model_scores",
+          "grouped_kfold_marginal_new_firm_observation_scores",
+          "grouped_kfold_marginal_new_firm_model_scores",
+          "grouped_kfold_marginal_new_firm_weights_ex_post",
+          "grouped_kfold_marginal_new_firm_weights_no_lookahead",
+          "grouped_kfold_marginal_new_firm_decision"
+        ) ~ "grouped_firm_validation_target",
         grepl("lofo|out_of_firm", output_role, ignore.case = TRUE) ~ "role_name_indicates_out_of_firm",
         stacked_predictive_tail_ambiguous ~ "strict_mode_stacked_predictive_tail_assumed_out_of_firm_reporting_risk",
         TRUE ~ "not_out_of_firm_primary_quantity"
