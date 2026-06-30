@@ -264,6 +264,8 @@ se08_fold_local_rq2_comparison_path <- file.path(se08_fold_local_tables_dir, "ta
 se08_fold_local_rq2_decision_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_RQ2_decision.csv")
 se08_fold_local_da_finite_gate_path <- file.path(se08_fold_local_tables_dir, "table_se08_fold_local_DA_finite_gate.csv")
 resolve_se10_pooled_only_root <- function() {
+  explicit <- trimws(env_value("ACCRUAL_SE10_POOLED_ONLY_OUTPUT_ROOT", ""))
+  if (nzchar(explicit)) return(normalizePath(explicit, winslash = "/", mustWork = FALSE))
   se10_root <- file.path(output_root, "sensitivity", "pooled_only_substacking")
   pin <- file.path(se10_root, "LATEST_COMPLETED_RUN.txt")
   if (file.exists(pin)) {
@@ -278,6 +280,7 @@ se10_pooled_only_root <- resolve_se10_pooled_only_root()
 se10_pooled_only_tables_dir <- file.path(se10_pooled_only_root, "tables")
 se10_pooled_only_family_shift_path <- file.path(se10_pooled_only_tables_dir, "table_se10_pooled_only_row_vs_grouped_family_shift.csv")
 se10_pooled_only_decision_path <- file.path(se10_pooled_only_tables_dir, "table_se10_pooled_only_decision.csv")
+se10_pooled_only_root_valid <- dir.exists(se10_pooled_only_root) && dir.exists(se10_pooled_only_tables_dir)
 if (!is.null(si05_si06_temporal_bundle) && !is.na(si05_si06_temporal_bundle$tables_dir)) {
   add_note(paste("SI05/SI06 temporal evidence bundle selected:", si05_si06_temporal_bundle$tables_dir,
                  "| rho=", si05_si06_temporal_bundle$rho_values,
@@ -1767,12 +1770,27 @@ ma12d_weights_no_lookahead_available <- export_optional_ma12d(
   "No-Lookahead Grouped K-Fold Weights Under Marginal New-Firm Scoring"
 )
 
+se10_missing_message <- "[WARNING] SE10 pooled-only sub-stacking outputs are missing; skipping SE10 export."
+se10_blocker_message <- "[BLOCKER] Required SE10 pooled-only sub-stacking outputs are missing."
+se10_missing_warning_emitted <- FALSE
+
+warn_missing_se10_once <- function() {
+  if (!isTRUE(se10_missing_warning_emitted)) {
+    add_warning(se10_missing_message)
+    se10_missing_warning_emitted <<- TRUE
+  }
+}
+
 export_optional_se10 <- function(path, stem, title) {
+  if (!isTRUE(se10_pooled_only_root_valid)) {
+    if (isTRUE(REQUIRE_SE10_POOLED_ONLY)) stop(se10_blocker_message)
+    warn_missing_se10_once()
+    return(FALSE)
+  }
   x <- safe_read_csv(path)
   if (is.null(x) || !nrow(x)) {
-    msg <- paste("SE10 pooled-only artifact is missing or empty; manuscript export skipped:", path)
-    if (isTRUE(REQUIRE_SE10_POOLED_ONLY)) stop("[BLOCKER] ", msg)
-    add_warning(msg)
+    if (isTRUE(REQUIRE_SE10_POOLED_ONLY)) stop(se10_blocker_message)
+    warn_missing_se10_once()
     return(FALSE)
   }
   write_outputs(x, stem, title)
@@ -1789,6 +1807,9 @@ se10_pooled_only_decision_available <- export_optional_se10(
   "table_se10_pooled_only_decision",
   "SE10 Pooled-Only Sub-Stacking Decision"
 )
+if (isTRUE(se10_pooled_only_family_shift_available) && isTRUE(se10_pooled_only_decision_available)) {
+  add_note("SE10 pooled-only sub-stacking tables exported. Pooled-only row-vs-grouped comparisons should be interpreted as heterogeneity-mechanism sensitivity evidence for RQ1.")
+}
 
 script_text <- function(path) if (file.exists(path)) paste(readLines(path, warn = FALSE), collapse = "\n") else ""
 audit_prediction <- function(path, scheme) {
@@ -2803,6 +2824,70 @@ add_qc("QC19", "master report exists", "PASS", report_path)
 qc <- bind_rows(qc_rows)
 write_csv_safely(qc, qc_path, row.names = FALSE, fileEncoding = "UTF-8")
 generated_files <- unique(c(generated_files, qc_path, report_path))
+
+chapter4_table_order_path <- file.path(report_dir, "manifest_chapter4_table_order.csv")
+chapter4_table_order <- data.frame(
+  Display_Order = seq_len(9),
+  Manuscript_Section = c(
+    "RQ1 validation-target results",
+    "RQ1 validation-target results",
+    "RQ1 grouped marginal new-firm sensitivity",
+    "RQ1 grouped marginal new-firm sensitivity",
+    "RQ1 pooled-only heterogeneity-mechanism sensitivity",
+    "RQ1 pooled-only heterogeneity-mechanism sensitivity",
+    "RQ2 exact K-fold reclassification",
+    "RQ2 denominator diagnostics",
+    "RQ2 economic-validity diagnostics"
+  ),
+  Table_Role = c(
+    "Main row-vs-grouped K-fold weight comparison",
+    "Main row-vs-grouped family weight comparison",
+    "MA12D grouped population vs marginal new-firm comparison",
+    "MA12D grouped marginal new-firm decision",
+    "SE10 pooled-only row-vs-grouped family shift",
+    "SE10 pooled-only decision",
+    "RQ2 reclassification/effect-magnitude comparison",
+    "RQ2 denominator diagnostics",
+    "RQ2 economic-validity diagnostics"
+  ),
+  Source_File = c(
+    row_vs_grouped_weight_comparison_path,
+    row_vs_grouped_family_weight_comparison_path,
+    ma12d_marginal_comparison_path,
+    ma12d_marginal_decision_path,
+    se10_pooled_only_family_shift_path,
+    se10_pooled_only_decision_path,
+    exact_kfold_reclassification_jaccard_path,
+    denominator_diagnostics_decision_path,
+    economic_validity_decision_path
+  ),
+  Exported_File = c(
+    file.path(report_dir, "paper_table_3_rq1_firmre_weight_reallocation.csv"),
+    NA_character_,
+    file.path(report_dir, "table_grouped_population_vs_marginal_new_firm_weight_comparison.csv"),
+    file.path(report_dir, "table_grouped_marginal_new_firm_decision.csv"),
+    file.path(report_dir, "table_se10_pooled_only_row_vs_grouped_family_shift.csv"),
+    file.path(report_dir, "table_se10_pooled_only_decision.csv"),
+    file.path(report_dir, "table_3_12_exact_kfold_reclassification_jaccard.csv"),
+    file.path(report_dir, "table_3_13_denominator_diagnostics_summary.csv"),
+    file.path(report_dir, "table_3_14_top_tail_economic_validity_summary.csv")
+  ),
+  Required_For_Main_Text = c(TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE),
+  Notes = c(
+    "Primary RQ1 row-level exact K-fold versus grouped-firm K-fold weight-reallocation table.",
+    "Family-level row-vs-grouped source table is indexed for manuscript assembly; no existing MA17 export is renamed.",
+    "MA12D compatibility check comparing grouped population-level and marginal new-firm weights.",
+    "MA12D decision table; current completed result is expected to support primary alignment.",
+    "SE10 source table exported when pooled-only sensitivity is available.",
+    "SE10 decision table exported when pooled-only sensitivity is available.",
+    "Place after RQ1/SE10 material because it supports RQ2 abnormal-accrual object comparisons.",
+    "Diagnostic support for RQ2 denominator stability.",
+    "Supplementary economic-validity support; not primary RQ evidence."
+  ),
+  stringsAsFactors = FALSE
+)
+write_csv_safely(chapter4_table_order, chapter4_table_order_path, row.names = FALSE, fileEncoding = "UTF-8")
+generated_files <- unique(c(generated_files, chapter4_table_order_path))
 
 if (any(is.na(sample_flow$n_observations))) add_warning("One or more sample-flow counts are missing.")
 if (!nrow(zero_audit)) add_warning("Zero treatment cannot be audited.")
